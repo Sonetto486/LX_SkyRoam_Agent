@@ -5,6 +5,351 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
+-- 创建中文全文搜索配置（如果不存在）
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'chinese') THEN
+        CREATE TEXT SEARCH CONFIGURATION chinese (
+            COPY = english
+        );
+        -- 简化的中文全文搜索配置
+        ALTER TEXT SEARCH CONFIGURATION chinese
+        ALTER MAPPING FOR asciiword, asciihword, hword_asciipart, word, hword, hword_part
+        WITH simple;
+    END IF;
+END $$;
+
+-- =============================================
+-- 基础表结构
+-- =============================================
+
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    full_name VARCHAR(100),
+    hashed_password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    preferences TEXT,
+    travel_history TEXT,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_login TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- 目的地表
+CREATE TABLE IF NOT EXISTS destinations (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    country VARCHAR(50) NOT NULL,
+    city VARCHAR(50) NOT NULL,
+    region VARCHAR(50),
+    latitude DECIMAL(10, 6) NOT NULL,
+    longitude DECIMAL(10, 6) NOT NULL,
+    description TEXT,
+    highlights TEXT,
+    best_time_to_visit VARCHAR(100),
+    popularity_score DECIMAL(3, 1),
+    safety_score DECIMAL(3, 1),
+    cost_level VARCHAR(20),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(name, country)
+);
+
+-- 景点表
+CREATE TABLE IF NOT EXISTS attractions (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    description TEXT,
+    address VARCHAR(255),
+    latitude DECIMAL(10, 6),
+    longitude DECIMAL(10, 6),
+    opening_hours TEXT,
+    ticket_price DECIMAL(10, 2),
+    currency VARCHAR(10),
+    rating DECIMAL(3, 1),
+    review_count INTEGER,
+    features TEXT,
+    accessibility TEXT,
+    contact_info TEXT,
+    images TEXT,
+    website VARCHAR(255),
+    destination_id BIGINT REFERENCES destinations(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(name, destination_id)
+);
+
+-- 餐厅表
+CREATE TABLE IF NOT EXISTS restaurants (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    cuisine_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    address VARCHAR(255),
+    latitude DECIMAL(10, 6),
+    longitude DECIMAL(10, 6),
+    opening_hours TEXT,
+    price_range VARCHAR(50),
+    rating DECIMAL(3, 1),
+    review_count INTEGER,
+    features TEXT,
+    contact_info TEXT,
+    menu_highlights TEXT,
+    images TEXT,
+    website VARCHAR(255),
+    destination_id BIGINT REFERENCES destinations(id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(name, destination_id)
+);
+
+-- 活动类型表
+CREATE TABLE IF NOT EXISTS activity_types (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    category VARCHAR(50),
+    duration_range TEXT,
+    difficulty_level VARCHAR(20),
+    age_restriction TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- =============================================
+-- 行程相关表
+-- =============================================
+
+-- 1. trip 行程主表
+-- 负责人：人员1（创建行程-基础入口与地点添加）
+-- 功能：创建行程、行程名称/天数/日期/备注/成员
+-- =============================================
+CREATE TABLE IF NOT EXISTS trip (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    days INT NOT NULL DEFAULT 1,
+    start_date DATE,
+    end_date DATE,
+    remark TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_user_id ON trip(user_id);
+CREATE INDEX IF NOT EXISTS idx_trip_created_at ON trip(created_at);
+
+
+-- =============================================
+-- 2. trip_day 行程天表
+-- 负责人：人员1（创建行程-基础入口与地点添加）
+-- 功能：天数切换、日期顺承、修改日期天数
+-- =============================================
+CREATE TABLE IF NOT EXISTS trip_day (
+    id BIGSERIAL PRIMARY KEY,
+    trip_id BIGINT NOT NULL REFERENCES trip(id) ON DELETE CASCADE,
+    day_index INT NOT NULL,
+    date DATE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(trip_id, day_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_day_trip_id ON trip_day(trip_id);
+
+
+-- =============================================
+-- 3. trip_item 行程内地点/活动/交通项
+-- 负责人：人员1（创建行程-基础入口与地点添加）
+-- 功能：添加地点/活动/交通、顺序调整、编辑路线、交通方式/时间
+-- =============================================
+CREATE TABLE IF NOT EXISTS trip_item (
+    id BIGSERIAL PRIMARY KEY,
+    trip_day_id BIGINT NOT NULL REFERENCES trip_day(id) ON DELETE CASCADE,
+    item_type VARCHAR(20) NOT NULL, -- attraction/restaurant/activity/transport
+    related_type VARCHAR(20), -- 关联类型：attractions/restaurants/destinations
+    related_id BIGINT, -- 关联ID：对应attractions.id等
+    name VARCHAR(100) NOT NULL, -- 冗余字段，方便快速显示
+    order_index INT NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    transport_type VARCHAR(20), -- walk/bike/drive/bus
+    transport_duration INT, -- 交通时长（分钟）
+    remark TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trip_item_trip_day_id ON trip_item(trip_day_id);
+CREATE INDEX IF NOT EXISTS idx_trip_item_order ON trip_item(trip_day_id, order_index);
+
+
+-- =============================================
+-- 4. favorite 收藏表
+-- 负责人：人员5（行程计划-行程编辑+个人中心）
+-- 功能：收藏地点、已收藏地点、批量收藏
+-- =============================================
+CREATE TABLE IF NOT EXISTS favorite (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    related_type VARCHAR(20) NOT NULL, -- attractions/restaurants/destinations
+    related_id BIGINT NOT NULL,
+    remark TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, related_type, related_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_favorite_user_id ON favorite(user_id);
+
+
+-- =============================================
+-- 5. checkin 点亮/打卡表
+-- 负责人：人员5（行程计划-行程编辑+个人中心）
+-- 功能：点亮地点、收藏/点亮总览
+-- =============================================
+CREATE TABLE IF NOT EXISTS checkin (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    related_type VARCHAR(20) NOT NULL, -- attractions/restaurants/destinations
+    related_id BIGINT NOT NULL,
+    mood VARCHAR(50),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_checkin_user_id ON checkin(user_id);
+CREATE INDEX IF NOT EXISTS idx_checkin_created_at ON checkin(created_at);
+
+
+-- =============================================
+-- 6. footprint 用户足迹表
+-- 负责人：人员5（行程计划-行程编辑+个人中心）
+-- 功能：添加足迹、总览国家/城市/照片/心情、个人行程地图
+-- =============================================
+CREATE TABLE IF NOT EXISTS footprint (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    country VARCHAR(50) NOT NULL,
+    city VARCHAR(50) NOT NULL,
+    record_date DATE NOT NULL,
+    mood VARCHAR(50),
+    remark TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_footprint_user_id ON footprint(user_id);
+CREATE INDEX IF NOT EXISTS idx_footprint_date ON footprint(record_date);
+
+
+-- =============================================
+-- 7. photo 图片表
+-- 负责人：人员5（行程计划-行程编辑+个人中心）
+-- 功能：添加图片、地点照片、图片空间
+-- =============================================
+CREATE TABLE IF NOT EXISTS photo (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    related_type VARCHAR(20) NOT NULL, -- trip/trip_item/checkin/footprint
+    related_id BIGINT NOT NULL,
+    photo_url VARCHAR(255) NOT NULL,
+    remark TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_user_id ON photo(user_id);
+CREATE INDEX IF NOT EXISTS idx_photo_related ON photo(related_type, related_id);
+
+
+-- =============================================
+-- 8. topic 专题表
+-- 负责人：人员4（行程计划-专题推荐与行程总览）
+-- 功能：精选专题、搜索专题、切换区域
+-- =============================================
+CREATE TABLE IF NOT EXISTS topic (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    intro TEXT,
+    cover_url VARCHAR(255),
+    region VARCHAR(100),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_topic_region ON topic(region);
+CREATE INDEX IF NOT EXISTS idx_topic_search ON topic USING gin(to_tsvector('chinese', name || ' ' || intro));
+
+
+-- =============================================
+-- 9. topic_place 专题地点表
+-- 负责人：人员4（行程计划-专题推荐与行程总览）
+-- 功能：专题地点地图模式、划重点、批量收藏
+-- =============================================
+CREATE TABLE IF NOT EXISTS topic_place (
+    id BIGSERIAL PRIMARY KEY,
+    topic_id BIGINT NOT NULL REFERENCES topic(id) ON DELETE CASCADE,
+    related_type VARCHAR(20) NOT NULL, -- attractions/restaurants/destinations
+    related_id BIGINT NOT NULL,
+    is_key_point BOOLEAN NOT NULL DEFAULT FALSE,
+    highlight_info TEXT,
+    order_index INT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_topic_place_topic_id ON topic_place(topic_id);
+CREATE INDEX IF NOT EXISTS idx_topic_place_order ON topic_place(topic_id, order_index);
+
+
+-- =============================================
+-- 10. ai_task AI任务表
+-- 负责人：人员3（创建行程-路线优化与智能创建）
+-- 功能：一键规划路线、文本/截图识别、智能导入
+-- =============================================
+CREATE TABLE IF NOT EXISTS ai_task (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    task_type VARCHAR(30) NOT NULL, -- text_ocr/screenshot_ocr/plan_route/import_places
+    input_content TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending/processing/completed/failed
+    output_trip_id BIGINT REFERENCES trip(id) ON DELETE SET NULL,
+    error_msg TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_task_user_id ON ai_task(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_task_status ON ai_task(status);
+
+-- =============================================
+-- 索引创建
+-- =============================================
+
+-- 创建索引以提高查询性能
+CREATE INDEX IF NOT EXISTS idx_destinations_name ON destinations(name);
+CREATE INDEX IF NOT EXISTS idx_destinations_country ON destinations(country);
+CREATE INDEX IF NOT EXISTS idx_destinations_popularity ON destinations(popularity_score);
+
+CREATE INDEX IF NOT EXISTS idx_attractions_destination_id ON attractions(destination_id);
+CREATE INDEX IF NOT EXISTS idx_attractions_category ON attractions(category);
+CREATE INDEX IF NOT EXISTS idx_attractions_rating ON attractions(rating);
+
+CREATE INDEX IF NOT EXISTS idx_restaurants_destination_id ON restaurants(destination_id);
+CREATE INDEX IF NOT EXISTS idx_restaurants_cuisine_type ON restaurants(cuisine_type);
+CREATE INDEX IF NOT EXISTS idx_restaurants_rating ON restaurants(rating);
+
+-- 创建全文搜索索引
+CREATE INDEX IF NOT EXISTS idx_destinations_search ON destinations USING gin(to_tsvector('chinese', name || ' ' || description));
+CREATE INDEX IF NOT EXISTS idx_attractions_search ON attractions USING gin(to_tsvector('chinese', name || ' ' || description));
+CREATE INDEX IF NOT EXISTS idx_restaurants_search ON restaurants USING gin(to_tsvector('chinese', name || ' ' || description));
+
+-- =============================================
+-- 初始数据插入
+-- =============================================
+
 -- 创建初始用户数据
 INSERT INTO users (username, email, full_name, hashed_password, is_verified, created_at, updated_at) 
 VALUES 
@@ -49,25 +394,3 @@ VALUES
 ('购物娱乐', '购物和娱乐活动', 'entertainment', '{"min": 2, "max": 6}', 'easy', '{"min": 0, "max": 100}', NOW(), NOW())
 ON CONFLICT (name) DO NOTHING;
 
--- 创建索引以提高查询性能
-CREATE INDEX IF NOT EXISTS idx_travel_plans_user_id ON travel_plans(user_id);
-CREATE INDEX IF NOT EXISTS idx_travel_plans_status ON travel_plans(status);
-CREATE INDEX IF NOT EXISTS idx_travel_plans_destination ON travel_plans(destination);
-CREATE INDEX IF NOT EXISTS idx_travel_plans_created_at ON travel_plans(created_at);
-
-CREATE INDEX IF NOT EXISTS idx_destinations_name ON destinations(name);
-CREATE INDEX IF NOT EXISTS idx_destinations_country ON destinations(country);
-CREATE INDEX IF NOT EXISTS idx_destinations_popularity ON destinations(popularity_score);
-
-CREATE INDEX IF NOT EXISTS idx_attractions_destination_id ON attractions(destination_id);
-CREATE INDEX IF NOT EXISTS idx_attractions_category ON attractions(category);
-CREATE INDEX IF NOT EXISTS idx_attractions_rating ON attractions(rating);
-
-CREATE INDEX IF NOT EXISTS idx_restaurants_destination_id ON restaurants(destination_id);
-CREATE INDEX IF NOT EXISTS idx_restaurants_cuisine_type ON restaurants(cuisine_type);
-CREATE INDEX IF NOT EXISTS idx_restaurants_rating ON restaurants(rating);
-
--- 创建全文搜索索引
-CREATE INDEX IF NOT EXISTS idx_destinations_search ON destinations USING gin(to_tsvector('chinese', name || ' ' || description));
-CREATE INDEX IF NOT EXISTS idx_attractions_search ON attractions USING gin(to_tsvector('chinese', name || ' ' || description));
-CREATE INDEX IF NOT EXISTS idx_restaurants_search ON restaurants USING gin(to_tsvector('chinese', name || ' ' || description));
