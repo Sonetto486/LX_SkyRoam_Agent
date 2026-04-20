@@ -81,14 +81,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [token, profileForm]);
 
   // 嵌入式菜单：将“创建计划”移出菜单作为CTA按钮
-  const baseMenuItems = [
-    { key: '/', label: '首页', icon: <HomeOutlined /> },
-    { key: '/destinations', label: '目的地', icon: <EnvironmentOutlined /> },
-    { key: '/plans', label: '计划库', icon: <HistoryOutlined /> },
-    { key: '/about', label: '关于我们', icon: <InfoCircleOutlined /> },
-  ];
-  const menuItems = baseMenuItems;
-
+ 
   const handleMenuClick = (key: string) => {
     // 未登录时，拦截“创建计划”并跳转登录
     if (key === '/plan' && !token) {
@@ -174,7 +167,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <Menu
       mode="vertical"
       selectedKeys={[location.pathname]}
-      items={menuItems}
+     
       onClick={({ key }) => handleMenuClick(key)}
       style={{ border: 'none' }}
       theme="dark"
@@ -186,39 +179,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Header className="app-header" style={{ padding: 0 }}>
         <div className="header-inner">
           <div className="header-brand" style={{ display: 'flex', alignItems: 'center' }}>
-            <div className="brand-icon">
-              <img src="/images/logo.png" alt="Logo" style={{ width: 24, height: 24 }} />
-            </div>
-            <Title level={3} className="brand-title gradient-text" style={{ margin: 0, fontWeight: '800' }}>
-              洛曦 云旅
-            </Title>
+           
+           
           </div>
 
            <Menu
              mode="horizontal"
              selectedKeys={[location.pathname]}
-             items={menuItems}
+            
              onClick={({ key }) => handleMenuClick(key)}
              style={{ background: 'transparent', border: 'none' }}
              theme="dark"
            />
 
           <div className="header-actions">
-            <Button 
-              type="primary" 
-              className="btn-primary" 
-              onClick={() => handleMenuClick('/plan')}
-            >
-              创建计划
-            </Button>
-            <Button
-              type="text"
-              icon={<RocketOutlined />}
-              onClick={() => setUpgradeNoticeVisible(true)}
-              className="upgrade-notice-btn"
-              title="系统升级通知"
-            >
-            </Button>
+           
+            
+           
             {token ? (
               <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                 <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>

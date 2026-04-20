@@ -39,6 +39,15 @@ def setup_logging():
     
     # 添加控制台处理器
     if settings.LOG_TO_CONSOLE:
+        # 在 Windows 环境下，使用特殊的编码处理
+        if os.name == 'nt':
+            # 尝试使用 UTF-8 编码输出到控制台
+            try:
+                import io
+                sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+            except Exception:
+                pass
+        
         logger.add(
             sys.stdout,
             format=console_format,

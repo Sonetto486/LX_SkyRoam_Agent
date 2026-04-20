@@ -1,0 +1,37 @@
+/* 智能导入页面样式 */
+.smart-import-page {
+  padding: 0;
+}
+
+.import-methods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+  margin: 32px 0;
+}
+
+.import-card {
+  border-radius: 8px !important;
+  transition: all 0.3s ease;
+}
+
+.import-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+.submit-section {
+  margin-top: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .import-methods {
+    grid-template-columns: 1fr;
+  }
+  
+  .import-card {
+    width: 100%;
+  }
+}

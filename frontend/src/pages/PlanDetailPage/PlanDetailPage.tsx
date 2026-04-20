@@ -1965,11 +1965,13 @@ const PlanDetailPage: React.FC = () => {
                       </Card>
                     </TabPane>
                     <TabPane tab="地图" key="map">
-                      <MapComponent 
-                        destination={currentPlan?.destination || planDetail?.destination}
-                        latitude={currentPlan.destination_info?.latitude || 39.9042}
-                        longitude={currentPlan.destination_info?.longitude || 116.4074}
-                        title="目的地地图"
+                      <MapComponent
+                        markers={[]}
+                        center={{ 
+                          lat: currentPlan.destination_info?.latitude || 39.9042, 
+                          lng: currentPlan.destination_info?.longitude || 116.4074 
+                        }}
+                        zoom={12}
                       />
                     </TabPane>
                   </Tabs>
@@ -2262,11 +2264,13 @@ const PlanDetailPage: React.FC = () => {
             {/* 地图组件 - 独立的全宽区域 */}
             <Row style={{ marginTop: '24px' }}>
               <Col span={24}>
-                <MapComponent 
-                  destination={currentPlan?.destination || planDetail?.destination}
-                  latitude={currentPlan.destination_info?.latitude || 39.9042}
-                  longitude={currentPlan.destination_info?.longitude || 116.4074}
-                  title="目的地地图"
+                <MapComponent
+                  markers={[]}
+                  center={{ 
+                    lat: currentPlan.destination_info?.latitude || 39.9042, 
+                    lng: currentPlan.destination_info?.longitude || 116.4074 
+                  }}
+                  zoom={12}
                 />
               </Col>
             </Row>

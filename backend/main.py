@@ -32,9 +32,13 @@ async def lifespan(app: FastAPI):
     await init_db(use_alembic=False, create_tables_directly=True)
     logger.info("✅ 数据库初始化完成")
     
-    # 初始化Redis
-    await init_redis()
-    logger.info("✅ Redis初始化完成")
+    # 初始化Redis（非必需，失败时不会阻止应用启动）
+    try:
+        await init_redis()
+        logger.info("✅ Redis初始化完成")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis初始化失败: {e}")
+        logger.warning("⚠️ 应用将在没有Redis的情况下运行，某些功能可能受限")
     
     # 启动后台任务
     await start_background_tasks()

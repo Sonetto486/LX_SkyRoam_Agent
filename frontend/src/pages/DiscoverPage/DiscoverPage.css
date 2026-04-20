@@ -1,0 +1,175 @@
+/* 发现灵感页面样式 */
+.discover-page {
+  padding: 0;
+}
+
+/* 搜索区域 */
+.search-section {
+  background: #4b3a64;
+  padding: 40px 0;
+  margin-bottom: 32px;
+  border-radius: 8px;
+}
+
+.search-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* 区域标题 */
+.section {
+  margin-bottom: 48px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.section-header h3 {
+  margin: 0;
+  color: #333;
+}
+
+/* 专题卡片 */
+.topic-card {
+  overflow: hidden;
+  transition: all 0.3s ease;
+  border-radius: 8px !important;
+}
+
+.topic-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-4px);
+}
+
+.topic-image {
+  height: 180px;
+  overflow: hidden;
+}
+
+.topic-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.topic-card:hover .topic-image img {
+  transform: scale(1.05);
+}
+
+.topic-content {
+  padding: 16px;
+}
+
+.topic-tags {
+  margin-bottom: 12px;
+}
+
+.topic-tags .ant-tag {
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+.topic-content h4 {
+  margin: 0 0 8px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.topic-content p,
+.topic-content .topic-description {
+  margin: 0 0 16px 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 行程卡片 */
+.itinerary-card {
+  overflow: hidden;
+  transition: all 0.3s ease;
+  border-radius: 8px !important;
+}
+
+.itinerary-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-4px);
+}
+
+.itinerary-image {
+  height: 180px;
+  overflow: hidden;
+}
+
+.itinerary-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.itinerary-card:hover .itinerary-image img {
+  transform: scale(1.05);
+}
+
+.itinerary-content {
+  padding: 16px;
+}
+
+.itinerary-content h4 {
+  margin: 0 0 12px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.itinerary-meta {
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .search-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-container .ant-input {
+    width: 100% !important;
+  }
+  
+  .search-container .ant-select {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+  
+  .search-container .ant-btn {
+    margin-left: 0 !important;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .topic-image,
+  .itinerary-image {
+    height: 140px;
+  }
+}

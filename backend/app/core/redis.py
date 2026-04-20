@@ -2,6 +2,7 @@
 Redis配置和连接管理
 """
 
+from typing import Optional
 import redis.asyncio as redis
 from redis.asyncio import ConnectionPool
 from loguru import logger
@@ -59,12 +60,16 @@ async def init_redis():
         raise
 
 
-async def get_redis() -> redis.Redis:
+async def get_redis() -> Optional[redis.Redis]:
     """获取Redis客户端"""
     loop_id = id(asyncio.get_running_loop())
     client = _clients_by_loop.get(loop_id)
     if client is None:
-        client = await init_redis()
+        try:
+            client = await init_redis()
+        except Exception as e:
+            logger.warning(f"⚠️ Redis初始化失败: {e}")
+            return None
     return client
 
 

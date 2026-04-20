@@ -1,0 +1,115 @@
+/* 个人中心页面样式 */
+.profile-page {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* 个人信息卡片 */
+.profile-card {
+  border-radius: 8px !important;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.profile-info {
+  flex: 1;
+}
+
+.profile-email {
+  color: #666;
+  font-size: 14px;
+}
+
+/* 统计卡片 */
+.stats-card {
+  border-radius: 8px !important;
+}
+
+/* 地图卡片 */
+.map-card {
+  border-radius: 8px !important;
+}
+
+.interactive-map {
+  height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.map-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* 收藏和记录卡片 */
+.collection-card,
+.journal-card {
+  border-radius: 8px !important;
+  height: 100%;
+}
+
+.collection-item,
+.journal-item {
+  margin-bottom: 16px !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.collection-image,
+.journal-image {
+  height: 160px;
+  overflow: hidden;
+}
+
+.collection-image img,
+.journal-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.collection-content,
+.journal-content {
+  padding: 16px;
+}
+
+.journal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .profile-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 16px;
+  }
+  
+  .profile-info {
+    width: 100%;
+  }
+  
+  .interactive-map {
+    height: 300px;
+  }
+  
+  .collection-image,
+  .journal-image {
+    height: 120px;
+  }
+}
