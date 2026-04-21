@@ -52,6 +52,13 @@
   justify-content: center;
   text-align: center;
   color: var(--text-color-secondary);
+  padding: 40px 0;
+}
+
+.amap-container {
+  width: 100%;
+  height: 400px;
+  margin: 16px 0;
 }
 
 /* 收藏和记录卡片 */

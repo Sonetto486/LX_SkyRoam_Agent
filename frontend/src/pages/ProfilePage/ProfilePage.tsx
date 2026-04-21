@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin } from 'antd';
-import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined } from '@ant-design/icons';
+import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined, UserOutlined } from '@ant-design/icons';
+import AMapLoader from '@amap/amap-jsapi-loader';
 import './ProfilePage.css';
-import { UserOutlined } from '@ant-design/icons';
-
 
 import axios from 'axios';
 
@@ -16,6 +15,8 @@ interface User {
   avatar: string;
   full_name?: string;
   bio: string;
+  favorite_locations?: number[];
+  highlighted_locations?: number[];
   travelStats: {
     trips: number;
     destinations: number;
@@ -42,6 +43,7 @@ const ProfilePage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
   const [form] = Form.useForm();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // 获取用户数据
   const fetchUserProfile = async () => {
@@ -68,6 +70,8 @@ const ProfilePage: React.FC = () => {
         full_name: userData.full_name || '',
         avatar: userData.avatar || 'https://picsum.photos/seed/user/200/200',
         bio: userData.photo_mood || userData.preferences || '热爱旅行，喜欢探索世界各地的文化和风景',
+        favorite_locations: userData.favorite_locations || [],
+        highlighted_locations: userData.highlighted_locations || [],
         // 以下统计数据和列表目前保持Mock，实际应根据后端关联查询返回（如行程、收藏记录）
         travelStats: {
           trips: 12,
@@ -117,6 +121,95 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     fetchUserProfile();
   }, []);
+
+  // 高德地图初始化与标记点渲染
+  useEffect(() => {
+    if (!user) return;
+    
+    // 合并地点 ids
+    const allIds = [
+      ...(user.favorite_locations || []),
+      ...(user.highlighted_locations || []),
+    ];
+    if (allIds.length === 0) return;
+
+    let mapInstance: any = null;
+
+    const fetchLocationsAndInitMap = async () => {
+      try {
+        const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
+        const idsStr = Array.from(new Set(allIds)).join(',');
+        
+        // 调用我们刚刚写的批量获取地点经纬度接口
+        const res = await axios.get(`${baseURL}/locations/batch`, {
+          params: { ids: idsStr }
+        });
+        const locations = res.data;
+
+        // 设置高德地图安全密钥（由于Typescript中window对象默认没有这个属性，需要通过类型断言绕过或声明）
+        (window as any)._AMapSecurityConfig = {
+          securityJsCode: '054290bb89b647cc29159cafc2fd0333',
+        };
+
+        // 加载高德地图
+        const AMap = await AMapLoader.load({
+           // 在此处填写你申请的高德 Web JS API Key
+           key: '3c860a8217597619941f033146dde8ec',  // <-- 用户需要替换的地方
+           version: '2.0',
+           plugins: ['AMap.Marker'],
+        });
+
+        if (mapContainerRef.current) {
+          mapInstance = new AMap.Map(mapContainerRef.current, {
+            zoom: 4,
+            center: [104.06, 30.67], // 中国中心参考坐标
+          });
+
+          // 添加标记点
+          locations.forEach((loc: any) => {
+            if (!loc.latitude || !loc.longitude) return;
+            
+            const isFav = user.favorite_locations?.includes(loc.id);
+            const isHigh = user.highlighted_locations?.includes(loc.id);
+            
+            const markerColor = isHigh ? '#FF4D4F' : (isFav ? '#FFD700' : '#40a9ff');
+            
+            // 使用完全自定义的HTML内容来显示不同颜色的圆形标记
+            const markerContent = `<div style="background-color: ${markerColor}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
+            
+            // 可以通过自定义 icon 或者自带 marker 设置点样式
+            const marker = new AMap.Marker({
+               position: new AMap.LngLat(loc.longitude, loc.latitude),
+               title: loc.name,
+               content: markerContent,
+               offset: new AMap.Pixel(-8, -8), // 图标的偏移量，使圆心对准坐标点
+            });
+
+            marker.on('click', () => {
+              message.info(`地点：${loc.name}`);
+            });
+
+            mapInstance.add(marker);
+          });
+          
+          if (locations.length > 0) {
+            mapInstance.setFitView();
+          }
+        }
+
+      } catch (error) {
+        console.error('Map loading or data fetching failed:', error);
+      }
+    };
+
+    fetchLocationsAndInitMap();
+
+    return () => {
+      if (mapInstance) {
+        mapInstance.destroy();
+      }
+    };
+  }, [user]);
 
   const handleEditClick = () => {
     if (user) {
@@ -221,14 +314,20 @@ const ProfilePage: React.FC = () => {
       </Card>
 
       {/* 互动地图 */}
-      <Card className="map-card">
-        <Title level={3}>我的足迹</Title>
+      <Card className="map-card" bodyStyle={{ padding: 0, overflow: 'hidden' }}>
+        <Title level={3} style={{ padding: '24px 24px 0 24px', margin: 0 }}>我的足迹</Title>
         <div className="interactive-map">
-          {/* 这里可以集成真实的地图组件 */}
-          <div className="map-placeholder">
-            <h3>互动地图</h3>
-            <p>显示已收藏和已点亮的足迹点</p>
-          </div>
+          {(!user?.favorite_locations?.length && !user?.highlighted_locations?.length) ? (
+             <div className="map-placeholder">
+               <h3>互动地图</h3>
+               <p>你还没有收藏或点亮的足迹点，快去发现世界吧！</p>
+             </div>
+          ) : (
+             <div 
+                ref={mapContainerRef} 
+                className="amap-container"
+             ></div>
+          )}
         </div>
       </Card>
 
