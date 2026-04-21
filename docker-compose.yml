@@ -9,6 +9,8 @@ services:
       POSTGRES_DB: skyroam
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -24,12 +26,14 @@ services:
     networks:
       - skyroam-network
 
-  # 后端 API 服务（仅内网，前端容器通过服务名访问）
+  # 后端 API 服务
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: skyroam-backend
+    ports:
+      - "8001:8001"
     env_file:
       - ./.env.docker
     environment:
@@ -46,7 +50,7 @@ services:
       - ./logs:/app/logs
     networks:
       - skyroam-network
-    command: bash -lc "uvicorn main:app --host 0.0.0.0 --port ${PORT} --reload"
+    command: bash -lc "uvicorn main:app --host 0.0.0.0 --port $${PORT:-8001} --reload"
 
   # Celery Worker（仅内网）
   celery-worker:
@@ -111,14 +115,14 @@ services:
       - skyroam-network
     command: celery -A app.core.celery flower --port=5555
 
-  # 前端应用（唯一对外暴露端口）
+  # 前端应用（对外暴露 13000 端口）
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: skyroam-frontend
     environment:
-      REACT_APP_API_URL: http://backend:8001
+      REACT_APP_API_URL: http://localhost:8001
       HOST: 0.0.0.0
       PORT: 3000
     ports:

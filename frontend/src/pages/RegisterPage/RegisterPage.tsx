@@ -19,7 +19,12 @@ const RegisterPage: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || '注册失败');
+        let errMessage = data.detail || '注册失败';
+        // FastAPI 参数校验失败时 detail 是个数组，提取其中的错误信息
+        if (Array.isArray(data.detail)) {
+          errMessage = data.detail.map((err: any) => err.msg).join('; ');
+        }
+        throw new Error(errMessage);
       }
       message.success('注册成功，请登录');
       navigate('/login');
