@@ -2,7 +2,7 @@
 用户模型
 """
 
-from sqlalchemy import Column, String, Text, DateTime, Boolean
+from sqlalchemy import Column, String, Text, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import BaseModel
@@ -23,6 +23,12 @@ class User(BaseModel):
     # 角色权限
     role = Column(String(20), nullable=False, default="user")  # admin, user
     
+    # 新增按数据表更新的字段
+    favorite_locations = Column(JSON, nullable=True)
+    highlighted_locations = Column(JSON, nullable=True)
+    special_focus = Column(JSON, nullable=True)
+    photo_mood = Column(Text, nullable=True)
+
     # 用户偏好
     preferences = Column(Text, nullable=True)  # JSON格式存储偏好设置
     travel_history = Column(Text, nullable=True)  # JSON格式存储旅行历史

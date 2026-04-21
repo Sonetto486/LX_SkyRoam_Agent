@@ -51,6 +51,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
+  color: var(--text-color-secondary);
 }
 
 /* 收藏和记录卡片 */
@@ -90,6 +91,12 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+/* 加载样式 */
+.loading-container {
+  text-align: center;
+  margin-top: 100px;
 }
 
 /* 响应式布局 */

@@ -2,7 +2,8 @@
 认证相关的Pydantic模式
 """
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import List, Optional
+from datetime import datetime
 
 
 class UserRegister(BaseModel):
@@ -25,10 +26,17 @@ class Token(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
-    email: Optional[EmailStr] = None
+    email: str
     full_name: Optional[str] = None
     role: str
-    is_verified: bool
+    preferences: Optional[str] = None
+    travel_history: Optional[str] = None
+    photo_mood: Optional[str] = None
+    favorite_locations: Optional[List[int]] = None
+    highlighted_locations: Optional[List[int]] = None
+    special_focus: Optional[List[int]] = None
+    is_active: bool
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -38,6 +46,11 @@ class UserUpdate(BaseModel):
     """用户资料更新请求体"""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
+    preferences: Optional[str] = None
+    photo_mood: Optional[str] = None
+    favorite_locations: Optional[List[int]] = None
+    highlighted_locations: Optional[List[int]] = None
+    special_focus: Optional[List[int]] = None
 
 
 class ChangePassword(BaseModel):

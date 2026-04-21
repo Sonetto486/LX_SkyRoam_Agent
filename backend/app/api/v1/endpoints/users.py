@@ -88,6 +88,18 @@ async def update_me(
     if payload.full_name is not None:
         current_user.full_name = payload.full_name
 
+    if payload.photo_mood is not None:
+        current_user.photo_mood = payload.photo_mood
+        
+    if payload.favorite_locations is not None:
+        current_user.favorite_locations = payload.favorite_locations
+        
+    if payload.highlighted_locations is not None:
+        current_user.highlighted_locations = payload.highlighted_locations
+        
+    if payload.special_focus is not None:
+        current_user.special_focus = payload.special_focus
+
     await db.commit()
     await db.refresh(current_user)
     return current_user
