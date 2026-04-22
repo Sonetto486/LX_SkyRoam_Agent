@@ -1,0 +1,130 @@
+.topic-detail-container {
+  min-height: 100vh;
+  background-color: #1a151b; /* 和DiscoverPage保持一致暗色调 */
+  color: rgba(255, 255, 255, 0.85);
+  padding: 0;
+  margin: 0;
+  padding-bottom: 60px;
+}
+
+.topic-detail-loading,
+.topic-detail-error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 50vh;
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.topic-detail-header {
+  position: relative;
+  height: 50vh;
+  min-height: 400px;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  display: flex;
+  align-items: flex-end;
+}
+
+.topic-detail-header-content {
+  padding: 60px 40px;
+  width: 100%;
+}
+
+.back-btn {
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-size: 16px;
+  padding: 0;
+  margin-bottom: 24px;
+}
+
+.back-btn:hover {
+  color: #fff !important;
+}
+
+.header-tags {
+  margin-bottom: 8px;
+}
+
+.topic-detail-content {
+  padding: 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.topic-detail-content h3.ant-typography {
+  color: #fff;
+}
+
+/* 瀑布流卡片样式 */
+.place-card {
+  background-color: #27212e !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.place-card .ant-card-body {
+  padding: 20px !important;
+  flex: 1;
+}
+
+.place-card h4.ant-typography {
+  color: #fff !important;
+  margin-bottom: 8px;
+}
+
+.place-image-wrapper {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+}
+
+.place-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.place-card:hover .place-image {
+  transform: scale(1.05);
+}
+
+.place-type-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.place-rating {
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.place-highlight {
+  color: #177ddc;
+  background-color: rgba(23, 125, 220, 0.1);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.place-desc {
+  color: rgba(255, 255, 255, 0.6) !important;
+  font-size: 14px;
+  margin-bottom: 0 !important;
+}

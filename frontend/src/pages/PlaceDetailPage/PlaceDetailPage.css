@@ -1,0 +1,126 @@
+.place-detail-container {
+  min-height: 100vh;
+  background: #16111d;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.place-detail-loading,
+.place-detail-error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 70vh;
+  font-size: 18px;
+}
+
+.place-detail-hero {
+  min-height: 48vh;
+  display: flex;
+  align-items: flex-end;
+  background-size: cover;
+  background-position: center;
+}
+
+.place-detail-hero-inner {
+  width: 100%;
+  padding: 36px 40px 48px;
+}
+
+.back-link {
+  color: rgba(255, 255, 255, 0.85) !important;
+  padding: 0 !important;
+  margin-bottom: 16px;
+}
+
+.hero-tags {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.place-detail-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 40px 60px;
+}
+
+.info-card {
+  background: #251d32 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.info-card .ant-card-body,
+.mini-card .ant-card-body {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.info-card h3,
+.info-card h4,
+.mini-card h5 {
+  color: #fff !important;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  font-size: 15px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.mini-card {
+  background: #2c2439 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  height: 100%;
+}
+
+.mini-card-image-wrap {
+  height: 160px;
+  overflow: hidden;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.mini-card-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mini-meta {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 8px;
+}
+
+.mini-desc {
+  color: rgba(255, 255, 255, 0.72) !important;
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .place-detail-hero-inner,
+  .place-detail-content {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+}
