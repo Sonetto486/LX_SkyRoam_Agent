@@ -14,6 +14,7 @@ interface PlaceDetailResponse {
   coverImage?: string | null;
   summary?: string | null;
   destination?: {
+    name?: string;
     country?: string;
     city?: string;
     region?: string;
