@@ -78,3 +78,4 @@ typer>=0.12.3
 pyhumps==3.8.0
 
 humps
+aiomysql==0.1.1

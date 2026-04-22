@@ -49,6 +49,17 @@ class TravelPlanCreateRequest(TravelPlanBase):
     pass
 
 
+class QuickGenerateRequest(BaseModel):
+    """一键生成旅行计划请求模式"""
+    destination: str = Field(..., description="目的地")
+    start_date: str = Field(..., description="开始日期 (YYYY-MM-DD)")
+    end_date: str = Field(..., description="结束日期 (YYYY-MM-DD)")
+    people: int = Field(1, description="出行人数", ge=1, le=20)
+    budget: Optional[float] = Field(None, description="预算")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
+    departure: Optional[str] = Field(None, description="出发地")
+
+
 class TravelPlanCreate(TravelPlanBase):
     """创建旅行计划模式"""
     user_id: int = Field(..., description="用户ID")
@@ -190,3 +201,24 @@ class TravelPlanRatingSummary(BaseModel):
     """评分汇总响应"""
     average: float
     count: int
+
+class QuickGenerateRequest(BaseModel):
+    destination: str = Field(..., description="Ŀ�ĵ�")
+    start_date: str = Field(..., description="��ʼ���� (YYYY-MM-DD)")
+    end_date: str = Field(..., description="�������� (YYYY-MM-DD)")
+    people: int = Field(1, description="��������", ge=1, le=20)
+    budget: Optional[float] = Field(None, description="Ԥ��")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="�û�ƫ��")
+    departure: Optional[str] = Field(None, description="������")
+
+class QuickGenerateResponse(BaseModel):
+    plan_id: str
+    title: str
+    destination: str
+    days: int
+    people: int
+    budget: Optional[float]
+    start_date: str
+    end_date: str
+    daily_itineraries: List[Dict[str, Any]]
+    generated_at: str
