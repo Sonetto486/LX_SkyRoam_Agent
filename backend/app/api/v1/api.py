@@ -3,11 +3,7 @@ API v1 路由汇总
 """
 
 from fastapi import APIRouter
-<<<<<<< Updated upstream
-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, locations
-=======
-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, topics
->>>>>>> Stashed changes
+from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, locations, topics
 
 api_router = APIRouter()
 
@@ -83,3 +79,4 @@ api_router.include_router(
     prefix="/attraction-details",
     tags=["attraction-details"]
 )
+
