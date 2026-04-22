@@ -1,79 +1,102 @@
 /* 行程工作台样式 */
+
+/* 布局 */
+.workspace-layout {
+  min-height: calc(100vh - 112px);
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.workspace-sider {
+  background: #fff !important;
+  border-right: 1px solid #f0f0f0;
+  overflow-y: auto;
+}
+
+.workspace-content {
+  position: relative;
+  background: #f5f5f5;
+}
+
+/* 加载和错误状态 */
+.workspace-loading,
+.workspace-error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+/* 顶部看板 */
 .workspace-header {
   padding: 24px;
   border-bottom: 1px solid #f0f0f0;
 }
 
+.back-btn {
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+/* 行程信息 */
 .itinerary-info {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .itinerary-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  color: #333;
+  margin: 0 0 12px 0 !important;
+  font-size: 24px !important;
 }
 
 .itinerary-meta {
-  display: flex;
-  gap: 16px;
+  margin-bottom: 8px;
   font-size: 14px;
   color: #666;
 }
 
-.weather-info {
-  margin-top: 24px;
-}
-
-.weather-info h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  color: #333;
-}
-
-.weather-cards {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-}
-
-.weather-card {
-  flex: 0 0 80px;
-  padding: 12px;
-  background: #f5f5f5;
-  border-radius: 8px;
-  text-align: center;
-}
-
-.weather-date {
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-.weather-icon {
-  font-size: 24px;
-  margin-bottom: 8px;
-}
-
-.weather-temp {
+.itinerary-date {
   font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
+  color: #999;
+  margin-bottom: 8px;
 }
 
-.weather-condition {
-  font-size: 12px;
+.itinerary-desc {
+  margin: 0;
   color: #666;
+}
+
+/* 天数标签页 */
+.day-tabs {
+  padding: 0 24px;
+}
+
+.day-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.day-label {
+  font-weight: 500;
+}
+
+.day-date {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 空活动状态 */
+.empty-activities {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  padding: 24px;
 }
 
 /* 活动列表样式 */
 .activities-list {
   padding: 24px;
+  padding-top: 16px;
 }
 
 .activity-card {
@@ -92,33 +115,21 @@
   box-shadow: 0 4px 16px rgba(24, 144, 255, 0.2) !important;
 }
 
-.activity-time {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #666;
+.activity-header {
   margin-bottom: 8px;
 }
 
-.activity-name {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  color: #333;
-}
-
 .activity-location {
-  font-size: 14px;
+  font-size: 13px;
   color: #666;
   margin-bottom: 8px;
 }
 
 .activity-description {
-  font-size: 14px;
+  font-size: 13px;
   color: #999;
   line-height: 1.4;
-  margin-bottom: 12px;
+  margin-bottom: 12px !important;
 }
 
 .activity-images {
@@ -148,38 +159,57 @@
 }
 
 .map-control-btn {
-  width: 48px;
-  height: 48px;
+  width: 48px !important;
+  height: 48px !important;
   border-radius: 50% !important;
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: none;
+}
+
+.map-control-btn:hover {
+  transform: scale(1.1);
+}
+
+.map-control-btn.primary {
+  background: #1890ff;
+  color: #fff;
+}
+
+.map-control-btn.success {
+  background: #52c41a;
+  color: #fff;
 }
 
 /* 响应式布局 */
 @media (max-width: 1200px) {
-  .ant-layout-sider {
+  .workspace-sider {
     width: 400px !important;
+    max-width: 400px !important;
   }
 }
 
 @media (max-width: 992px) {
-  .ant-layout {
+  .workspace-layout {
     flex-direction: column !important;
   }
-  
-  .ant-layout-sider {
+
+  .workspace-sider {
     width: 100% !important;
+    max-width: 100% !important;
     max-height: 60vh;
     border-right: none !important;
     border-bottom: 1px solid #f0f0f0 !important;
   }
-  
-  .ant-layout-content {
+
+  .workspace-content {
     flex: 1;
     min-height: 40vh;
   }
-  
+
   .map-controls {
     position: absolute;
     top: 24px;
@@ -188,9 +218,27 @@
     flex-wrap: wrap;
     max-width: 200px;
   }
-  
+
   .map-control-btn {
-    width: 40px;
-    height: 40px;
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .workspace-header {
+    padding: 16px;
+  }
+
+  .itinerary-title {
+    font-size: 20px !important;
+  }
+
+  .activities-list {
+    padding: 16px;
+  }
+
+  .day-tabs {
+    padding: 0 16px;
   }
 }

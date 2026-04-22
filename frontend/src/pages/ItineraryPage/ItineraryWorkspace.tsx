@@ -1,350 +1,439 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Tabs, Card, Button, Space, Badge, Tooltip, Empty, Spin } from 'antd';
-import { 
-  EditOutlined, 
-  SyncOutlined, 
-  CarOutlined, 
-  SaveOutlined, 
+import { Layout, Tabs, Card, Button, Space, Tooltip, Empty, Spin, Typography, Tag, message, Popconfirm } from 'antd';
+import {
+  EditOutlined,
+  SyncOutlined,
+  CarOutlined,
+  SaveOutlined,
   ExportOutlined,
   PlusOutlined,
-  EnvironmentOutlined
+  EnvironmentOutlined,
+  CalendarOutlined,
+  UserOutlined,
+  DeleteOutlined,
+  ArrowLeftOutlined,
+  ShareAltOutlined
 } from '@ant-design/icons';
 import MapComponent from '../../components/MapComponent/MapComponent';
+import WeatherCard from '../../components/Itinerary/WeatherCard';
+import { buildApiUrl } from '../../config/api';
+import { authFetch } from '../../utils/auth';
 import './ItineraryWorkspace.css';
 
 const { Content, Sider } = Layout;
+const { Title, Paragraph, Text } = Typography;
 
-interface Itinerary {
-  id: string;
+// 行程数据接口
+interface TravelPlan {
+  id: number;
   title: string;
-  days: Day[];
+  description?: string;
+  departure?: string;
   destination: string;
-  startDate: string;
-  endDate: string;
-  weather: Weather[];
+  start_date: string;
+  end_date: string;
+  duration_days: number;
+  budget?: number;
+  transportation?: string;
+  preferences?: {
+    travelers?: number;
+    ageGroups?: string[];
+    foodPreferences?: string[];
+    dietaryRestrictions?: string[];
+  };
+  status: string;
+  score?: number;
+  generated_plans?: any[];
+  selected_plan?: any;
+  is_public: boolean;
+  items?: TravelPlanItem[];
 }
 
-interface Day {
+// 行程项目接口
+interface TravelPlanItem {
   id: number;
-  date: string;
-  activities: Activity[];
+  title: string;
+  description?: string;
+  item_type: string;
+  start_time?: string;
+  end_time?: string;
+  duration_hours?: number;
+  location?: string;
+  address?: string;
+  coordinates?: { lat: number; lng: number };
+  details?: any;
+  images?: string[];
 }
 
-interface Activity {
-  id: number;
-  name: string;
-  location: string;
-  address: string;
-  coordinates: { lat: number; lng: number };
-  startTime: string;
-  endTime: string;
-  description: string;
-  images: string[];
-}
-
-interface Weather {
+// 每日活动数据
+interface DayActivity {
   date: string;
-  temperature: string;
-  condition: string;
-  icon: string;
+  activities: TravelPlanItem[];
 }
 
 const ItineraryWorkspace: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [itinerary, setItinerary] = useState<Itinerary | null>(null);
+  const [plan, setPlan] = useState<TravelPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState(0);
   const [hoveredActivity, setHoveredActivity] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  // 模拟数据加载
-  useEffect(() => {
-    const fetchItinerary = async () => {
-      setLoading(true);
-      // 模拟 API 调用
-      setTimeout(() => {
-        setItinerary({
-          id: id || '1',
-          title: '东京5日游',
-          destination: '东京, 日本',
-          startDate: '2026-05-01',
-          endDate: '2026-05-05',
-          weather: [
-            { date: '2026-05-01', temperature: '18°C', condition: '晴', icon: '☀️' },
-            { date: '2026-05-02', temperature: '20°C', condition: '多云', icon: '☁️' },
-            { date: '2026-05-03', temperature: '19°C', condition: '小雨', icon: '🌧️' },
-            { date: '2026-05-04', temperature: '21°C', condition: '晴', icon: '☀️' },
-            { date: '2026-05-05', temperature: '22°C', condition: '晴', icon: '☀️' }
-          ],
-          days: [
-            {
-              id: 1,
-              date: '2026-05-01',
-              activities: [
-                {
-                  id: 1,
-                  name: '浅草寺',
-                  location: '浅草, 东京',
-                  address: '日本东京都台东区浅草2-3-1',
-                  coordinates: { lat: 35.714722, lng: 139.796667 },
-                  startTime: '09:00',
-                  endTime: '11:00',
-                  description: '东京最古老的寺庙，以雷门和仲见世商店街闻名',
-                  images: ['https://picsum.photos/seed/asakusa/800/600']
-                },
-                {
-                  id: 2,
-                  name: '东京晴空塔',
-                  location: '墨田区, 东京',
-                  address: '日本东京都墨田区押上1-1-2',
-                  coordinates: { lat: 35.710063, lng: 139.810700 },
-                  startTime: '11:30',
-                  endTime: '14:00',
-                  description: '东京的地标建筑，高634米，是世界第二高的建筑',
-                  images: ['https://picsum.photos/seed/skytree/800/600']
-                },
-                {
-                  id: 3,
-                  name: '银座',
-                  location: '银座, 东京',
-                  address: '日本东京都中央区银座',
-                  coordinates: { lat: 35.671247, lng: 139.766922 },
-                  startTime: '15:00',
-                  endTime: '18:00',
-                  description: '东京最繁华的商业区，有许多高端商店和餐厅',
-                  images: ['https://picsum.photos/seed/ginza/800/600']
-                }
-              ]
-            },
-            {
-              id: 2,
-              date: '2026-05-02',
-              activities: [
-                {
-                  id: 4,
-                  name: '明治神宫',
-                  location: '涩谷区, 东京',
-                  address: '日本东京都涩谷区代代木神园町1-1',
-                  coordinates: { lat: 35.676206, lng: 139.699684 },
-                  startTime: '09:00',
-                  endTime: '11:30',
-                  description: '位于市中心的大型神道教神社，环境宁静',
-                  images: ['https://picsum.photos/seed/meiji/800/600']
-                },
-                {
-                  id: 5,
-                  name: '涩谷十字路口',
-                  location: '涩谷, 东京',
-                  address: '日本东京都涩谷区涩谷',
-                  coordinates: { lat: 35.659462, lng: 139.700574 },
-                  startTime: '12:00',
-                  endTime: '14:00',
-                  description: '世界上最繁忙的十字路口之一',
-                  images: ['https://picsum.photos/seed/shibuya/800/600']
-                },
-                {
-                  id: 6,
-                  name: '新宿御苑',
-                  location: '新宿区, 东京',
-                  address: '日本东京都新宿区新宿御苑1-1',
-                  coordinates: { lat: 35.685278, lng: 139.710000 },
-                  startTime: '14:30',
-                  endTime: '17:00',
-                  description: '融合了日式、英式和法式风格的庭园',
-                  images: ['https://picsum.photos/seed/ ShinjukuGyoen/800/600']
-                }
-              ]
-            }
-          ]
-        });
-        setLoading(false);
-      }, 1000);
-    };
-
-    fetchItinerary();
+  // 获取行程详情
+  const fetchPlan = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const res = await authFetch(buildApiUrl(`/travel-plans/${id}`));
+      if (!res.ok) {
+        throw new Error('获取行程详情失败');
+      }
+      const data: TravelPlan = await res.json();
+      setPlan(data);
+    } catch (err: any) {
+      message.error('获取行程详情失败：' + (err.message || '未知错误'));
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchPlan();
+  }, [fetchPlan]);
+
+  // 保存行程
+  const handleSave = async () => {
+    if (!plan) return;
+    setSaving(true);
+    try {
+      // 这里可以调用更新API保存当前状态
+      message.success('行程已保存');
+    } catch (err: any) {
+      message.error('保存失败：' + (err.message || '未知错误'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 分享行程
+  const handleShare = () => {
+    if (!plan) return;
+    const shareUrl = `${window.location.origin}/plans-library?highlight=${plan.id}`;
+    navigator.clipboard.writeText(shareUrl);
+    message.success('分享链接已复制到剪贴板');
+  };
+
+  // 获取每日活动数据
+  const getDayActivities = (): DayActivity[] => {
+    if (!plan) return [];
+
+    // 如果有 selected_plan，从中提取每日行程
+    if (plan.selected_plan?.daily_itineraries) {
+      return plan.selected_plan.daily_itineraries.map((day: any, index: number) => ({
+        date: day.date || getDateByOffset(plan.start_date, index),
+        activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
+          id: index * 100 + attrIndex,
+          title: attr.name || attr,
+          description: attr.description || '',
+          item_type: 'attraction',
+          location: attr.location || '',
+          address: attr.address || '',
+          coordinates: attr.coordinates || { lat: 0, lng: 0 },
+          images: attr.images || [],
+          details: attr,
+        })),
+      }));
+    }
+
+    // 如果有 generated_plans，使用第一个方案
+    if (plan.generated_plans && plan.generated_plans.length > 0) {
+      const firstPlan = plan.generated_plans[0];
+      if (firstPlan.daily_itineraries) {
+        return firstPlan.daily_itineraries.map((day: any, index: number) => ({
+          date: day.date || getDateByOffset(plan.start_date, index),
+          activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
+            id: index * 100 + attrIndex,
+            title: attr.name || attr,
+            description: attr.description || '',
+            item_type: 'attraction',
+            location: attr.location || '',
+            address: attr.address || '',
+            coordinates: attr.coordinates || { lat: 0, lng: 0 },
+            images: attr.images || [],
+            details: attr,
+          })),
+        }));
+      }
+    }
+
+    // 如果有 items，按日期分组
+    if (plan.items && plan.items.length > 0) {
+      const dayMap = new Map<string, TravelPlanItem[]>();
+      plan.items.forEach(item => {
+        const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
+        if (!dayMap.has(date)) {
+          dayMap.set(date, []);
+        }
+        dayMap.get(date)!.push(item);
+      });
+      return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+    }
+
+    // 默认返回空数组
+    return [];
+  };
+
+  // 根据偏移量计算日期
+  const getDateByOffset = (startDate: string, offset: number): string => {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + offset);
+    return date.toISOString().split('T')[0];
+  };
+
+  // 格式化日期显示
+  const formatDateDisplay = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  };
+
+  // 准备地图标记数据
+  const getMapMarkers = () => {
+    const dayActivities = getDayActivities();
+    if (dayActivities.length === 0 || activeDay >= dayActivities.length) return [];
+
+    return dayActivities[activeDay].activities
+      .filter(activity => activity.coordinates && activity.coordinates.lat && activity.coordinates.lng)
+      .map(activity => ({
+        id: activity.id,
+        name: activity.title,
+        position: activity.coordinates!,
+        address: activity.address || activity.location || '',
+        isHovered: hoveredActivity === activity.id,
+      }));
+  };
+
+  // 获取地图中心点
+  const getMapCenter = () => {
+    const markers = getMapMarkers();
+    if (markers.length > 0) {
+      return markers[0].position;
+    }
+    // 默认返回北京坐标
+    return { lat: 39.9042, lng: 116.4074 };
+  };
+
+  // 获取成员数量
+  const getMemberCount = (): number => {
+    return plan?.preferences?.travelers || 1;
+  };
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <Spin size="large" />
+      <div className="workspace-loading">
+        <Spin size="large" tip="加载行程详情..." />
       </div>
     );
   }
 
-  if (!itinerary) {
+  if (!plan) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <Empty description="行程不存在" />
+      <div className="workspace-error">
+        <Empty description="行程不存在或无权访问">
+          <Button type="primary" onClick={() => navigate('/itineraries')}>
+            返回行程列表
+          </Button>
+        </Empty>
       </div>
     );
   }
 
-  // 准备地图标记数据
-  const mapMarkers = itinerary.days.flatMap(day => 
-    day.activities.map(activity => ({
-      id: activity.id,
-      name: activity.name,
-      position: activity.coordinates,
-      address: activity.address,
-      isHovered: hoveredActivity === activity.id
-    }))
-  );
+  const dayActivities = getDayActivities();
 
   return (
-    <Layout style={{ minHeight: 'calc(100vh - 112px)', background: '#fff', borderRadius: 8, overflow: 'hidden' }}>
+    <Layout className="workspace-layout">
       {/* 左半屏：信息流面板 */}
-      <Sider width={480} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
+      <Sider width={480} className="workspace-sider">
         {/* 顶部看板 */}
         <div className="workspace-header">
+          <Button
+            type="link"
+            className="back-btn"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate('/itineraries')}
+          >
+            返回列表
+          </Button>
+
           <div className="itinerary-info">
-            <h1 className="itinerary-title">{itinerary.title}</h1>
+            <Title level={2} className="itinerary-title">{plan.title}</Title>
             <div className="itinerary-meta">
-              <span>{itinerary.destination}</span>
-              <span>{itinerary.startDate} - {itinerary.endDate}</span>
-              <span>{itinerary.days.length}天</span>
-            </div>
-          </div>
-          
-          {/* 天气信息 */}
-          <div className="weather-info">
-            <h3>天气概览</h3>
-            <div className="weather-cards">
-              {itinerary.weather.map((day, index) => (
-                <div key={index} className="weather-card">
-                  <div className="weather-date">{day.date.split('-').slice(1).join('/')}</div>
-                  <div className="weather-icon">{day.icon}</div>
-                  <div className="weather-temp">{day.temperature}</div>
-                  <div className="weather-condition">{day.condition}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* 天数标签页 */}
-        <Tabs 
-          activeKey={activeDay.toString()}
-          onChange={(key) => setActiveDay(parseInt(key))}
-          style={{ borderBottom: '1px solid #f0f0f0' }}
-        >
-          {itinerary.days.map((day, index) => (
-            <Tabs.TabPane 
-              key={index} 
-              tab={
-                <Space>
-                  <span>Day {index + 1}</span>
-                  <span style={{ fontSize: '12px', color: '#999' }}>
-                    {day.date.split('-').slice(1).join('/')}
-                  </span>
+              <Space size={16}>
+                <Space size={4}>
+                  <EnvironmentOutlined />
+                  <span>{plan.destination}</span>
                 </Space>
-              }
-            >
-              {/* 活动列表 */}
-              <div className="activities-list">
-                {day.activities.map((activity) => (
-                  <Card 
-                    key={activity.id}
-                    className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
-                    onMouseEnter={() => setHoveredActivity(activity.id)}
-                    onMouseLeave={() => setHoveredActivity(null)}
-                    actions={[
-                      <Button 
-                        key="edit" 
-                        icon={<EditOutlined />} 
-                        size="small"
-                      >
-                        编辑
-                      </Button>,
-                      <Button 
-                        key="remove" 
-                        danger 
-                        size="small"
-                      >
-                        移除
-                      </Button>
-                    ]}
-                  >
-                    <div className="activity-time">
-                      <span>{activity.startTime}</span>
-                      <span>→</span>
-                      <span>{activity.endTime}</span>
-                    </div>
-                    <h3 className="activity-name">{activity.name}</h3>
-                    <div className="activity-location">{activity.location}</div>
-                    <div className="activity-description">{activity.description}</div>
-                    {activity.images.length > 0 && (
-                      <div className="activity-images">
-                        <img 
-                          src={activity.images[0]} 
-                          alt={activity.name} 
-                          className="activity-image"
-                        />
+                <Space size={4}>
+                  <CalendarOutlined />
+                  <span>{plan.duration_days}天</span>
+                </Space>
+                <Space size={4}>
+                  <UserOutlined />
+                  <span>{getMemberCount()}人</span>
+                </Space>
+              </Space>
+            </div>
+            <div className="itinerary-date">
+              {formatDateDisplay(plan.start_date)} - {formatDateDisplay(plan.end_date)}
+            </div>
+            {plan.description && (
+              <Paragraph className="itinerary-desc" ellipsis={{ rows: 2 }}>
+                {plan.description}
+              </Paragraph>
+            )}
+          </div>
+
+          {/* 天气信息 */}
+          <WeatherCard
+            city={plan.destination}
+            startDate={plan.start_date}
+            days={Math.min(plan.duration_days, 5)}
+          />
+        </div>
+
+        {/* 天数标签页 */}
+        {dayActivities.length > 0 ? (
+          <Tabs
+            activeKey={activeDay.toString()}
+            onChange={(key) => setActiveDay(parseInt(key))}
+            className="day-tabs"
+            tabBarExtraContent={
+              <Button size="small" icon={<PlusOutlined />}>添加活动</Button>
+            }
+          >
+            {dayActivities.map((day, index) => (
+              <Tabs.TabPane
+                key={index}
+                tab={
+                  <Space size={4}>
+                    <span className="day-label">Day {index + 1}</span>
+                    <span className="day-date">{formatDateDisplay(day.date)}</span>
+                  </Space>
+                }
+              >
+                {/* 活动列表 */}
+                <div className="activities-list">
+                  {day.activities.map((activity) => (
+                    <Card
+                      key={activity.id}
+                      className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
+                      onMouseEnter={() => setHoveredActivity(activity.id)}
+                      onMouseLeave={() => setHoveredActivity(null)}
+                      actions={[
+                        <Tooltip key="edit" title="编辑">
+                          <Button icon={<EditOutlined />} size="small" />
+                        </Tooltip>,
+                        <Tooltip key="move-up" title="上移">
+                          <Button icon={<SyncOutlined rotate={90} />} size="small" />
+                        </Tooltip>,
+                        <Popconfirm key="delete" title="确定删除此活动？" okText="删除" cancelText="取消">
+                          <Button danger icon={<DeleteOutlined />} size="small" />
+                        </Popconfirm>
+                      ]}
+                    >
+                      <div className="activity-header">
+                        <Tag color="blue">{activity.item_type || '景点'}</Tag>
+                        <Text strong>{activity.title}</Text>
                       </div>
-                    )}
-                  </Card>
-                ))}
-                
-                {/* 添加活动按钮 */}
-                <Button 
-                  type="dashed" 
-                  block 
-                  icon={<PlusOutlined />}
-                  className="add-activity-btn"
-                >
-                  添加活动
-                </Button>
-              </div>
-            </Tabs.TabPane>
-          ))}
-        </Tabs>
+                      {activity.location && (
+                        <div className="activity-location">
+                          <EnvironmentOutlined /> {activity.location}
+                        </div>
+                      )}
+                      {activity.description && (
+                        <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
+                          {activity.description}
+                        </Paragraph>
+                      )}
+                      {activity.images && activity.images.length > 0 && (
+                        <div className="activity-images">
+                          <img
+                            src={activity.images[0]}
+                            alt={activity.title}
+                            className="activity-image"
+                          />
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+
+                  {/* 添加活动按钮 */}
+                  <Button
+                    type="dashed"
+                    block
+                    icon={<PlusOutlined />}
+                    className="add-activity-btn"
+                  >
+                    添加活动
+                  </Button>
+                </div>
+              </Tabs.TabPane>
+            ))}
+          </Tabs>
+        ) : (
+          <div className="empty-activities">
+            <Empty description="暂无行程安排">
+              <Button type="primary" icon={<PlusOutlined />}>
+                添加活动
+              </Button>
+            </Empty>
+          </div>
+        )}
       </Sider>
-      
+
       {/* 右半屏：地图模式 */}
-      <Content style={{ position: 'relative' }}>
+      <Content className="workspace-content">
         {/* 地图组件 */}
-        <MapComponent 
-          markers={mapMarkers}
-          center={itinerary.days[0].activities[0].coordinates}
+        <MapComponent
+          markers={getMapMarkers()}
+          center={getMapCenter()}
           zoom={12}
         />
-        
+
         {/* 地图控制按钮 */}
         <div className="map-controls">
           <Tooltip title="路线编辑">
-            <Button 
-              icon={<EditOutlined />} 
+            <Button
+              icon={<EditOutlined />}
               className="map-control-btn"
-              style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)' }}
             />
           </Tooltip>
           <Tooltip title="一键优化">
-            <Button 
-              icon={<SyncOutlined />} 
+            <Button
+              icon={<SyncOutlined />}
               className="map-control-btn"
-              style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)' }}
             />
           </Tooltip>
           <Tooltip title="显示交通工具">
-            <Button 
-              icon={<CarOutlined />} 
+            <Button
+              icon={<CarOutlined />}
               className="map-control-btn"
-              style={{ background: '#fff', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)' }}
             />
           </Tooltip>
           <Tooltip title="保存行程">
-            <Button 
-              icon={<SaveOutlined />} 
-              className="map-control-btn"
-              style={{ background: '#1890ff', color: '#fff', boxShadow: '0 2px 8px rgba(24, 144, 255, 0.3)' }}
+            <Button
+              icon={<SaveOutlined />}
+              className="map-control-btn primary"
+              loading={saving}
+              onClick={handleSave}
             />
           </Tooltip>
           <Tooltip title="分享行程">
-            <Button 
-              icon={<ExportOutlined />} 
-              className="map-control-btn"
-              style={{ background: '#52c41a', color: '#fff', boxShadow: '0 2px 8px rgba(82, 196, 26, 0.3)' }}
+            <Button
+              icon={<ShareAltOutlined />}
+              className="map-control-btn success"
+              onClick={handleShare}
             />
           </Tooltip>
         </div>

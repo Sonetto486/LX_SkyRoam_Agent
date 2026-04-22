@@ -3,6 +3,22 @@
   padding: 0;
 }
 
+/* 加载状态 */
+.itinerary-list-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+/* 空状态 */
+.itinerary-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+}
+
 /* 页面标题 */
 .page-header {
   display: flex;
@@ -57,6 +73,14 @@
   z-index: 10;
 }
 
+/* 公开标签 */
+.public-tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+}
+
 /* 卡片内容 */
 .itinerary-card-content {
   flex: 1;
@@ -77,10 +101,14 @@
   color: #666;
 }
 
-.itinerary-card-content p {
+.itinerary-card-date {
   margin: 0 0 16px 0;
   color: #666;
   font-size: 14px;
+}
+
+.itinerary-card-content {
+  cursor: pointer;
 }
 
 /* 成员头像 */
