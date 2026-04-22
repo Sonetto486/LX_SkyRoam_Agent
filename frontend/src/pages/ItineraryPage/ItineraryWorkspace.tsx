@@ -69,6 +69,22 @@ interface TravelPlanItem {
   images?: string[];
 }
 
+// 活动编辑数据接口（id可选）
+interface ActivityEditData {
+  id?: number;
+  title: string;
+  description?: string;
+  item_type: string;
+  start_time?: string;
+  end_time?: string;
+  duration_hours?: number;
+  location?: string;
+  address?: string;
+  coordinates?: { lat: number; lng: number };
+  details?: any;
+  images?: string[];
+}
+
 // 每日活动数据
 interface DayActivity {
   date: string;
@@ -86,7 +102,7 @@ const ItineraryWorkspace: React.FC = () => {
 
   // 编辑弹窗状态
   const [activityModalVisible, setActivityModalVisible] = useState(false);
-  const [editingActivity, setEditingActivity] = useState<TravelPlanItem | null>(null);
+  const [editingActivity, setEditingActivity] = useState<ActivityEditData | null>(null);
   const [dateEditorVisible, setDateEditorVisible] = useState(false);
 
   // 获取行程详情
@@ -134,13 +150,13 @@ const ItineraryWorkspace: React.FC = () => {
   };
 
   // 打开活动编辑弹窗
-  const openActivityModal = (activity?: TravelPlanItem) => {
+  const openActivityModal = (activity?: TravelPlanItem | ActivityEditData) => {
     setEditingActivity(activity || null);
     setActivityModalVisible(true);
   };
 
   // 保存活动
-  const handleSaveActivity = async (activity: TravelPlanItem) => {
+  const handleSaveActivity = async (activity: ActivityEditData) => {
     if (!plan || !id) return;
     try {
       if (activity.id) {

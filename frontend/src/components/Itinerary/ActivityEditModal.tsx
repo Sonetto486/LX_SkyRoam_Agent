@@ -38,7 +38,7 @@ interface ActivityEditModalProps {
   activity?: Activity | null;
   date?: string;
   onCancel: () => void;
-  onOk: (activity: Activity) => Promise<void>;
+  onOk: (activity: Activity) => Promise<void> | void;
 }
 
 const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
