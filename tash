@@ -1,0 +1,24 @@
+warning: in the working copy of 'backend/app/api/v1/api.py', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/backend/app/api/v1/api.py b/backend/app/api/v1/api.py[m
+[1mindex 97267dd..a4363cd 100644[m
+[1m--- a/backend/app/api/v1/api.py[m
+[1m+++ b/backend/app/api/v1/api.py[m
+[36m@@ -3,11 +3,17 @@[m [mAPI v1 路由汇总[m
+ """[m
+ [m
+ from fastapi import APIRouter[m
+[31m-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details[m
+[32m+[m[32mfrom app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, topics[m
+ [m
+ api_router = APIRouter()[m
+ [m
+ # 注册各个端点路由[m
+[32m+[m[32mapi_router.include_router([m
+[32m+[m[32m    topics.router,[m
+[32m+[m[32m    prefix="/topics",[m
+[32m+[m[32m    tags=["topics"][m
+[32m+[m[32m)[m
+[32m+[m
+ api_router.include_router([m
+     auth.router,[m
+     prefix="/auth",[m

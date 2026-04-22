@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { Input, Select, Card, Button, Space, Row, Col, Tag, Typography } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Input, Select, Card, Button, Space, Row, Col, Tag, Typography, message, Spin } from 'antd';
 import { SearchOutlined, StarOutlined, EnvironmentOutlined, CalendarOutlined } from '@ant-design/icons';
+import { buildApiUrl } from '../../config/api';
 import './DiscoverPage.css';
 
 const { Option } = Select;
@@ -25,40 +27,41 @@ interface ItineraryCard {
 }
 
 const DiscoverPage: React.FC = () => {
+  const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
   const [region, setRegion] = useState('all');
+  
+  const [topicCards, setTopicCards] = useState<TopicCard[]>([]);
+  const [loadingTopics, setLoadingTopics] = useState(true);
 
-  // 模拟数据
-  const topicCards: TopicCard[] = [
-    {
-      id: 1,
-      title: '东京樱花季',
-      image: 'https://picsum.photos/seed/tokyo1/800/600',
-      tags: ['春季', '赏花', '摄影'],
-      description: '东京最佳樱花观赏地点和时间推荐'
-    },
-    {
-      id: 2,
-      title: '京都古寺巡礼',
-      image: 'https://picsum.photos/seed/kyoto/800/600',
-      tags: ['文化', '历史', '建筑'],
-      description: '探索京都最著名的寺庙和神社'
-    },
-    {
-      id: 3,
-      title: '北海道美食之旅',
-      image: 'https://picsum.photos/seed/hokkaido/800/600',
-      tags: ['美食', '冬季', '温泉'],
-      description: '品尝北海道特色美食和温泉体验'
-    },
-    {
-      id: 4,
-      title: '大阪环球影城',
-      image: 'https://picsum.photos/seed/usj/800/600',
-      tags: ['主题公园', '娱乐', '亲子'],
-      description: '环球影城游玩攻略和快速通行证使用技巧'
+  // 抓取专题数据的独立函数，带上搜索和过滤参数
+  const fetchTopics = async () => {
+    setLoadingTopics(true);
+    try {
+      const qs = new URLSearchParams();
+      if (searchValue) qs.append('keyword', searchValue);
+      if (region && region !== 'all') qs.append('continent', region);
+      
+      const res = await fetch(buildApiUrl(`/topics?${qs.toString()}`));
+      if (!res.ok) {
+        throw new Error('网络请求错误');
+      }
+      const data = await res.json();
+      setTopicCards(data);
+    } catch (err: any) {
+      if(err.message !== "Failed to fetch") {
+        message.error('获取推荐专题失败：' + err.message);
+      }
+    } finally {
+      setLoadingTopics(false);
     }
-  ];
+  };
+
+  useEffect(() => {
+    // 组件加载时先查一次全部
+    fetchTopics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const itineraryCards: ItineraryCard[] = [
     {
@@ -109,6 +112,7 @@ const DiscoverPage: React.FC = () => {
             prefix={<SearchOutlined style={{ color: 'rgba(255, 255, 255, 0.6)' }} />}
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
+            onPressEnter={fetchTopics}
             style={{ 
               width: 480, 
               backgroundColor: 'rgba(255, 255, 255, 0.1)', 
@@ -133,7 +137,7 @@ const DiscoverPage: React.FC = () => {
             <Option value="north-america" style={{ color: '#000' }}>北美洲</Option>
             <Option value="oceania" style={{ color: '#000' }}>大洋洲</Option>
           </Select>
-          <Button type="primary" style={{ marginLeft: 16 }}>
+          <Button type="primary" style={{ marginLeft: 16 }} onClick={fetchTopics} loading={loadingTopics}>
             搜索
           </Button>
         </div>
@@ -145,29 +149,31 @@ const DiscoverPage: React.FC = () => {
           <Title level={3}>精选专题</Title>
           <Button type="link">查看全部</Button>
         </div>
-        <Row gutter={[16, 16]}>
-          {topicCards.map((topic) => (
-            <Col xs={24} sm={12} md={8} lg={6} key={topic.id}>
-              <Card className="topic-card">
-                <div className="topic-image">
-                  <img src={topic.image} alt={topic.title} />
-                </div>
-                <div className="topic-content">
-                  <div className="topic-tags">
-                    {topic.tags.map((tag, index) => (
-                      <Tag key={index}>{tag}</Tag>
-                    ))}
+        <Spin spinning={loadingTopics}>
+          <Row gutter={[16, 16]}>
+            {topicCards.map((topic) => (
+              <Col xs={24} sm={12} md={8} lg={6} key={topic.id}>
+                <Card className="topic-card">
+                  <div className="topic-image">
+                    <img src={topic.image} alt={topic.title} />
                   </div>
-                  <Title level={4}>{topic.title}</Title>
-                  <p className="topic-description">{topic.description}</p>
-                  <Button type="primary" size="small">
-                    查看详情
-                  </Button>
-                </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                  <div className="topic-content">
+                    <div className="topic-tags">
+                      {topic.tags.map((tag, index) => (
+                        <Tag key={index}>{tag}</Tag>
+                      ))}
+                    </div>
+                    <Title level={4}>{topic.title}</Title>
+                    <p className="topic-description">{topic.description}</p>
+                    <Button type="primary" size="small" onClick={() => navigate(`/topic/${topic.id}`)}>
+                      查看详情
+                    </Button>
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Spin>
       </div>
 
       {/* 推荐行程 */}

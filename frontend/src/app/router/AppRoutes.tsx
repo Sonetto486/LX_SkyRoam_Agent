@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import RequireAdmin from '../../components/Auth/RequireAdmin';
 import MainLayout from '../../components/Layout/MainLayout';
 import DiscoverPage from '../../pages/DiscoverPage/DiscoverPage';
+import TopicDetailPage from '../../pages/TopicDetailPage/TopicDetailPage';
 import ItineraryListPage from '../../pages/ItineraryPage/ItineraryListPage';
 import ItineraryWorkspace from '../../pages/ItineraryPage/ItineraryWorkspace';
 import SmartImportPage from '../../pages/ImportPage/SmartImportPage';
@@ -26,6 +27,7 @@ const AppRoutes: React.FC = () => {
       <Route element={<MainLayout />}>
         {/* 发现灵感模块 */}
         <Route path="/discover" element={<DiscoverPage />} />
+        <Route path="/topic/:id" element={<TopicDetailPage />} />
         
         {/* 我的行程管理模块 */}
         <Route path="/itineraries" element={<ItineraryListPage />} />
