@@ -492,11 +492,78 @@ async def seed_initial_data():
     try:
         # 创建默认用户
         await create_default_users()
-        
+
+        # 检查并添加 topic 表的 continent 字段
+        await check_and_add_topic_continent()
+
         # 可以在这里添加其他种子数据的插入逻辑
         # 例如：默认目的地、活动类型等
-        
+
         logger.info("✅ 种子数据插入完成")
     except Exception as e:
         logger.warning(f"⚠️ 种子数据插入失败: {e}（可能数据已存在）")
         # 种子数据插入失败不应该阻止应用启动
+
+
+async def check_and_add_topic_continent():
+    """检查并添加 topic 表的 continent 字段"""
+    try:
+        engine = _get_async_engine_for_current_loop()
+        async with engine.begin() as conn:
+            from sqlalchemy import text
+
+            # 检查 topic 表是否存在
+            table_exists = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'topic'
+                    )
+                """)
+            )
+            if not table_exists.scalar():
+                logger.debug("topic 表不存在，跳过 continent 字段检查")
+                return
+
+            # 检查 continent 字段是否存在
+            column_exists = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                        AND table_name = 'topic'
+                        AND column_name = 'continent'
+                    )
+                """)
+            )
+
+            if column_exists.scalar():
+                logger.debug("✓ topic.continent 字段已存在")
+                return
+
+            # 添加 continent 字段
+            logger.info("正在为 topic 表添加 continent 字段...")
+            await conn.execute(text("ALTER TABLE topic ADD COLUMN continent VARCHAR(50)"))
+
+            # 创建索引
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_topic_continent ON topic(continent)"))
+
+            # 更新现有数据
+            await conn.execute(text("""
+                UPDATE topic SET continent = CASE
+                    WHEN region IN ('华北', '华东', '华南', '华中', '西南', '西北', '东北') THEN 'asia'
+                    WHEN region ILIKE '%日本%' OR region ILIKE '%韩国%' THEN 'asia'
+                    WHEN region ILIKE '%欧洲%' OR region ILIKE '%法国%' OR region ILIKE '%意大利%' OR region ILIKE '%英国%' THEN 'europe'
+                    WHEN region ILIKE '%美国%' OR region ILIKE '%加拿大%' THEN 'north_america'
+                    WHEN region ILIKE '%澳大利亚%' OR region ILIKE '%新西兰%' THEN 'oceania'
+                    ELSE 'asia'
+                END
+                WHERE continent IS NULL
+            """))
+
+            logger.info("✅ topic.continent 字段添加成功")
+
+    except Exception as e:
+        logger.warning(f"⚠️ 检查/添加 topic.continent 字段失败: {e}")
+        # 不阻止应用启动
