@@ -35,8 +35,15 @@ def _get_async_engine_for_current_loop():
     loop_id = _current_loop_id()
     engine = _engines_by_loop.get(loop_id)
     if not engine:
+        # 根据数据库类型选择合适的异步驱动
+        db_url = settings.DATABASE_URL
+        if db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+        elif db_url.startswith("mysql://"):
+            db_url = db_url.replace("mysql://", "mysql+aiomysql://")
+        
         engine = create_async_engine(
-            settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
+            db_url,
             echo=settings.DATABASE_ECHO,
             pool_pre_ping=True,
             pool_recycle=300

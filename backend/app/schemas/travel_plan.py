@@ -49,6 +49,17 @@ class TravelPlanCreateRequest(TravelPlanBase):
     pass
 
 
+class QuickGenerateRequest(BaseModel):
+    """一键生成旅行计划请求模式"""
+    destination: str = Field(..., description="目的地")
+    start_date: str = Field(..., description="开始日期 (YYYY-MM-DD)")
+    end_date: str = Field(..., description="结束日期 (YYYY-MM-DD)")
+    people: int = Field(1, description="出行人数", ge=1, le=20)
+    budget: Optional[float] = Field(None, description="预算")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好")
+    departure: Optional[str] = Field(None, description="出发地")
+
+
 class TravelPlanCreate(TravelPlanBase):
     """创建旅行计划模式"""
     user_id: int = Field(..., description="用户ID")
@@ -191,35 +202,23 @@ class TravelPlanRatingSummary(BaseModel):
     average: float
     count: int
 
-# =============== 行程项目(Item)相关模式 ===============
-class TravelPlanItemCreate(BaseModel):
-    """创建行程项目请求体"""
-    title: str = Field(..., description="项目标题")
-    description: Optional[str] = Field(None, description="项目描述")
-    item_type: str = Field(..., description="项目类型(attraction/restaurant/hotel/transport等)")
-    start_time: Optional[datetime] = Field(None, description="开始时间")
-    end_time: Optional[datetime] = Field(None, description="结束时间")
-    duration_hours: Optional[float] = Field(None, description="时长(小时)")
-    location: Optional[str] = Field(None, description="地点名称")
-    address: Optional[str] = Field(None, description="详细地址")
-    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标")
-    details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
-    images: Optional[List[str]] = Field(None, description="图片URL列表")
+class QuickGenerateRequest(BaseModel):
+    destination: str = Field(..., description="Ŀ�ĵ�")
+    start_date: str = Field(..., description="��ʼ���� (YYYY-MM-DD)")
+    end_date: str = Field(..., description="�������� (YYYY-MM-DD)")
+    people: int = Field(1, description="��������", ge=1, le=20)
+    budget: Optional[float] = Field(None, description="Ԥ��")
+    preferences: Optional[Dict[str, Any]] = Field(None, description="�û�ƫ��")
+    departure: Optional[str] = Field(None, description="������")
 
-class TravelPlanItemUpdate(BaseModel):
-    """更新行程项目请求体"""
-    title: Optional[str] = None
-    description: Optional[str] = None
-    item_type: Optional[str] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration_hours: Optional[float] = None
-    location: Optional[str] = None
-    address: Optional[str] = None
-    coordinates: Optional[Dict[str, float]] = None
-    details: Optional[Dict[str, Any]] = None
-    images: Optional[List[str]] = None
-
-class TravelPlanItemReorder(BaseModel):
-    """重排序请求体"""
-    item_ids: List[int] = Field(..., description="按新顺序排列的项目ID列表")
+class QuickGenerateResponse(BaseModel):
+    plan_id: str
+    title: str
+    destination: str
+    days: int
+    people: int
+    budget: Optional[float]
+    start_date: str
+    end_date: str
+    daily_itineraries: List[Dict[str, Any]]
+    generated_at: str

@@ -38,6 +38,33 @@
   border-radius: 8px;
 }
 
+.itinerary-section {
+  height: 600px;
+  overflow-y: auto;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.view-mode-controls {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.day-selector {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.map-section {
+  height: 600px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .itinerary-details {
   margin-top: 16px;
 }
@@ -115,6 +142,11 @@
 
   .activity-content h4 {
     font-size: 14px;
+  }
+
+  .itinerary-section,
+  .map-section {
+    height: 400px;
   }
 }
 
