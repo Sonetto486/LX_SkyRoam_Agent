@@ -31,8 +31,18 @@ async def get_locations_batch(
         {
             "id": loc.location_id,
             "name": loc.location_name,
+            "location_name": loc.location_name,
             "latitude": float(loc.latitude) if loc.latitude else None,
             "longitude": float(loc.longitude) if loc.longitude else None,
+            "description": loc.description,
+            "location_type": loc.location_type,
+            "open_time": loc.open_time,
+            "phone": loc.phone,
+            "website": loc.website,
+            "address": loc.address,
+            "added_by": loc.added_by,
+            "media_images": loc.media_images,
+            "facilities": loc.facilities
         }
         for loc in locations
     ]

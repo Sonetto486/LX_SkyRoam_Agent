@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin } from 'antd';
+import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin, Drawer, Descriptions, Image, Carousel } from 'antd';
 import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined, UserOutlined } from '@ant-design/icons';
 import AMapLoader from '@amap/amap-jsapi-loader';
 import './ProfilePage.css';
@@ -42,6 +42,7 @@ const ProfilePage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
+  const [selectedLocation, setSelectedLocation] = useState<any>(null); // 保存当前选中的地图点信息
   const [form] = Form.useForm();
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
@@ -145,6 +146,9 @@ const ProfilePage: React.FC = () => {
           params: { ids: idsStr }
         });
         const locations = res.data;
+        
+        // 打印批量获取到的所有地点信息，方便确认后端是否成功返回了图片等扩展字段
+        console.log('🌍 [Map Data Loaded] 获取到的所有地点信息:', locations);
 
         // 设置高德地图安全密钥（由于Typescript中window对象默认没有这个属性，需要通过类型断言绕过或声明）
         (window as any)._AMapSecurityConfig = {
@@ -156,7 +160,7 @@ const ProfilePage: React.FC = () => {
            // 在此处填写你申请的高德 Web JS API Key
            key: '3c860a8217597619941f033146dde8ec',  // <-- 用户需要替换的地方
            version: '2.0',
-           plugins: ['AMap.Marker'],
+           plugins: ['AMap.Marker', 'AMap.MarkerCluster'],
         });
 
         if (mapContainerRef.current) {
@@ -165,31 +169,122 @@ const ProfilePage: React.FC = () => {
             center: [104.06, 30.67], // 中国中心参考坐标
           });
 
-          // 添加标记点
-          locations.forEach((loc: any) => {
-            if (!loc.latitude || !loc.longitude) return;
-            
-            const isFav = user.favorite_locations?.includes(loc.id);
-            const isHigh = user.highlighted_locations?.includes(loc.id);
-            
-            const markerColor = isHigh ? '#FF4D4F' : (isFav ? '#FFD700' : '#40a9ff');
-            
-            // 使用完全自定义的HTML内容来显示不同颜色的圆形标记
-            const markerContent = `<div style="background-color: ${markerColor}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
-            
-            // 可以通过自定义 icon 或者自带 marker 设置点样式
-            const marker = new AMap.Marker({
-               position: new AMap.LngLat(loc.longitude, loc.latitude),
-               title: loc.name,
-               content: markerContent,
-               offset: new AMap.Pixel(-8, -8), // 图标的偏移量，使圆心对准坐标点
-            });
+          // 创建一个共享的信息窗体 InfoWindow
+          const infoWindow = new AMap.InfoWindow({
+            offset: new AMap.Pixel(0, -15),
+          });
 
-            marker.on('click', () => {
-              message.info(`地点：${loc.name}`);
-            });
+          // 提取供聚合组件使用的坐标数据
+          const points = locations
+            .filter((loc: any) => loc.latitude && loc.longitude)
+            .map((loc: any) => ({
+              lnglat: [loc.longitude, loc.latitude],
+              extData: loc
+            }));
 
-            mapInstance.add(marker);
+          // 定义渲染悬浮卡片的公用方法
+          const showInfoWindow = (dataItems: any[], position: any) => {
+            let infoHtml = `<div style="width: 240px; max-height: 400px; overflow-y: auto; padding: 4px; font-family: sans-serif;">`;
+            
+            dataItems.forEach((item: any, index: number) => {
+               const loc = item.extData;
+               let imageUrl = '';
+               try {
+                 let images = [];
+                 if (Array.isArray(loc.media_images)) {
+                   images = loc.media_images;
+                 } else if (typeof loc.media_images === 'string' && loc.media_images) {
+                   images = JSON.parse(loc.media_images);
+                 }
+                 if (images.length > 0) {
+                   imageUrl = images[0].url || images[0];
+                 }
+               } catch (err) {}
+
+               infoHtml += `
+                 <div style="border-bottom: ${index < dataItems.length - 1 ? '1px dashed #ccc' : 'none'}; padding-bottom: 12px; margin-bottom: 12px;">
+                   <h4 style="margin: 0 0 8px 0; font-size: 16px; color: #333;">${loc.location_name || loc.name}</h4>
+                   ${imageUrl 
+                     ? `<img src="${imageUrl}" style="width: 100%; height: 140px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />` 
+                     : `<div style="width: 100%; height: 140px; background: #f5f5f5; border-radius: 4px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; color: #999; font-size: 12px;">暂无图片</div>`
+                   }
+                   <div style="font-size: 12px; color: #666; max-height: 60px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;">
+                       ${loc.description || '暂无详细介绍'}
+                   </div>
+                 </div>
+               `;
+            });
+            infoHtml += `</div>`;
+
+            infoWindow.setContent(infoHtml);
+            infoWindow.open(mapInstance, position);
+          };
+
+          // 实例化高德点聚合组件 MarkerCluster
+          const cluster = new AMap.MarkerCluster(mapInstance, points, {
+            gridSize: 60,
+            maxZoom: 17, // 最大聚合放大级别
+            renderClusterMarker: (context: any) => {
+               // 【针对多个点聚合的样式】
+               const count = context.count;
+               const hasHigh = context.clusterData.some((d: any) => user.highlighted_locations?.includes(d.extData.id));
+               const hasFav = context.clusterData.some((d: any) => user.favorite_locations?.includes(d.extData.id));
+               const markerColor = hasHigh ? '#FF4D4F' : (hasFav ? '#FFD700' : '#40a9ff');
+
+               const div = document.createElement('div');
+               div.style.backgroundColor = markerColor;
+               div.style.width = '30px';
+               div.style.height = '30px';
+               div.style.borderRadius = '50%';
+               div.style.border = '2px solid white';
+               div.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+               div.style.display = 'flex';
+               div.style.alignItems = 'center';
+               div.style.justifyContent = 'center';
+               div.style.color = 'white';
+               div.style.fontSize = '14px';
+               div.style.fontWeight = 'bold';
+               div.innerHTML = count;
+               
+               context.marker.setContent(div);
+               context.marker.setOffset(new AMap.Pixel(-15, -15));
+
+               // 直接绑定事件到生成的 Marker 实例上
+               context.marker.on('mouseover', () => {
+                 showInfoWindow(context.clusterData, context.marker.getPosition());
+               });
+
+               context.marker.on('click', () => {
+                 // 点击放大地图
+                 if (mapInstance.getZoom() < 17) {
+                   mapInstance.zoomIn();
+                   mapInstance.setCenter(context.marker.getPosition());
+                 }
+               });
+            },
+            renderMarker: (context: any) => {
+               // 【针对散开后单个标记点的样式】
+               const loc = context.data[0].extData;
+               const isFav = user.favorite_locations?.includes(loc.id);
+               const isHigh = user.highlighted_locations?.includes(loc.id);
+               const markerColor = isHigh ? '#FF4D4F' : (isFav ? '#FFD700' : '#40a9ff');
+
+               const div = document.createElement('div');
+               div.style.backgroundColor = markerColor;
+               div.style.width = '16px';
+               div.style.height = '16px';
+               div.style.borderRadius = '50%';
+               div.style.border = '2px solid white';
+               div.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+
+               context.marker.setContent(div);
+               context.marker.setOffset(new AMap.Pixel(-8, -8));
+
+               // 针对落单的情况，绑定 hover 事件
+               context.marker.on('mouseover', () => {
+                 showInfoWindow(context.data, context.marker.getPosition());
+               });
+            }
           });
           
           if (locations.length > 0) {
