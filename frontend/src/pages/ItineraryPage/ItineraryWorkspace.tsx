@@ -6,17 +6,20 @@ import {
   SyncOutlined,
   CarOutlined,
   SaveOutlined,
-  ExportOutlined,
   PlusOutlined,
   EnvironmentOutlined,
   CalendarOutlined,
   UserOutlined,
   DeleteOutlined,
   ArrowLeftOutlined,
-  ShareAltOutlined
+  ShareAltOutlined,
+  UpOutlined,
+  DownOutlined
 } from '@ant-design/icons';
 import MapComponent from '../../components/MapComponent/MapComponent';
 import WeatherCard from '../../components/Itinerary/WeatherCard';
+import ActivityEditModal from '../../components/Itinerary/ActivityEditModal';
+import DateRangeEditor from '../../components/Itinerary/DateRangeEditor';
 import { buildApiUrl } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 import './ItineraryWorkspace.css';
@@ -81,6 +84,11 @@ const ItineraryWorkspace: React.FC = () => {
   const [hoveredActivity, setHoveredActivity] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 编辑弹窗状态
+  const [activityModalVisible, setActivityModalVisible] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<TravelPlanItem | null>(null);
+  const [dateEditorVisible, setDateEditorVisible] = useState(false);
+
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
     if (!id) return;
@@ -123,6 +131,121 @@ const ItineraryWorkspace: React.FC = () => {
     const shareUrl = `${window.location.origin}/plans-library?highlight=${plan.id}`;
     navigator.clipboard.writeText(shareUrl);
     message.success('分享链接已复制到剪贴板');
+  };
+
+  // 打开活动编辑弹窗
+  const openActivityModal = (activity?: TravelPlanItem) => {
+    setEditingActivity(activity || null);
+    setActivityModalVisible(true);
+  };
+
+  // 保存活动
+  const handleSaveActivity = async (activity: TravelPlanItem) => {
+    if (!plan || !id) return;
+    try {
+      if (activity.id) {
+        // 更新现有活动
+        const res = await authFetch(
+          buildApiUrl(`/travel-plans/${id}/items/${activity.id}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(activity),
+          }
+        );
+        if (!res.ok) throw new Error('更新活动失败');
+        message.success('活动已更新');
+      } else {
+        // 添加新活动
+        const res = await authFetch(
+          buildApiUrl(`/travel-plans/${id}/items`),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(activity),
+          }
+        );
+        if (!res.ok) throw new Error('添加活动失败');
+        message.success('活动已添加');
+      }
+      fetchPlan();
+    } catch (err: any) {
+      message.error(err.message || '操作失败');
+      throw err;
+    }
+  };
+
+  // 删除活动
+  const handleDeleteActivity = async (activityId: number) => {
+    if (!plan || !id) return;
+    try {
+      const res = await authFetch(
+        buildApiUrl(`/travel-plans/${id}/items/${activityId}`),
+        { method: 'DELETE' }
+      );
+      if (!res.ok) throw new Error('删除失败');
+      message.success('活动已删除');
+      fetchPlan();
+    } catch (err: any) {
+      message.error(err.message || '删除失败');
+    }
+  };
+
+  // 移动活动顺序
+  const handleMoveActivity = async (activityId: number, direction: 'up' | 'down') => {
+    if (!plan || !id) return;
+    const dayActivities = getDayActivities();
+    if (activeDay >= dayActivities.length) return;
+
+    const activities = [...dayActivities[activeDay].activities];
+    const currentIndex = activities.findIndex(a => a.id === activityId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= activities.length) {
+      message.warning(direction === 'up' ? '已经是第一个' : '已经是最后一个');
+      return;
+    }
+
+    // 交换位置
+    [activities[currentIndex], activities[newIndex]] = [activities[newIndex], activities[currentIndex]];
+
+    try {
+      const res = await authFetch(
+        buildApiUrl(`/travel-plans/${id}/items/reorder`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_ids: activities.map(a => a.id) }),
+        }
+      );
+      if (!res.ok) throw new Error('排序失败');
+      message.success(direction === 'up' ? '活动已上移' : '活动已下移');
+      fetchPlan();
+    } catch (err: any) {
+      message.error(err.message || '移动失败');
+    }
+  };
+
+  // 更新日期
+  const handleUpdateDateRange = async (startDate: string, endDate: string, durationDays: number) => {
+    if (!plan || !id) return;
+    try {
+      const res = await authFetch(buildApiUrl(`/travel-plans/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_date: startDate,
+          end_date: endDate,
+          duration_days: durationDays,
+        }),
+      });
+      if (!res.ok) throw new Error('更新失败');
+      message.success('日期已更新');
+      fetchPlan();
+    } catch (err: any) {
+      throw err;
+    }
   };
 
   // 获取每日活动数据
@@ -286,6 +409,15 @@ const ItineraryWorkspace: React.FC = () => {
             </div>
             <div className="itinerary-date">
               {formatDateDisplay(plan.start_date)} - {formatDateDisplay(plan.end_date)}
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => setDateEditorVisible(true)}
+                style={{ marginLeft: 8 }}
+              >
+                编辑日期
+              </Button>
             </div>
             {plan.description && (
               <Paragraph className="itinerary-desc" ellipsis={{ rows: 2 }}>
@@ -309,7 +441,9 @@ const ItineraryWorkspace: React.FC = () => {
             onChange={(key) => setActiveDay(parseInt(key))}
             className="day-tabs"
             tabBarExtraContent={
-              <Button size="small" icon={<PlusOutlined />}>添加活动</Button>
+              <Button size="small" icon={<PlusOutlined />} onClick={() => openActivityModal()}>
+                添加活动
+              </Button>
             }
           >
             {dayActivities.map((day, index) => (
@@ -332,12 +466,33 @@ const ItineraryWorkspace: React.FC = () => {
                       onMouseLeave={() => setHoveredActivity(null)}
                       actions={[
                         <Tooltip key="edit" title="编辑">
-                          <Button icon={<EditOutlined />} size="small" />
+                          <Button
+                            icon={<EditOutlined />}
+                            size="small"
+                            onClick={() => openActivityModal(activity)}
+                          />
                         </Tooltip>,
                         <Tooltip key="move-up" title="上移">
-                          <Button icon={<SyncOutlined rotate={90} />} size="small" />
+                          <Button
+                            icon={<UpOutlined />}
+                            size="small"
+                            onClick={() => handleMoveActivity(activity.id, 'up')}
+                          />
                         </Tooltip>,
-                        <Popconfirm key="delete" title="确定删除此活动？" okText="删除" cancelText="取消">
+                        <Tooltip key="move-down" title="下移">
+                          <Button
+                            icon={<DownOutlined />}
+                            size="small"
+                            onClick={() => handleMoveActivity(activity.id, 'down')}
+                          />
+                        </Tooltip>,
+                        <Popconfirm
+                          key="delete"
+                          title="确定删除此活动？"
+                          okText="删除"
+                          cancelText="取消"
+                          onConfirm={() => handleDeleteActivity(activity.id)}
+                        >
                           <Button danger icon={<DeleteOutlined />} size="small" />
                         </Popconfirm>
                       ]}
@@ -374,6 +529,7 @@ const ItineraryWorkspace: React.FC = () => {
                     block
                     icon={<PlusOutlined />}
                     className="add-activity-btn"
+                    onClick={() => openActivityModal()}
                   >
                     添加活动
                   </Button>
@@ -384,7 +540,7 @@ const ItineraryWorkspace: React.FC = () => {
         ) : (
           <div className="empty-activities">
             <Empty description="暂无行程安排">
-              <Button type="primary" icon={<PlusOutlined />}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openActivityModal()}>
                 添加活动
               </Button>
             </Empty>
@@ -438,6 +594,28 @@ const ItineraryWorkspace: React.FC = () => {
           </Tooltip>
         </div>
       </Content>
+
+      {/* 活动编辑弹窗 */}
+      <ActivityEditModal
+        visible={activityModalVisible}
+        activity={editingActivity}
+        date={dayActivities[activeDay]?.date}
+        onCancel={() => {
+          setActivityModalVisible(false);
+          setEditingActivity(null);
+        }}
+        onOk={handleSaveActivity}
+      />
+
+      {/* 日期编辑弹窗 */}
+      <DateRangeEditor
+        visible={dateEditorVisible}
+        startDate={plan?.start_date}
+        endDate={plan?.end_date}
+        durationDays={plan?.duration_days}
+        onCancel={() => setDateEditorVisible(false)}
+        onOk={handleUpdateDateRange}
+      />
     </Layout>
   );
 };

@@ -242,3 +242,85 @@
     padding: 0 16px;
   }
 }
+
+/* 活动卡片操作按钮优化 */
+.activity-card .ant-card-actions {
+  background: #fafafa;
+}
+
+.activity-card .ant-card-actions > li {
+  margin: 6px 0;
+}
+
+.activity-card .ant-card-actions button {
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+}
+
+.activity-card .ant-card-actions button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 加载动画 */
+.workspace-loading .ant-spin-dot-item {
+  background-color: #1890ff;
+}
+
+/* 标签页滚动条样式 */
+.day-tabs .ant-tabs-content {
+  scrollbar-width: thin;
+  scrollbar-color: #d9d9d9 transparent;
+}
+
+.day-tabs .ant-tabs-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.day-tabs .ant-tabs-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.day-tabs .ant-tabs-content::-webkit-scrollbar-thumb {
+  background-color: #d9d9d9;
+  border-radius: 3px;
+}
+
+.day-tabs .ant-tabs-content::-webkit-scrollbar-thumb:hover {
+  background-color: #bfbfbf;
+}
+
+/* 活动图片悬停效果 */
+.activity-image {
+  transition: transform 0.3s ease;
+}
+
+.activity-card:hover .activity-image {
+  transform: scale(1.02);
+}
+
+/* 日期编辑按钮 */
+.itinerary-date .ant-btn-link {
+  padding: 0 4px;
+  height: auto;
+  font-size: 12px;
+}
+
+/* 返回按钮样式 */
+.back-btn {
+  color: #666;
+  transition: color 0.3s ease;
+}
+
+.back-btn:hover {
+  color: #1890ff;
+}
+
+/* 地图控制按钮动画 */
+.map-control-btn {
+  transition: all 0.3s ease;
+}
+
+.map-control-btn:active {
+  transform: scale(0.95);
+}

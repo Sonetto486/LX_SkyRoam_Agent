@@ -1,0 +1,42 @@
+/* 日期范围编辑器样式 */
+.date-range-editor .ant-modal-body {
+  padding: 24px;
+}
+
+.date-range-editor .ant-form-item-label > label {
+  font-weight: 500;
+}
+
+.date-range-editor .ant-picker {
+  border-radius: 6px;
+  width: 100%;
+}
+
+.date-range-editor .ant-picker-range {
+  border-radius: 6px;
+}
+
+.date-range-editor .ant-input-number {
+  border-radius: 6px;
+}
+
+.date-range-editor .ant-input-number-group-addon {
+  background: #fafafa;
+  border-radius: 0 6px 6px 0;
+}
+
+/* 日期选择器图标 */
+.date-range-editor .ant-picker-suffix {
+  color: #1890ff;
+}
+
+/* 天数显示 */
+.date-range-editor .ant-input-number-disabled {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.date-range-editor .ant-input-number-disabled input {
+  color: #333;
+  font-weight: 500;
+}

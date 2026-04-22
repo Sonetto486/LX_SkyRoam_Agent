@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, DatePicker, InputNumber, message, Space, Button } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
+import './DateRangeEditor.css';
 
 const { RangePicker } = DatePicker;
 
@@ -87,6 +88,7 @@ const DateRangeEditor: React.FC<DateRangeEditorProps> = ({
       onOk={handleSubmit}
       confirmLoading={loading}
       destroyOnClose
+      className="date-range-editor"
       footer={[
         <Button key="cancel" onClick={onCancel}>
           取消

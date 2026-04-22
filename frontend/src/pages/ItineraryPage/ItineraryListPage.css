@@ -150,8 +150,38 @@
     align-items: flex-start;
     gap: 16px;
   }
-  
+
   .itinerary-card-image {
     height: 140px;
   }
+}
+
+/* 卡片操作按钮样式优化 */
+.itinerary-list-card .ant-card-actions {
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+}
+
+.itinerary-list-card .ant-card-actions > li {
+  margin: 8px 0;
+}
+
+.itinerary-list-card .ant-card-actions button {
+  border: none;
+  background: transparent;
+}
+
+.itinerary-list-card .ant-card-actions button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 加载动画 */
+.itinerary-list-loading .ant-spin-dot-item {
+  background-color: #1890ff;
+}
+
+/* 空状态图标大小 */
+.itinerary-empty .ant-empty-image svg {
+  width: 80px;
+  height: 80px;
 }

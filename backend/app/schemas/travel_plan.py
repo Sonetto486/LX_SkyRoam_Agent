@@ -190,3 +190,36 @@ class TravelPlanRatingSummary(BaseModel):
     """评分汇总响应"""
     average: float
     count: int
+
+# =============== 行程项目(Item)相关模式 ===============
+class TravelPlanItemCreate(BaseModel):
+    """创建行程项目请求体"""
+    title: str = Field(..., description="项目标题")
+    description: Optional[str] = Field(None, description="项目描述")
+    item_type: str = Field(..., description="项目类型(attraction/restaurant/hotel/transport等)")
+    start_time: Optional[datetime] = Field(None, description="开始时间")
+    end_time: Optional[datetime] = Field(None, description="结束时间")
+    duration_hours: Optional[float] = Field(None, description="时长(小时)")
+    location: Optional[str] = Field(None, description="地点名称")
+    address: Optional[str] = Field(None, description="详细地址")
+    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标")
+    details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
+    images: Optional[List[str]] = Field(None, description="图片URL列表")
+
+class TravelPlanItemUpdate(BaseModel):
+    """更新行程项目请求体"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    item_type: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_hours: Optional[float] = None
+    location: Optional[str] = None
+    address: Optional[str] = None
+    coordinates: Optional[Dict[str, float]] = None
+    details: Optional[Dict[str, Any]] = None
+    images: Optional[List[str]] = None
+
+class TravelPlanItemReorder(BaseModel):
+    """重排序请求体"""
+    item_ids: List[int] = Field(..., description="按新顺序排列的项目ID列表")

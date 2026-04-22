@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, DatePicker, InputNumber, TimePicker, message } from 'antd';
 import { EnvironmentOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import './ActivityEditModal.css';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -111,6 +112,7 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
       confirmLoading={loading}
       width={600}
       destroyOnClose
+      className="activity-edit-modal"
     >
       <Form
         form={form}
