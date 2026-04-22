@@ -139,6 +139,7 @@ async def get_topic_detail(topic_id: int, response: Response, db: AsyncSession =
                 
             places_data.append({
                 "id": p.map_id,
+                "relatedId": p.related_id,
                 "type": p.related_type,
                 "name": p.place_name,
                 "description": p.description or p.highlight_info,
@@ -165,3 +166,148 @@ async def get_topic_detail(topic_id: int, response: Response, db: AsyncSession =
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"获取专题详情失败: {str(e)}"
         )
+
+
+@router.get("/places/{place_type}/{place_id}", summary="获取地点更详细信息")
+async def get_place_detail(place_type: str, place_id: int, response: Response, db: AsyncSession = Depends(get_async_db)):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    try:
+        import json
+
+        def first_image(raw_value, fallback: str):
+            if not raw_value:
+                return fallback
+            try:
+                if isinstance(raw_value, str):
+                    parsed = json.loads(raw_value)
+                else:
+                    parsed = raw_value
+                if isinstance(parsed, list) and parsed:
+                    return parsed[0]
+                if isinstance(parsed, str) and parsed:
+                    return parsed
+            except Exception:
+                if isinstance(raw_value, str) and raw_value.startswith("http"):
+                    return raw_value
+            return fallback
+
+        if place_type == "destinations":
+            dest_result = await db.execute(
+                text("""
+                    SELECT id, name, country, city, region, latitude, longitude,
+                           description, highlights, best_time_to_visit, popularity_score,
+                           safety_score, cost_level
+                    FROM destinations
+                    WHERE id = :id
+                """),
+                {"id": place_id}
+            )
+            dest = dest_result.fetchone()
+            if not dest:
+                raise HTTPException(status_code=404, detail="目的地不存在")
+
+            attraction_result = await db.execute(
+                text("""
+                    SELECT id, name, category, description, address, latitude, longitude,
+                           opening_hours, ticket_price, currency, rating, review_count,
+                           features, accessibility, contact_info, images, website
+                    FROM attractions
+                    WHERE destination_id = :id
+                    ORDER BY rating DESC NULLS LAST, review_count DESC NULLS LAST, id ASC
+                    LIMIT 6
+                """),
+                {"id": place_id}
+            )
+            attractions = attraction_result.fetchall()
+
+            return {
+                "type": "destinations",
+                "id": dest.id,
+                "name": dest.name,
+                "coverImage": f"https://picsum.photos/seed/destination_{dest.id}/1600/900",
+                "summary": dest.description,
+                "destination": {
+                    "country": dest.country,
+                    "city": dest.city,
+                    "region": dest.region,
+                    "latitude": float(dest.latitude) if dest.latitude is not None else None,
+                    "longitude": float(dest.longitude) if dest.longitude is not None else None,
+                    "highlights": dest.highlights or [],
+                    "bestTimeToVisit": dest.best_time_to_visit,
+                    "popularityScore": float(dest.popularity_score) if dest.popularity_score is not None else 0,
+                    "safetyScore": float(dest.safety_score) if dest.safety_score is not None else None,
+                    "costLevel": dest.cost_level,
+                    "images": [],
+                    "videos": [],
+                },
+                "relatedAttractions": [
+                    {
+                        "id": row.id,
+                        "name": row.name,
+                        "category": row.category,
+                        "description": row.description,
+                        "address": row.address,
+                        "rating": float(row.rating) if row.rating is not None else None,
+                        "reviewCount": row.review_count,
+                        "image": first_image(row.images, f"https://picsum.photos/seed/attr_{row.id}/800/600"),
+                    }
+                    for row in attractions
+                ]
+            }
+
+        if place_type == "attractions":
+            attr_result = await db.execute(
+                text("""
+                    SELECT a.id, a.name, a.category, a.description, a.address, a.latitude, a.longitude,
+                           a.opening_hours, a.ticket_price, a.currency, a.rating, a.review_count,
+                           a.features, a.accessibility, a.contact_info, a.images, a.website,
+                           d.id AS destination_id, d.name AS destination_name, d.country, d.city, d.region
+                    FROM attractions a
+                    LEFT JOIN destinations d ON a.destination_id = d.id
+                    WHERE a.id = :id
+                """),
+                {"id": place_id}
+            )
+            row = attr_result.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="景点不存在")
+
+            return {
+                "type": "attractions",
+                "id": row.id,
+                "name": row.name,
+                "coverImage": first_image(row.images, f"https://picsum.photos/seed/attr_{row.id}/1600/900"),
+                "summary": row.description,
+                "attraction": {
+                    "category": row.category,
+                    "description": row.description,
+                    "address": row.address,
+                    "latitude": float(row.latitude) if row.latitude is not None else None,
+                    "longitude": float(row.longitude) if row.longitude is not None else None,
+                    "openingHours": row.opening_hours,
+                    "ticketPrice": float(row.ticket_price) if row.ticket_price is not None else None,
+                    "currency": row.currency,
+                    "rating": float(row.rating) if row.rating is not None else None,
+                    "reviewCount": row.review_count,
+                    "features": row.features,
+                    "accessibility": row.accessibility,
+                    "contactInfo": row.contact_info,
+                    "website": row.website,
+                    "images": json.loads(row.images) if row.images else [],
+                },
+                "destination": {
+                    "id": row.destination_id,
+                    "name": row.destination_name,
+                    "country": row.country,
+                    "city": row.city,
+                    "region": row.region,
+                }
+            }
+
+        raise HTTPException(status_code=400, detail="不支持的地点类型")
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"获取地点详情失败: {str(e)}")

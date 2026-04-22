@@ -34,6 +34,12 @@ const DiscoverPage: React.FC = () => {
   const [topicCards, setTopicCards] = useState<TopicCard[]>([]);
   const [loadingTopics, setLoadingTopics] = useState(true);
 
+  const [itineraryCards, setItineraryCards] = useState<ItineraryCard[]>([]);
+  const [loadingItineraries, setLoadingItineraries] = useState(false);
+
+  const visibleTopicCards = topicCards.slice(0, 4);
+  const visibleItineraryCards = itineraryCards.slice(0, 4);
+
   // 抓取专题数据的独立函数，带上搜索和过滤参数
   const fetchTopics = async () => {
     setLoadingTopics(true);
@@ -57,50 +63,53 @@ const DiscoverPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    // 组件加载时先查一次全部
-    fetchTopics();
+// 获取推荐行程列表
+    const fetchItineraries = async () => {
+      setLoadingItineraries(true);
+      try {
+        const qs = new URLSearchParams();
+        if (searchValue) qs.append('keyword', searchValue);
+        // 如果行程没有continent字段，这里就只传keyword
+        
+        const res = await fetch(buildApiUrl(`/travel-plans/public?${qs.toString()}`));
+        if (!res.ok) {
+          throw new Error('网络请求错误');
+        }
+        const responseData = await res.json();
+        // 假设接口返回的是 { plans: [...] } 或数组，兼容处理
+        const plans = Array.isArray(responseData) ? responseData : (responseData.plans || []);
+        
+        // 映射属性名称与格式
+        const formattedPlans: ItineraryCard[] = plans.map((p: any) => ({
+          id: p.id,
+          title: p.title || p.name || '未命名行程',
+          image: p.cover_image || p.image_url || `https://picsum.photos/seed/plan_${p.id}/800/600`,
+          destination: p.destination || '未提供目的地',
+          days: p.days || 3,
+          activities: p.activities_count || 10,
+          rating: p.rating || p.total_score || 4.5
+        }));
+        
+        setItineraryCards(formattedPlans);
+      } catch (err: any) {
+        if(err.message !== "Failed to fetch") {
+          message.error('获取推荐行程失败：' + err.message);
+        }
+      } finally {
+        setLoadingItineraries(false);
+      }
+    };
+    
+    // 把上面的 fetchTopics 和 fetchItineraries 绑在一起
+    const handleSearch = () => {
+      fetchTopics();
+      fetchItineraries();
+    };
+
+    useEffect(() => {
+      handleSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const itineraryCards: ItineraryCard[] = [
-    {
-      id: 1,
-      title: '东京5日精华游',
-      image: 'https://picsum.photos/seed/tokyo5/800/600',
-      destination: '东京, 日本',
-      days: 5,
-      activities: 15,
-      rating: 4.8
-    },
-    {
-      id: 2,
-      title: '关西7日文化之旅',
-      image: 'https://picsum.photos/seed/kansai/800/600',
-      destination: '大阪, 京都, 奈良',
-      days: 7,
-      activities: 20,
-      rating: 4.9
-    },
-    {
-      id: 3,
-      title: '北海道冬季仙境',
-      image: 'https://picsum.photos/seed/hokkaido2/800/600',
-      destination: '札幌, 小樽, 函馆',
-      days: 6,
-      activities: 18,
-      rating: 4.7
-    },
-    {
-      id: 4,
-      title: '冲绳海岛度假',
-      image: 'https://picsum.photos/seed/okinawa/800/600',
-      destination: '冲绳, 日本',
-      days: 4,
-      activities: 12,
-      rating: 4.6
-    }
-  ];
 
   return (
     <div className="discover-page">
@@ -112,7 +121,7 @@ const DiscoverPage: React.FC = () => {
             prefix={<SearchOutlined style={{ color: 'rgba(255, 255, 255, 0.6)' }} />}
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            onPressEnter={fetchTopics}
+            onPressEnter={handleSearch}
             style={{ 
               width: 480, 
               backgroundColor: 'rgba(255, 255, 255, 0.1)', 
@@ -137,7 +146,7 @@ const DiscoverPage: React.FC = () => {
             <Option value="north-america" style={{ color: '#000' }}>北美洲</Option>
             <Option value="oceania" style={{ color: '#000' }}>大洋洲</Option>
           </Select>
-          <Button type="primary" style={{ marginLeft: 16 }} onClick={fetchTopics} loading={loadingTopics}>
+          <Button type="primary" style={{ marginLeft: 16 }} onClick={handleSearch} loading={loadingTopics || loadingItineraries}>
             搜索
           </Button>
         </div>
@@ -147,11 +156,11 @@ const DiscoverPage: React.FC = () => {
       <div className="section">
         <div className="section-header">
           <Title level={3}>精选专题</Title>
-          <Button type="link">查看全部</Button>
+          <Button type="link" onClick={() => navigate('/topics-library')}>查看全部</Button>
         </div>
         <Spin spinning={loadingTopics}>
           <Row gutter={[16, 16]}>
-            {topicCards.map((topic) => (
+            {visibleTopicCards.map((topic) => (
               <Col xs={24} sm={12} md={8} lg={6} key={topic.id}>
                 <Card className="topic-card">
                   <div className="topic-image">
@@ -180,10 +189,9 @@ const DiscoverPage: React.FC = () => {
       <div className="section">
         <div className="section-header">
           <Title level={3}>推荐行程</Title>
-          <Button type="link">查看全部</Button>
+          <Button type="link" onClick={() => navigate('/plans-library?tab=public')}>查看全部</Button>
         </div>
-        <Row gutter={[16, 16]}>
-          {itineraryCards.map((itinerary) => (
+        <Spin spinning={loadingItineraries}><Row gutter={[16, 16]}>{visibleItineraryCards.map((itinerary) => (
             <Col xs={24} sm={12} md={8} lg={6} key={itinerary.id}>
               <Card className="itinerary-card">
                 <div className="itinerary-image">
@@ -207,17 +215,14 @@ const DiscoverPage: React.FC = () => {
                       </Space>
                     </Space>
                   </div>
-                  <Button type="primary" size="small" style={{ marginTop: 16 }}>
-                    查看行程
-                  </Button>
+                  <Button type="primary" size="small" style={{ marginTop: 16 }} onClick={() => navigate(`/itineraries/${itinerary.id}`)}>查看行程</Button>
                 </div>
               </Card>
             </Col>
           ))}
-        </Row>
-      </div>
-    </div>
-  );
-};
+        </Row></Spin></div></div>);};export default DiscoverPage;
 
-export default DiscoverPage;
+
+
+
+

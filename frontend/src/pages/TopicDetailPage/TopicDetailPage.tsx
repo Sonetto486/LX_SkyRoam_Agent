@@ -9,6 +9,7 @@ const { Title, Paragraph } = Typography;
 
 interface Place {
   id: number;
+  relatedId?: number;
   type: string;
   name: string;
   description: string;
@@ -104,6 +105,7 @@ const TopicDetailPage: React.FC = () => {
                 <Card 
                   hoverable
                   className="place-card"
+                    onClick={() => navigate(`/places/${place.type}/${place.relatedId ?? place.id}`)}
                   cover={
                     <div className="place-image-wrapper">
                       <img alt={place.name} src={place.image} className="place-image" />
@@ -123,6 +125,13 @@ const TopicDetailPage: React.FC = () => {
                   <Paragraph ellipsis={{ rows: 3 }} className="place-desc">
                     {place.description}
                   </Paragraph>
+
+                  <Button type="link" style={{ padding: 0 }} onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/places/${place.type}/${place.relatedId ?? place.id}`);
+                  }}>
+                    查看更详细信息 →
+                  </Button>
                 </Card>
               </Badge.Ribbon>
             </Col>
