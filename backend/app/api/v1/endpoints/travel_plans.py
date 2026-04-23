@@ -4,14 +4,15 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from datetime import datetime, date
+from pydantic import BaseModel, Field
 
 from app.core.database import get_async_db
 from app.schemas.travel_plan import (
-    TravelPlanCreate, 
+    TravelPlanCreate,
     TravelPlanCreateRequest,
-    TravelPlanUpdate, 
+    TravelPlanUpdate,
     TravelPlanResponse,
     TravelPlanGenerateRequest,
     TravelPlanBatchDeleteRequest
@@ -1116,3 +1117,142 @@ async def _add_routes_to_itineraries(itineraries: List[Dict[str, Any]]) -> List[
     """为行程添加路线规划信息"""
     # 简单实现：返回原数据，实际项目中可调用路线规划API
     return itineraries
+
+
+# =============== 行程项目(Item)相关端点 ===============
+from app.schemas.travel_plan import TravelPlanItemResponse, TravelPlanItemCreate, TravelPlanItemUpdate
+
+
+class ReorderItemsRequest(BaseModel):
+    """重排序请求"""
+    item_ids: List[int] = Field(..., description="按新顺序排列的项目ID列表")
+
+
+@router.post("/{plan_id}/items", response_model=TravelPlanItemResponse)
+async def add_travel_plan_item(
+    plan_id: int,
+    item_data: TravelPlanItemCreate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """添加行程项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权添加行程项目")
+
+    item = await service.add_item(plan_id, item_data.model_dump())
+    if not item:
+        raise HTTPException(status_code=500, detail="添加行程项目失败")
+    return TravelPlanItemResponse.from_orm(item)
+
+
+@router.get("/{plan_id}/items", response_model=List[TravelPlanItemResponse])
+async def get_travel_plan_items(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取行程的所有项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权查看行程项目")
+
+    items = await service.get_items_by_plan(plan_id)
+    return [TravelPlanItemResponse.from_orm(item) for item in items]
+
+
+@router.get("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
+async def get_travel_plan_item(
+    plan_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取单个行程项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权查看行程项目")
+
+    item = await service.get_item(item_id)
+    if not item or item.travel_plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+    return TravelPlanItemResponse.from_orm(item)
+
+
+@router.put("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
+async def update_travel_plan_item(
+    plan_id: int,
+    item_id: int,
+    item_data: TravelPlanItemUpdate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新行程项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权更新行程项目")
+
+    item = await service.get_item(item_id)
+    if not item or item.travel_plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+
+    updated_item = await service.update_item(item_id, item_data.model_dump(exclude_unset=True))
+    return TravelPlanItemResponse.from_orm(updated_item)
+
+
+@router.delete("/{plan_id}/items/{item_id}")
+async def delete_travel_plan_item(
+    plan_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除行程项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权删除行程项目")
+
+    item = await service.get_item(item_id)
+    if not item or item.travel_plan_id != plan_id:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+
+    success = await service.delete_item(item_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除行程项目失败")
+    return {"message": "行程项目已删除"}
+
+
+@router.put("/{plan_id}/items/reorder")
+async def reorder_travel_plan_items(
+    plan_id: int,
+    request_data: ReorderItemsRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重排序行程项目(需拥有或管理员权限)"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权重排序行程项目")
+
+    success = await service.reorder_items(plan_id, request_data.item_ids)
+    if not success:
+        raise HTTPException(status_code=400, detail="重排序失败，请检查项目ID是否正确")
+    return {"message": "行程项目已重新排序"}

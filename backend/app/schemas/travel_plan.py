@@ -103,6 +103,36 @@ class TravelPlanItemResponse(BaseModel):
         from_attributes = True
 
 
+class TravelPlanItemCreate(BaseModel):
+    """创建行程项目请求"""
+    title: str = Field(..., description="项目标题")
+    description: Optional[str] = Field(None, description="项目描述")
+    item_type: str = Field(..., description="项目类型(attraction/restaurant/hotel/transport/shopping/entertainment/other)")
+    start_time: Optional[datetime] = Field(None, description="开始时间")
+    end_time: Optional[datetime] = Field(None, description="结束时间")
+    duration_hours: Optional[float] = Field(None, description="时长(小时)")
+    location: Optional[str] = Field(None, description="地点名称")
+    address: Optional[str] = Field(None, description="详细地址")
+    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标{lat, lng}")
+    details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
+    images: Optional[List[str]] = Field(None, description="图片URL列表")
+
+
+class TravelPlanItemUpdate(BaseModel):
+    """更新行程项目请求"""
+    title: Optional[str] = Field(None, description="项目标题")
+    description: Optional[str] = Field(None, description="项目描述")
+    item_type: Optional[str] = Field(None, description="项目类型")
+    start_time: Optional[datetime] = Field(None, description="开始时间")
+    end_time: Optional[datetime] = Field(None, description="结束时间")
+    duration_hours: Optional[float] = Field(None, description="时长(小时)")
+    location: Optional[str] = Field(None, description="地点名称")
+    address: Optional[str] = Field(None, description="详细地址")
+    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标{lat, lng}")
+    details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
+    images: Optional[List[str]] = Field(None, description="图片URL列表")
+
+
 class TravelPlanResponse(TravelPlanBase):
     """旅行计划响应模式"""
     id: int
