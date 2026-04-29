@@ -207,6 +207,7 @@ const SmartImportPage: React.FC = () => {
 // ✅ 正确版本：和后端接口完全匹配，路径/方法/逻辑全部修复
 const handleCreateNewItinerary = async () => {
   const finalSelectedLocations = getSelectedLocationObjects();
+   console.log("勾选的地点列表：", finalSelectedLocations);
   if (finalSelectedLocations.length === 0) {
     message.warning('您必须至少选择一个地点才能生成行程');
     return;
@@ -233,7 +234,8 @@ const handleCreateNewItinerary = async () => {
       parsed_locations: finalSelectedLocations,
     },
   };
-  
+    console.log("发送给后端的行程数据：", planData);
+
   try {
     // ✅ 修复1：用 authFetch 相对路径，自动匹配后端端口和接口
     const response = await authFetch('/travel-plans/', {
