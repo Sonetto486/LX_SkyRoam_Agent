@@ -26,7 +26,7 @@ if not exist "backend\uploads" mkdir backend\uploads
 
 REM Start backend service
 echo Starting backend service...
-start "Backend" cmd /k "cd backend && call D:\Anaconda\Scripts\activate.bat skyroam && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+start "Backend" cmd /k "cd backend && call D:\Anaconda\Scripts\activate.bat skyroam && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
 
 REM Wait for backend to start
 echo Waiting for backend to start...
@@ -34,7 +34,7 @@ timeout /t 5 /nobreak >nul
 
 REM Start frontend service
 echo Starting frontend service...
-start "Frontend" cmd /k "cd frontend && set \"REACT_APP_API_BASE_URL=http://localhost:8000/api/v1\" && npm start"
+start "Frontend" cmd /k "cd frontend && set \"REACT_APP_API_BASE_URL=http://localhost:8001/api/v1\" && npm start"
 
 REM Wait for frontend to start
 echo Waiting for frontend to start...
@@ -45,8 +45,8 @@ echo.
 echo LX SkyRoam Agent Dev Environment Started!
 echo.
 echo Frontend App: http://localhost:3000
-echo Backend API: http://localhost:8000
-echo API Docs: http://localhost:8000/docs
+echo Backend API: http://localhost:8001
+echo API Docs: http://localhost:8001/docs
 echo.
 echo Notes:
 echo    - Ensure PostgreSQL is running

@@ -3,6 +3,7 @@ import logging
 import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Any, cast  # ✅ 新增：导入 cast 和 Any
 
 from app.platforms.xhs import XiaoHongShuCrawler
 from app.platforms.xhs.help import parse_note_info_from_note_url
@@ -65,7 +66,8 @@ async def extract_xiaohongshu_info(request: XiaoHongShuLinkRequest):
     crawler = None
     try:
         # 1. 创建爬虫实例
-        crawler = XiaoHongShuCrawler()
+        # ✅ 修复：使用 cast(Any, ...) 告诉 Pyright 放过这个对象的属性检查
+        crawler = cast(Any, XiaoHongShuCrawler())
         
         # 2. 初始化爬虫（启动浏览器和登录）
         await crawler.initialize()

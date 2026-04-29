@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    PORT: int = int(os.getenv("PORT", "8001"))
     ALLOWED_HOSTS: List[str] = os.getenv("ALLOWED_HOSTS", "*").split(",") if isinstance(os.getenv("ALLOWED_HOSTS", "*"), str) else ["*"]
     
     # 数据库配置

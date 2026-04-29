@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, Button, Upload, Input, Typography, message, Tabs, Checkbox, Tag } from 'antd';
-import { UploadOutlined, LinkOutlined, HeartOutlined, PlusOutlined } from '@ant-design/icons';
+import { UploadOutlined, LinkOutlined, HeartOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
 import './SmartImportPage.css';
 
@@ -21,6 +21,10 @@ interface ParsedLocation {
   images?: string[]; // 地点图片URL列表
 }
 
+// localStorage keys
+const STORAGE_KEY_PLAN = 'smart_import_plan';
+const STORAGE_KEY_CHECKED = 'smart_import_checked';
+
 const SmartImportPage: React.FC = () => {
   const [textInput, setTextInput] = useState('');
   const [linkInput, setLinkInput] = useState('');
@@ -35,6 +39,69 @@ const SmartImportPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('locations');
   // 使用地点 ID 作为 key，管理勾选状态
   const [checkedLocations, setCheckedLocations] = useState<{[id: number]: boolean}>({});
+
+  // 从 localStorage 加载保存的数据
+  useEffect(() => {
+    try {
+      const savedPlan = localStorage.getItem(STORAGE_KEY_PLAN);
+      const savedChecked = localStorage.getItem(STORAGE_KEY_CHECKED);
+      
+      if (savedPlan) {
+        const plan = JSON.parse(savedPlan);
+        setGeneratedPlan(plan);
+        // 初始化勾选状态
+        if (plan.preferences?.parsed_locations) {
+          const initialChecked: {[id: number]: boolean} = {};
+          plan.preferences.parsed_locations.forEach((loc: ParsedLocation) => {
+            initialChecked[loc.id] = loc.selected ?? true;
+          });
+          setCheckedLocations(initialChecked);
+        }
+        message.info('已恢复上次导入的数据');
+      }
+      
+      if (savedChecked) {
+        const checked = JSON.parse(savedChecked);
+        setCheckedLocations(checked);
+      }
+    } catch (error) {
+      console.error('恢复保存数据失败:', error);
+      localStorage.removeItem(STORAGE_KEY_PLAN);
+      localStorage.removeItem(STORAGE_KEY_CHECKED);
+      message.warning('保存的数据已损坏，已自动清除');
+    }
+  }, []);
+
+  // 保存数据到 localStorage
+  useEffect(() => {
+    if (generatedPlan) {
+      try {
+        localStorage.setItem(STORAGE_KEY_PLAN, JSON.stringify(generatedPlan));
+      } catch (error) {
+        console.error('保存数据失败:', error);
+      }
+    }
+  }, [generatedPlan]);
+
+  // 保存勾选状态到 localStorage
+  useEffect(() => {
+    if (Object.keys(checkedLocations).length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CHECKED, JSON.stringify(checkedLocations));
+      } catch (error) {
+        console.error('保存勾选状态失败:', error);
+      }
+    }
+  }, [checkedLocations]);
+
+  // 清除所有保存的数据
+  const clearSavedData = () => {
+    localStorage.removeItem(STORAGE_KEY_PLAN);
+    localStorage.removeItem(STORAGE_KEY_CHECKED);
+    setGeneratedPlan(null);
+    setCheckedLocations({});
+    message.success('已清除所有保存的数据');
+  };
 
   // 提取原始地点列表方便后续计算
   const parsedLocations: ParsedLocation[] = useMemo(() => {
@@ -56,7 +123,7 @@ const SmartImportPage: React.FC = () => {
   const fetchImportData = async (payload: any, setLoading: (state: boolean) => void) => {
     setLoading(true);
     try {
-      const response = await authFetch('http://localhost:8000/api/v1/smart-import/import', {
+      const response = await authFetch('http://localhost:8001/api/v1/smart-import/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -164,7 +231,7 @@ const SmartImportPage: React.FC = () => {
     };
     
     try {
-      const response = await authFetch('http://localhost:8000/api/v1/travel-plans/', {
+      const response = await authFetch('http://localhost:8001/api/v1/travel-plans/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(planData),
@@ -174,6 +241,10 @@ const SmartImportPage: React.FC = () => {
       const data = await response.json();
       
       message.success(`✅ 成功创建新行程！行程ID: ${data.id}`);
+      
+      // 创建成功后自动清除本地保存的数据
+      localStorage.removeItem(STORAGE_KEY_PLAN);
+      localStorage.removeItem(STORAGE_KEY_CHECKED);
       
       // 跳转到行程详情页或我的行程列表
       setTimeout(() => {
@@ -284,6 +355,7 @@ const SmartImportPage: React.FC = () => {
                   全选 ({selectedCount}/{totalLocations})
                 </Checkbox>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
+                  <Button icon={<DeleteOutlined />} onClick={clearSavedData} size="small" danger>清除结果</Button>
                   <Button icon={<HeartOutlined />} onClick={handleFavoriteLocations} size="small">收藏</Button>
                   <Button icon={<PlusOutlined />} size="small">加入清单</Button>
                 </div>
