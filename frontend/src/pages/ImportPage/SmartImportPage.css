@@ -1,0 +1,52 @@
+/* 智能导入页面样式 —— 强制所有文字为黑色，最高优先级 */
+.smart-import-page {
+  padding: 0;
+  color: #000 !important; /* 全局文字黑色 */
+}
+
+/* 强制覆盖 Ant Design 所有组件文字颜色 */
+.smart-import-page p,
+.smart-import-page span,
+.smart-import-page div,
+.smart-import-page .ant-typography,
+.smart-import-page .ant-card-head-title,
+.smart-import-page .ant-card-body,
+.smart-import-page .ant-collapse-header,
+.smart-import-page .ant-collapse-content-box,
+.smart-import-page .ant-table-cell,
+.smart-import-page .ant-tag {
+  color: #060313 !important; /* 所有文本强制纯黑 */
+}
+
+.import-methods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+  margin: 32px 0;
+}
+
+.import-card {
+  border-radius: 8px !important;
+  transition: all 0.3s ease;
+}
+
+.import-card:hover {
+  box-shadow: 0 4px 16px rgba(255, 14, 14, 0.1) !important;
+}
+
+.submit-section {
+  margin-top: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .import-methods {
+    grid-template-columns: 1fr;
+  }
+  
+  .import-card {
+    width: 100%;
+  }
+}

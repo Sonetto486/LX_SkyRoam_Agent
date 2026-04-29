@@ -1,0 +1,186 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库（仅内网）
+  postgres:
+    image: postgres:15
+    container_name: skyroam-postgres
+    environment:
+      POSTGRES_DB: skyroam
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - skyroam-network
+
+  # Redis 缓存（仅内网）
+  redis:
+    image: redis:7-alpine
+    container_name: skyroam-redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - skyroam-network
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-backend
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./.env.docker
+    environment:
+      DATABASE_URL: postgresql://postgres:123456@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      PORT: 8001
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: bash -lc "uvicorn main:app --host 0.0.0.0 --port $${PORT:-8001} --reload"
+
+  # Celery Worker（仅内网）
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-celery-worker
+    env_file:
+      - ./.env.docker
+    environment:
+      DATABASE_URL: postgresql://postgres:123456@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery worker --loglevel=info
+
+  # Celery Beat（仅内网）
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-celery-beat
+    env_file:
+      - ./.env.docker
+    environment:
+      DATABASE_URL: postgresql://postgres:123456@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery beat --loglevel=info
+
+  # Flower（仅内网）
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-flower
+    env_file:
+      - ./.env.docker
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - skyroam-network
+    command: celery -A app.core.celery flower --port=5555
+
+  # 前端应用（对外暴露 13000 端口）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: skyroam-frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:8001
+      HOST: 0.0.0.0
+      PORT: 3000
+    ports:
+      - "13000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - skyroam-network
+    command: npm start
+
+  # 高德 MCP HTTP 服务（Python）
+  amap-mcp-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-amap-mcp
+    env_file:
+      - ./.env.docker
+    environment:
+      MCP_HTTP_PORT: 3002
+      MCP_HTTP_HOST: 0.0.0.0
+    depends_on:
+      - backend
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    ports:
+      - "13002:3002"
+    command: python mcp_http_server_amap.py
+
+  # 小红书 API 服务
+  xhs-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: skyroam-xhs-api
+    env_file:
+      - ./.env.docker
+    depends_on:
+      - backend
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    networks:
+      - skyroam-network
+    ports:
+      - "18002:8002"
+    command: bash -lc "uvicorn xhs_api_server:app --host 0.0.0.0 --port 8002 --log-level info"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  skyroam-network:
+    driver: bridge
