@@ -1,22 +1,25 @@
-# Chroma + Ollama 本地RAG
+# Chroma + 远程模型 API RAG
 
 本目录提供两步最小闭环：
 1. 用现有小红书爬虫采集并写入 Chroma
-2. 用本地 Ollama 模型检索+生成回答
+2. 用远程模型 API 做向量化与问答生成
 
 ## 依赖
-- 本地 Ollama 正常运行（默认 `http://localhost:11434`）
-- 已拉取模型：`nomic-embed-text`、`deepseek-r1:14b`
+- 可用的远程模型 API（OpenAI 兼容协议）
 - Chroma 使用本地持久化目录，不需要额外数据库
 
 ## 环境变量
+全局配置位置：`backend/.env`（由 `app/core/config.py` 读取）
+
 可在 `backend/.env` 中配置：
 - `CHROMA_PERSIST_DIR`（默认 `backend/data/chroma`）
 - `CHROMA_COLLECTION`（默认 `rag_xhs_notes`）
-- `OLLAMA_BASE_URL`（默认 `http://localhost:11434`）
-- `OLLAMA_EMBED_MODEL`（默认 `nomic-embed-text`）
-- `OLLAMA_CHAT_MODEL`（默认 `deepseek-r1:14b`）
-- `OLLAMA_TEMPERATURE`（默认 `0.3`）
+- `OPENAI_API_KEY`（远程模型 API Key）
+- `OPENAI_API_BASE`（远程模型 API Base，OpenAI 兼容）
+- `OPENAI_MODEL`（问答模型）
+- `OPENAI_EMBEDDING_MODEL`（向量化模型）
+- `OPENAI_TEMPERATURE`（默认 `0.7`）
+- `OPENAI_TIMEOUT`（默认 `300`）
 
 ## 入库
 ```bash

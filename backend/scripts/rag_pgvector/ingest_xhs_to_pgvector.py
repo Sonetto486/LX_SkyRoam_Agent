@@ -8,7 +8,7 @@ from typing import Iterable, List, Dict, Any
 from uuid import uuid4
 
 import chromadb
-import httpx
+import openai
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -17,6 +17,7 @@ BACKEND_DIR = SCRIPT_DIR.parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from app.core.config import settings
 from app.platforms.xhs.real_crawler import XiaoHongShuRealCrawler
 
 
@@ -27,9 +28,11 @@ class ChromaConfig:
 
 
 @dataclass
-class OllamaConfig:
-    base_url: str
+class OpenAIConfig:
+    api_key: str
+    api_base: str
     embed_model: str
+    timeout: float
 
 
 def load_chroma_config() -> ChromaConfig:
@@ -38,10 +41,14 @@ def load_chroma_config() -> ChromaConfig:
     return ChromaConfig(persist_dir=persist_dir, collection_name=collection_name)
 
 
-def load_ollama_config() -> OllamaConfig:
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-    return OllamaConfig(base_url=base_url, embed_model=embed_model)
+def load_openai_config() -> OpenAIConfig:
+    api_key = settings.OPENAI_API_KEY
+    api_base = settings.OPENAI_API_BASE
+    embed_model = settings.OPENAI_EMBEDDING_MODEL
+    timeout = float(os.getenv("OPENAI_TIMEOUT", str(settings.OPENAI_TIMEOUT)))
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is required")
+    return OpenAIConfig(api_key=api_key, api_base=api_base, embed_model=embed_model, timeout=timeout)
 
 
 def normalize_text(text: str) -> str:
@@ -85,27 +92,14 @@ def get_collection(chroma_config: ChromaConfig):
     )
 
 
-def _request_embedding(client: httpx.Client, base_url: str, model: str, text: str) -> List[float]:
-    embeddings_url = f"{base_url}/api/embeddings"
-    response = client.post(embeddings_url, json={"model": model, "prompt": text})
-    if response.status_code == 404:
-        embed_url = f"{base_url}/api/embed"
-        response = client.post(embed_url, json={"model": model, "input": text})
-    response.raise_for_status()
-    data = response.json()
-    if "embedding" in data:
-        return data["embedding"]
-    if "embeddings" in data and data["embeddings"]:
-        return data["embeddings"][0]
-    raise ValueError("Ollama embedding response missing embedding data")
-
-
-def embed_texts(texts: List[str], config: OllamaConfig) -> List[List[float]]:
-    embeddings: List[List[float]] = []
-    with httpx.Client(timeout=60) as client:
-        for text in texts:
-            embeddings.append(_request_embedding(client, config.base_url, config.embed_model, text))
-    return embeddings
+def embed_texts(texts: List[str], config: OpenAIConfig) -> List[List[float]]:
+    client = openai.OpenAI(
+        api_key=config.api_key,
+        base_url=config.api_base if config.api_base != "https://api.openai.com/v1" else None,
+        timeout=config.timeout,
+    )
+    response = client.embeddings.create(model=config.embed_model, input=texts)
+    return [item.embedding for item in response.data]
 
 
 def store_chunks(
@@ -152,7 +146,7 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
     chroma_config = load_chroma_config()
-    ollama_config = load_ollama_config()
+    openai_config = load_openai_config()
     collection = get_collection(chroma_config)
 
     notes = asyncio.run(crawl_notes(args.keyword, args.max_notes))
@@ -168,7 +162,7 @@ def main() -> None:
         chunks = list(chunk_text(content, args.chunk_size, args.chunk_overlap))
         if not chunks:
             continue
-        embeddings = embed_texts(chunks, ollama_config)
+        embeddings = embed_texts(chunks, openai_config)
         tags_list = note.get("tag_list") or []
         tags_text = ", ".join([str(tag) for tag in tags_list if tag])
         metadata = {

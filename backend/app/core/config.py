@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")  # 自定义API地址
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     
     # OpenAI Token 限制配置
     # 模型上下文窗口大小（根据模型自动设置，常见值：gpt-4=8K, gpt-3.5-turbo=16K, gpt-4-turbo-preview=128K）
