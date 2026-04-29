@@ -3,6 +3,22 @@
   padding: 0;
 }
 
+/* 加载状态 */
+.itinerary-list-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+/* 空状态 */
+.itinerary-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+}
+
 /* 页面标题 */
 .page-header {
   display: flex;
@@ -57,6 +73,14 @@
   z-index: 10;
 }
 
+/* 公开标签 */
+.public-tag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+}
+
 /* 卡片内容 */
 .itinerary-card-content {
   flex: 1;
@@ -77,10 +101,14 @@
   color: #666;
 }
 
-.itinerary-card-content p {
+.itinerary-card-date {
   margin: 0 0 16px 0;
   color: #666;
   font-size: 14px;
+}
+
+.itinerary-card-content {
+  cursor: pointer;
 }
 
 /* 成员头像 */
@@ -122,8 +150,158 @@
     align-items: flex-start;
     gap: 16px;
   }
-  
+
   .itinerary-card-image {
     height: 140px;
+  }
+}
+
+/* 卡片操作按钮样式优化 */
+.itinerary-list-card .ant-card-actions {
+  background: #fafafa;
+  border-top: 1px solid #f0f0f0;
+}
+
+.itinerary-list-card .ant-card-actions > li {
+  margin: 8px 0;
+}
+
+.itinerary-list-card .ant-card-actions button {
+  border: none;
+  background: transparent;
+}
+
+.itinerary-list-card .ant-card-actions button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* 加载动画 */
+.itinerary-list-loading .ant-spin-dot-item {
+  background-color: #1890ff;
+}
+
+/* 空状态图标大小 */
+.itinerary-empty .ant-empty-image svg {
+  width: 80px;
+  height: 80px;
+}
+
+/* 行程卡片信息区域 */
+.itinerary-card-info {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #666;
+}
+
+.info-divider {
+  color: #d9d9d9;
+  margin: 0 4px;
+}
+
+/* 天气预览弹窗样式 */
+.weather-preview-modal .weather-preview-content {
+  padding: 16px 0;
+}
+
+.weather-preview-item {
+  text-align: center;
+  border-radius: 8px;
+}
+
+.weather-preview-item .weather-date {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.weather-preview-item .weather-temp {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.weather-preview-item .weather-condition {
+  font-size: 12px;
+  color: #666;
+}
+
+/* 编辑行程表单样式 */
+.edit-itinerary-form {
+  padding: 16px 0;
+}
+
+.edit-itinerary-form .form-item {
+  margin-bottom: 16px;
+}
+
+.edit-itinerary-form .form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.edit-itinerary-form .form-row .form-item {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.edit-itinerary-form .form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  margin-top: 8px;
+  transition: border-color 0.3s;
+}
+
+.edit-itinerary-form .form-input:focus {
+  border-color: #1890ff;
+  outline: none;
+}
+
+.edit-itinerary-form .form-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  margin-top: 8px;
+  resize: vertical;
+  transition: border-color 0.3s;
+}
+
+.edit-itinerary-form .form-textarea:focus {
+  border-color: #1890ff;
+  outline: none;
+}
+
+/* 分享选项样式 */
+.share-options {
+  padding: 16px 0;
+}
+
+.share-options .ant-btn {
+  height: 48px;
+  font-size: 16px;
+}
+
+/* 更多操作下拉菜单样式 */
+.itinerary-list-card .ant-dropdown-menu {
+  border-radius: 8px;
+}
+
+.itinerary-list-card .ant-dropdown-menu-item {
+  padding: 8px 16px;
+}
+
+/* 响应式调整 */
+@media (max-width: 576px) {
+  .edit-itinerary-form .form-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .weather-preview-modal .ant-modal {
+    max-width: 95vw;
   }
 }

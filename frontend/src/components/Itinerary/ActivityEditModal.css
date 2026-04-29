@@ -1,0 +1,47 @@
+/* 活动编辑弹窗样式 */
+.activity-edit-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.activity-edit-modal .ant-form-item-label > label {
+  font-weight: 500;
+}
+
+.activity-edit-modal .ant-input-affix-wrapper {
+  border-radius: 6px;
+}
+
+.activity-edit-modal .ant-select-selector {
+  border-radius: 6px !important;
+}
+
+.activity-edit-modal .ant-picker {
+  border-radius: 6px;
+}
+
+.activity-edit-modal .ant-input-number {
+  border-radius: 6px;
+}
+
+.activity-edit-modal .ant-input-number-input {
+  text-align: center;
+}
+
+/* 时间选择器组 */
+.activity-edit-modal .ant-input-group-compact {
+  display: flex;
+  align-items: center;
+}
+
+.activity-edit-modal .ant-picker {
+  flex: 1;
+}
+
+/* 文本域 */
+.activity-edit-modal .ant-input {
+  border-radius: 6px;
+}
+
+.activity-edit-modal textarea.ant-input {
+  border-radius: 6px;
+}

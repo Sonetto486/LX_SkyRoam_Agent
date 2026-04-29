@@ -2,6 +2,9 @@ import { message } from 'antd';
 // 简单的JWT Token存储与携带工具
 export const TOKEN_KEY = 'auth_token';
 
+// 🔥 新增：后端基础地址（固定8000端口，解决404核心）
+const API_BASE_URL = 'http://127.0.0.1:8001/api/v1';
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -25,9 +28,19 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
   }
+
+  // 🔥 核心修复：自动拼接后端URL，请求永远不会发错端口
+  let fullUrl: string;
+  if (typeof input === 'string' && !input.startsWith('http')) {
+    fullUrl = API_BASE_URL + input;
+  } else {
+    fullUrl = input.toString();
+  }
+
   let response: Response;
   try {
-    response = await fetch(input, { ...init, headers });
+    // 🔥 使用拼接后的完整URL请求
+    response = await fetch(fullUrl, { ...init, headers });
   } catch (e: any) {
     try {
       const GUARD_KEY = 'network_error_notice_guard';

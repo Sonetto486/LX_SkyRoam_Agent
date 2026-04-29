@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, Button, Upload, Input, Typography, message, Tabs, Checkbox, Tag } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import { UploadOutlined, LinkOutlined, HeartOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
 import './SmartImportPage.css';
@@ -26,6 +27,7 @@ const STORAGE_KEY_PLAN = 'smart_import_plan';
 const STORAGE_KEY_CHECKED = 'smart_import_checked';
 
 const SmartImportPage: React.FC = () => {
+  const navigate = useNavigate();
   const [textInput, setTextInput] = useState('');
   const [linkInput, setLinkInput] = useState('');
   const [fileList, setFileList] = useState<any[]>([]);
@@ -123,7 +125,7 @@ const SmartImportPage: React.FC = () => {
   const fetchImportData = async (payload: any, setLoading: (state: boolean) => void) => {
     setLoading(true);
     try {
-      const response = await authFetch('http://localhost:8001/api/v1/smart-import/import', {
+      const response = await authFetch(`${process.env.REACT_APP_API_BASE_URL}/smart-import/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -201,61 +203,64 @@ const SmartImportPage: React.FC = () => {
   };
 
   // 最终创建行程的提交操作
-  const handleCreateNewItinerary = async () => {
-    const finalSelectedLocations = getSelectedLocationObjects();
-    if (finalSelectedLocations.length === 0) {
-      message.warning('您必须至少选择一个地点才能生成行程');
-      return;
-    }
-    
-    // 获取目的地信息（从第一个地点提取）
-    const firstLocation = finalSelectedLocations[0];
-    const destination = firstLocation.address || '未知目的地';
-    
-    // 生成行程标题
-    const dayCount = uniqueDays;
-    const title = `${destination} ${dayCount}天旅行计划`;
-    
-    // 构建请求数据
-    const planData = {
-      title,
-      description: `智能导入的${destination}旅行计划，包含${finalSelectedLocations.length}个地点`,
-      destination,
-      departure: '',
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: new Date(Date.now() + dayCount * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      duration_days: dayCount,
-      preferences: {
-        parsed_locations: finalSelectedLocations,
-      },
-    };
-    
-    try {
-      const response = await authFetch('http://localhost:8001/api/v1/travel-plans/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(planData),
-      });
-      
-      if (!response.ok) throw new Error('创建行程失败');
-      const data = await response.json();
-      
-      message.success(`✅ 成功创建新行程！行程ID: ${data.id}`);
-      
-      // 创建成功后自动清除本地保存的数据
-      localStorage.removeItem(STORAGE_KEY_PLAN);
-      localStorage.removeItem(STORAGE_KEY_CHECKED);
-      
-      // 跳转到行程详情页或我的行程列表
-      setTimeout(() => {
-        window.location.href = `/plans/${data.id}`;
-      }, 1500);
-      
-    } catch (error) {
-      message.error('创建行程失败，请重试');
-      console.error('Error creating itinerary:', error);
-    }
+ // 最终创建行程的提交操作
+// ✅ 正确版本：和后端接口完全匹配，路径/方法/逻辑全部修复
+const handleCreateNewItinerary = async () => {
+  const finalSelectedLocations = getSelectedLocationObjects();
+  if (finalSelectedLocations.length === 0) {
+    message.warning('您必须至少选择一个地点才能生成行程');
+    return;
+  }
+  
+  // 获取目的地信息（从第一个地点提取）
+  const firstLocation = finalSelectedLocations[0];
+  const destination = firstLocation.address || '未知目的地';
+  
+  // 生成行程标题
+  const dayCount = uniqueDays;
+  const title = `${destination} ${dayCount}天旅行计划`;
+  
+  // 构建请求数据（和后端接口要求的格式完全一致）
+  const planData = {
+    title,
+    description: `智能导入的${destination}旅行计划，包含${finalSelectedLocations.length}个地点`,
+    destination,
+    departure: '',
+    start_date: new Date().toISOString().split('T')[0],
+    end_date: new Date(Date.now() + dayCount * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    duration_days: dayCount,
+    preferences: {
+      parsed_locations: finalSelectedLocations,
+    },
   };
+  
+  try {
+    // ✅ 修复1：用 authFetch 相对路径，自动匹配后端端口和接口
+    const response = await authFetch('/travel-plans/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(planData),
+    });
+    
+    if (!response.ok) throw new Error('创建行程失败');
+    const data = await response.json();
+    
+    message.success(`✅ 成功创建新行程！行程ID: ${data.id}`);
+    
+    // 创建成功后自动清除本地保存的数据
+    localStorage.removeItem(STORAGE_KEY_PLAN);
+    localStorage.removeItem(STORAGE_KEY_CHECKED);
+    
+    // ✅ 修复2：跳转到正确的路由 /itineraries/ID
+    setTimeout(() => {
+      window.location.href = `/itineraries/${data.id}`;
+    }, 1500);
+    
+  } catch (error) {
+    console.error('创建行程失败:', error);
+    message.error('保存行程失败，请检查后端接口');
+  }
+};
 
   // 渲染单个地点卡片
   const LocationCard = ({ location }: { location: ParsedLocation }) => {
