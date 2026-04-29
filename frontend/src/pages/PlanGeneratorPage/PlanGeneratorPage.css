@@ -11,7 +11,7 @@
   font-size: 28px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #1a1a1a;
+  color: #ffffff;
 }
 
 .page-header p {
@@ -34,12 +34,27 @@
 .plan-summary {
   margin-bottom: 24px;
   padding: 16px;
-  background-color: #f5f5f5;
+  background-color: #1890ff;
   border-radius: 8px;
+  color: #ffffff;
+}
+
+.plan-summary span {
+  color: #ffffff;
 }
 
 .itinerary-details {
   margin-top: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.map-section {
+  height: 500px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f5f5f5;
 }
 
 .day-section {
@@ -50,7 +65,7 @@
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 16px;
-  color: #1a1a1a;
+  color: #1890ff;
   border-bottom: 2px solid #1890ff;
   padding-bottom: 8px;
 }
@@ -58,6 +73,7 @@
 .activity-card {
   margin-bottom: 12px;
   border-left: 4px solid #1890ff;
+  background-color: #ffffff;
 }
 
 .activity-time {
@@ -71,19 +87,24 @@
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 4px;
-  color: #1a1a1a;
+  color: #1890ff;
 }
 
 .activity-location {
   font-size: 14px;
-  color: #666;
+  color: #52c41a;
   margin-bottom: 8px;
 }
 
 .activity-description {
   font-size: 14px;
-  color: #888;
+  color: #faad14;
   line-height: 1.5;
+}
+
+/* 行程安排分隔线文字颜色 */
+.ant-divider-inner-text {
+  color: #1890ff !important;
 }
 
 .plan-actions {
@@ -129,6 +150,26 @@
 /* 表单样式优化 */
 .ant-form-item-label {
   font-weight: 500;
+}
+
+/* 输入框样式统一 - 移除焦点后的白色高亮 */
+.plan-generator-page .ant-input-affix-wrapper,
+.plan-generator-page .ant-input-affix-wrapper-focused,
+.plan-generator-page .ant-input,
+.plan-generator-page .ant-input:focus,
+.plan-generator-page .ant-input-focused {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Select 前缀图标颜色 - 统一为灰色 */
+.plan-generator-page .ant-select-prefix {
+  color: rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Input 前缀图标颜色 */
+.plan-generator-page .ant-input-prefix {
+  color: rgba(0, 0, 0, 0.25);
 }
 
 .ant-btn-primary {

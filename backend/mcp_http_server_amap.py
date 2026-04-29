@@ -16,9 +16,14 @@ from loguru import logger
 import os
 from pathlib import Path
 
-# 获取项目根目录（backend 的父目录）
-project_root = Path(__file__).parent.parent
-env_path = project_root / '.env'
+# 获取 backend 目录（.env 文件所在位置）
+backend_dir = Path(__file__).parent
+env_path = backend_dir / '.env'
+
+# 如果 backend 目录没有，尝试项目根目录
+if not env_path.exists():
+    project_root = backend_dir.parent
+    env_path = project_root / '.env'
 
 # 加载 .env 文件
 if env_path.exists():

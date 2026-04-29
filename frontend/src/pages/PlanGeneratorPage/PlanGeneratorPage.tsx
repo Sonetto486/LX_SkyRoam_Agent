@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Spin } from 'antd';
+import React, { useState, useMemo } from 'react';
+import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Row, Col } from 'antd';
 import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import './PlanGeneratorPage.css';
+import MapComponent from '../../components/MapComponent/MapComponent';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -14,14 +16,17 @@ const PlanGeneratorPage: React.FC = () => {
   const handleGenerate = async (values: any) => {
     setLoading(true);
     try {
+      // 根据日期范围自动计算天数
+      const durationDays = values.dateRange[1].diff(values.dateRange[0], 'days') + 1;
+
       // 模拟API调用
       setTimeout(() => {
         // 模拟生成的旅行计划
         const plan = {
           id: 'plan-123',
-          title: `${values.destination} ${values.days}天旅行计划`,
+          title: `${values.destination} ${durationDays}天旅行计划`,
           destination: values.destination,
-          days: values.days,
+          days: durationDays,
           people: values.people,
           budget: values.budget,
           startDate: values.dateRange[0].format('YYYY-MM-DD'),
@@ -104,19 +109,14 @@ const PlanGeneratorPage: React.FC = () => {
             label="旅行日期"
             rules={[{ required: true, message: '请选择旅行日期' }]}
           >
-            <RangePicker style={{ width: '100%' }} prefix={<CalendarOutlined />} />
-          </Form.Item>
-
-          <Form.Item
-            name="days"
-            label="旅行天数"
-            rules={[{ required: true, message: '请选择旅行天数' }]}
-          >
-            <Select placeholder="选择旅行天数" style={{ width: '100%' }}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(day => (
-                <Option key={day} value={day}>{day}天</Option>
-              ))}
-            </Select>
+            <RangePicker
+              style={{ width: '100%' }}
+              prefix={<CalendarOutlined />}
+              disabledDate={(current) => {
+                // 禁止选择今天之前的日期
+                return current && current < dayjs().startOf('day');
+              }}
+            />
           </Form.Item>
 
           <Form.Item
@@ -125,9 +125,10 @@ const PlanGeneratorPage: React.FC = () => {
             rules={[{ required: true, message: '请选择出行人数' }]}
           >
             <Select placeholder="选择出行人数" style={{ width: '100%' }} prefix={<UserOutlined />}>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(person => (
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(person => (
                 <Option key={person} value={person}>{person}人</Option>
               ))}
+              <Option key="10+" value="10+">十人及以上</Option>
             </Select>
           </Form.Item>
 
@@ -189,27 +190,40 @@ const PlanGeneratorPage: React.FC = () => {
 
           <Divider>行程安排</Divider>
 
-          <div className="itinerary-details">
-            {generatedPlan.itinerary.map((day: any) => (
-              <div key={day.day} className="day-section">
-                <h3>Day {day.day}</h3>
-                {day.activities.map((activity: any, index: number) => (
-                  <Card key={index} className="activity-card">
-                    <div className="activity-time">{activity.time}</div>
-                    <div className="activity-content">
-                      <h4>{activity.activity}</h4>
-                      <p className="activity-location">{activity.location}</p>
-                      <p className="activity-description">{activity.description}</p>
-                    </div>
-                  </Card>
+          <Row gutter={16}>
+            <Col span={10}>
+              <div className="itinerary-details">
+                {generatedPlan.itinerary.map((day: any) => (
+                  <div key={day.day} className="day-section">
+                    <h3>Day {day.day}</h3>
+                    {day.activities.map((activity: any, index: number) => (
+                      <Card key={index} className="activity-card">
+                        <div className="activity-time">{activity.time}</div>
+                        <div className="activity-content">
+                          <h4>{activity.activity}</h4>
+                          <p className="activity-location">{activity.location}</p>
+                          <p className="activity-description">{activity.description}</p>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
                 ))}
               </div>
-            ))}
-          </div>
+            </Col>
+            <Col span={14}>
+              <div className="map-section">
+                <MapComponent
+                  markers={[]}
+                  center={{ lat: 31.2304, lng: 121.4737 }}
+                  zoom={12}
+                />
+              </div>
+            </Col>
+          </Row>
 
           <div className="plan-actions">
-            <Button 
-              type="primary" 
+            <Button
+              type="primary"
               icon={<SaveOutlined />}
               onClick={handleSavePlan}
             >
