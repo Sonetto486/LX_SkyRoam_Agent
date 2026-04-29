@@ -284,47 +284,22 @@ const ItineraryWorkspace: React.FC = () => {
   };
 
   // 获取每日活动数据
- // 获取每日活动数据
 const getDayActivities = (): DayActivity[] => {
   if (!plan) return [];
 
-  // 🔥 新增：兼容AI生成的攻略数据（唯一改动，不影响原有功能）
-  // 🔥 兼容AI生成的攻略数据（不影响任何原有功能）
-// 🔥 兼容AI生成的攻略数据（解决标题+地址问题，不影响任何原有功能）
-if (plan.preferences?.parsed_locations) {
-  const locationMap: Record<string, TravelPlanItem[]> = {};
-  plan.preferences.parsed_locations.forEach((loc: any) => {
-    const dayKey = `day_${loc.day || 1}`;
-    if (!locationMap[dayKey]) locationMap[dayKey] = [];
+  // 优先使用 items 数据（用户手动添加或从生成内容同步的活动）
+  if (plan.items && plan.items.length > 0) {
+    const dayMap = new Map<string, TravelPlanItem[]>();
+    plan.items.forEach(item => {
+      const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
+      if (!dayMap.has(date)) {
+        dayMap.set(date, []);
+      }
+      dayMap.get(date)!.push(item);
+    });
+    return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+  }
 
-    // 👇 核心修复：处理标题和地址
-    // 1. 标题：强制使用 loc.name，兜底为"未命名景点"
-    const activityTitle = loc.name || "未命名景点";
-    // 2. 地址：如果是"未知"，就用景点名替代，兜底为"未知地址"
-    const activityAddress = (loc.address && loc.address !== "未知") 
-      ? loc.address 
-      : activityTitle || "未知地址";
-
-    locationMap[dayKey].push({
-      id: Number(loc.id) || Date.now(),
-      title: activityTitle, // 明确赋值为景点名
-      address: activityAddress, // 用处理后的地址
-      location: activityAddress, // 和address保持一致
-      item_type: loc.type || "景点",
-      coordinates: loc.position || loc.coordinates || { lat: 0, lng: 0 },
-      start_time: plan.start_date,
-    } as TravelPlanItem);
-  });
-
-  const aiDays = Object.values(locationMap).map((activities, i) => ({
-    date: getDateByOffset(plan.start_date, i),
-    activities
-  }));
-
-  if (aiDays.length) return aiDays;
-}
-
-  // 👇 下面是你原有的所有代码，完全不动！
   // 如果有 selected_plan，从中提取每日行程
   if (plan.selected_plan?.daily_itineraries) {
     return plan.selected_plan.daily_itineraries.map((day: any, index: number) => ({
@@ -364,17 +339,35 @@ if (plan.preferences?.parsed_locations) {
     }
   }
 
-  // 如果有 items，按日期分组
-  if (plan.items && plan.items.length > 0) {
-    const dayMap = new Map<string, TravelPlanItem[]>();
-    plan.items.forEach(item => {
-      const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
-      if (!dayMap.has(date)) {
-        dayMap.set(date, []);
-      }
-      dayMap.get(date)!.push(item);
+  // 兼容智能导入的 parsed_locations
+  if (plan.preferences?.parsed_locations) {
+    const locationMap: Record<string, TravelPlanItem[]> = {};
+    plan.preferences.parsed_locations.forEach((loc: any) => {
+      const dayKey = `day_${loc.day || 1}`;
+      if (!locationMap[dayKey]) locationMap[dayKey] = [];
+
+      const activityTitle = loc.name || "未命名景点";
+      const activityAddress = (loc.address && loc.address !== "未知")
+        ? loc.address
+        : activityTitle || "未知地址";
+
+      locationMap[dayKey].push({
+        id: Number(loc.id) || Date.now(),
+        title: activityTitle,
+        address: activityAddress,
+        location: activityAddress,
+        item_type: loc.type || "景点",
+        coordinates: loc.position || loc.coordinates || { lat: 0, lng: 0 },
+        start_time: plan.start_date,
+      } as TravelPlanItem);
     });
-    return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+
+    const aiDays = Object.values(locationMap).map((activities, i) => ({
+      date: getDateByOffset(plan.start_date, i),
+      activities
+    }));
+
+    if (aiDays.length) return aiDays;
   }
 
   // 默认返回空数组
@@ -885,6 +878,8 @@ if (plan.preferences?.parsed_locations) {
         visible={activityModalVisible}
         activity={editingActivity}
         date={dayActivities[activeDay]?.date}
+        startDate={plan?.start_date}
+        endDate={plan?.end_date}
         onCancel={() => {
           setActivityModalVisible(false);
           setEditingActivity(null);

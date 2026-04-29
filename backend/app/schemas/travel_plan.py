@@ -112,7 +112,7 @@ class TravelPlanResponse(TravelPlanBase):
         
     @classmethod
     def from_orm(cls, obj):
-        """自定义ORM转换，避免懒加载问题"""
+        """自定义ORM转换"""
         data = {
             'id': obj.id,
             'title': obj.title,
@@ -133,7 +133,7 @@ class TravelPlanResponse(TravelPlanBase):
             'selected_plan': obj.selected_plan,
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
-            'items': [],  # 初始化为空列表，避免访问关系属性
+            'items': [],  # items 由 API 层单独处理
             'is_public': getattr(obj, 'is_public', False),
             'public_at': getattr(obj, 'public_at', None),
         }
@@ -190,3 +190,81 @@ class TravelPlanRatingSummary(BaseModel):
     """评分汇总响应"""
     average: float
     count: int
+
+
+# =============== 行程项目相关模式 ===============
+class TravelPlanItemBase(BaseModel):
+    """行程项目基础模式"""
+    title: str = Field(..., description="项目标题")
+    description: Optional[str] = Field(None, description="项目描述")
+    item_type: str = Field(..., description="项目类型: attraction, restaurant, hotel, transport, shopping, entertainment, other")
+    start_time: Optional[datetime] = Field(None, description="开始时间")
+    end_time: Optional[datetime] = Field(None, description="结束时间")
+    location: Optional[str] = Field(None, description="地点名称")
+    address: Optional[str] = Field(None, description="详细地址")
+    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标 {lat, lng}")
+    details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
+    images: Optional[List[str]] = Field(None, description="图片URL列表")
+
+    @field_validator('start_time', 'end_time', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """解析日期时间字符串"""
+        if v is None or isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                # 尝试解析 ISO 格式
+                if 'T' in v:
+                    dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                    return dt.replace(tzinfo=None)
+                return datetime.fromisoformat(v)
+            except ValueError:
+                pass
+        return v
+
+
+class TravelPlanItemCreate(TravelPlanItemBase):
+    """创建行程项目请求"""
+    pass
+
+
+class TravelPlanItemUpdate(BaseModel):
+    """更新行程项目请求"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    item_type: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    location: Optional[str] = None
+    address: Optional[str] = None
+    coordinates: Optional[Dict[str, float]] = None
+    details: Optional[Dict[str, Any]] = None
+    images: Optional[List[str]] = None
+
+    @field_validator('start_time', 'end_time', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """解析日期时间字符串"""
+        if v is None or isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                if 'T' in v:
+                    dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                    return dt.replace(tzinfo=None)
+                return datetime.fromisoformat(v)
+            except ValueError:
+                pass
+        return v
+
+
+class TravelPlanItemResponse(TravelPlanItemBase):
+    """行程项目响应"""
+    id: int
+    travel_plan_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -341,25 +341,79 @@ class AgentService:
             return obj
 
     async def _save_generated_plans(
-        self, 
-        plan_id: int, 
+        self,
+        plan_id: int,
         plans: List[Dict[str, Any]]
     ):
-        """保存生成的方案"""
-        from sqlalchemy import update
-        from app.models.travel_plan import TravelPlan
+        """保存生成的方案，并同步到 items 表"""
+        from sqlalchemy import update, delete
+        from app.models.travel_plan import TravelPlan, TravelPlanItem
         from app.core.database import async_session
-        
+        from datetime import datetime, timedelta
+
         serialized_plans = self._serialize_for_json(plans)
-        
+
         async with async_session() as session:
-            # 【修复】消除 Pyright 报警
             session: AsyncSession
+
+            # 1. 保存 JSON 到 generated_plans 字段
             await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
                 .values(generated_plans=serialized_plans)
             )
+
+            # 2. 删除旧的 items 记录
+            await session.execute(
+                delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
+            )
+
+            # 3. 获取计划信息以确定日期
+            plan = await self._get_travel_plan(plan_id)
+            if not plan:
+                await session.commit()
+                return
+
+            start_date = plan.start_date
+            if hasattr(start_date, 'date'):
+                start_date = start_date.date() if callable(getattr(start_date, 'date', None)) else start_date
+
+            # 4. 将生成的方案同步到 items 表
+            if plans and len(plans) > 0:
+                first_plan = plans[0]
+                daily_itineraries = first_plan.get('daily_itineraries', [])
+
+                for day_index, day_data in enumerate(daily_itineraries):
+                    # 计算当天日期
+                    if isinstance(start_date, datetime):
+                        day_date = start_date + timedelta(days=day_index)
+                    else:
+                        day_date = datetime.combine(
+                            start_date + timedelta(days=day_index),
+                            datetime.min.time()
+                        )
+
+                    attractions = day_data.get('attractions', [])
+                    for attr_index, attraction in enumerate(attractions):
+                        # 提取景点信息
+                        name = attraction.get('name', '') if isinstance(attraction, dict) else str(attraction)
+                        if not name:
+                            continue
+
+                        item = TravelPlanItem(
+                            travel_plan_id=plan_id,
+                            title=name,
+                            description=attraction.get('description', '') if isinstance(attraction, dict) else '',
+                            item_type='attraction',
+                            start_time=day_date,
+                            location=attraction.get('location', '') if isinstance(attraction, dict) else '',
+                            address=attraction.get('address', '') if isinstance(attraction, dict) else '',
+                            coordinates=attraction.get('coordinates') if isinstance(attraction, dict) else None,
+                            details=attraction if isinstance(attraction, dict) else {'name': name},
+                            images=attraction.get('images') if isinstance(attraction, dict) else None,
+                        )
+                        session.add(item)
+
             await session.commit()
             
     

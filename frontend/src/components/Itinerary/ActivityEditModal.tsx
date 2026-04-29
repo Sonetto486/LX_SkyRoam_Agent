@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Select, DatePicker, InputNumber, TimePicker, message } from 'antd';
-import { EnvironmentOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Select, DatePicker, TimePicker, message } from 'antd';
+import { EnvironmentOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import './ActivityEditModal.css';
 
@@ -25,7 +25,6 @@ interface Activity {
   item_type: string;
   start_time?: string;
   end_time?: string;
-  duration_hours?: number;
   location?: string;
   address?: string;
   coordinates?: { lat: number; lng: number };
@@ -37,6 +36,8 @@ interface ActivityEditModalProps {
   visible: boolean;
   activity?: Activity | null;
   date?: string;
+  startDate?: string;
+  endDate?: string;
   onCancel: () => void;
   onOk: (activity: Activity) => Promise<void> | void;
 }
@@ -45,6 +46,8 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
   visible,
   activity,
   date,
+  startDate,
+  endDate,
   onCancel,
   onOk,
 }) => {
@@ -55,28 +58,61 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
   useEffect(() => {
     if (visible) {
       if (activity) {
+        // 解析现有的 start_time 获取日期和时间
+        let activityDate = date || startDate;
+        let startTime = undefined;
+        let endTime = undefined;
+
+        if (activity.start_time) {
+          const startDateTime = dayjs(activity.start_time);
+          activityDate = startDateTime.format('YYYY-MM-DD');
+          startTime = startDateTime;
+        }
+        if (activity.end_time) {
+          endTime = dayjs(activity.end_time);
+        }
+
         form.setFieldsValue({
           title: activity.title,
           description: activity.description,
           item_type: activity.item_type || 'attraction',
           location: activity.location,
           address: activity.address,
-          duration_hours: activity.duration_hours,
-          start_time: activity.start_time ? dayjs(activity.start_time, 'HH:mm') : undefined,
-          end_time: activity.end_time ? dayjs(activity.end_time, 'HH:mm') : undefined,
+          date: activityDate ? dayjs(activityDate) : undefined,
+          start_time: startTime,
+          end_time: endTime,
         });
       } else {
         form.resetFields();
-        form.setFieldsValue({ item_type: 'attraction' });
+        form.setFieldsValue({
+          item_type: 'attraction',
+          date: date ? dayjs(date) : (startDate ? dayjs(startDate) : undefined),
+        });
       }
     }
-  }, [visible, activity, form]);
+  }, [visible, activity, form, date, startDate]);
 
   // 提交表单
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
+
+      // 合并日期和时间
+      let start_time = undefined;
+      let end_time = undefined;
+
+      if (values.date) {
+        const dateStr = values.date.format('YYYY-MM-DD');
+        if (values.start_time) {
+          start_time = `${dateStr}T${values.start_time.format('HH:mm')}:00`;
+        } else {
+          start_time = `${dateStr}T00:00:00`;
+        }
+        if (values.end_time) {
+          end_time = `${dateStr}T${values.end_time.format('HH:mm')}:00`;
+        }
+      }
 
       const activityData: Activity = {
         id: activity?.id,
@@ -85,9 +121,8 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
         item_type: values.item_type,
         location: values.location,
         address: values.address,
-        duration_hours: values.duration_hours,
-        start_time: values.start_time ? values.start_time.format('HH:mm') : undefined,
-        end_time: values.end_time ? values.end_time.format('HH:mm') : undefined,
+        start_time,
+        end_time,
       };
 
       await onOk(activityData);
@@ -101,6 +136,16 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  // 禁用不在行程日期范围内的日期
+  const disabledDate = (current: dayjs.Dayjs) => {
+    if (!current) return false;
+    const start = startDate ? dayjs(startDate).startOf('day') : null;
+    const end = endDate ? dayjs(endDate).endOf('day') : null;
+    if (start && current < start) return true;
+    if (end && current > end) return true;
+    return false;
   };
 
   return (
@@ -156,7 +201,21 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
           <Input placeholder="请输入详细地址" />
         </Form.Item>
 
-        <Form.Item label="活动时间">
+        <Form.Item
+          name="date"
+          label="活动日期"
+          rules={[{ required: true, message: '请选择活动日期' }]}
+        >
+          <DatePicker
+            style={{ width: '100%' }}
+            placeholder="请选择活动日期"
+            prefix={<CalendarOutlined />}
+            disabledDate={disabledDate}
+            format="YYYY-MM-DD"
+          />
+        </Form.Item>
+
+        <Form.Item label="活动时间（可选）">
           <Input.Group compact>
             <Form.Item name="start_time" noStyle>
               <TimePicker
@@ -174,16 +233,6 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
               />
             </Form.Item>
           </Input.Group>
-        </Form.Item>
-
-        <Form.Item name="duration_hours" label="预计时长（小时）">
-          <InputNumber
-            min={0.5}
-            max={24}
-            step={0.5}
-            placeholder="预计时长"
-            style={{ width: '100%' }}
-          />
         </Form.Item>
       </Form>
     </Modal>

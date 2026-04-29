@@ -9,12 +9,15 @@ from datetime import datetime, date
 
 from app.core.database import get_async_db
 from app.schemas.travel_plan import (
-    TravelPlanCreate, 
+    TravelPlanCreate,
     TravelPlanCreateRequest,
-    TravelPlanUpdate, 
+    TravelPlanUpdate,
     TravelPlanResponse,
     TravelPlanGenerateRequest,
-    TravelPlanBatchDeleteRequest
+    TravelPlanBatchDeleteRequest,
+    TravelPlanItemCreate,
+    TravelPlanItemUpdate,
+    TravelPlanItemResponse,
 )
 from app.services.travel_plan_service import TravelPlanService
 from app.services.agent_service import AgentService
@@ -193,7 +196,53 @@ async def get_travel_plan(
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
         raise HTTPException(status_code=403, detail="无权访问该计划")
-    plan_data = TravelPlanResponse.from_orm(plan).dict()
+
+    # 手动构建响应数据，避免懒加载问题
+    plan_data = {
+        'id': plan.id,
+        'title': plan.title,
+        'description': plan.description,
+        'departure': plan.departure,
+        'destination': plan.destination,
+        'start_date': plan.start_date,
+        'end_date': plan.end_date,
+        'duration_days': plan.duration_days,
+        'budget': plan.budget,
+        'transportation': plan.transportation,
+        'preferences': plan.preferences,
+        'requirements': plan.requirements,
+        'user_id': plan.user_id,
+        'status': plan.status,
+        'score': plan.score,
+        'generated_plans': plan.generated_plans,
+        'selected_plan': plan.selected_plan,
+        'created_at': plan.created_at,
+        'updated_at': plan.updated_at,
+        'is_public': plan.is_public,
+        'public_at': plan.public_at,
+        'items': [],
+    }
+
+    # 处理 items（已通过 selectinload 预加载）
+    if plan.items:
+        for item in plan.items:
+            plan_data['items'].append({
+                'id': item.id,
+                'title': item.title,
+                'description': item.description,
+                'item_type': item.item_type,
+                'start_time': item.start_time,
+                'end_time': item.end_time,
+                'location': item.location,
+                'address': item.address,
+                'coordinates': item.coordinates,
+                'details': item.details,
+                'images': item.images,
+                'travel_plan_id': item.travel_plan_id,
+                'created_at': item.created_at,
+                'updated_at': item.updated_at,
+            })
+
     plan_data = await _enrich_plan_with_attraction_details(plan_data, db)
     return plan_data
 
@@ -806,3 +855,103 @@ async def export_travel_plan_post(
 ):
     """导出旅行计划（POST，同步返回，与GET一致）"""
     return await export_travel_plan(plan_id=plan_id, format=format, db=db, current_user=current_user)
+
+
+# =============== 行程项目相关端点 ===============
+@router.get("/{plan_id}/items", response_model=List[TravelPlanItemResponse])
+async def get_plan_items(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取行程的所有项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+    return await service.get_items(plan_id)
+
+
+@router.post("/{plan_id}/items", response_model=TravelPlanItemResponse)
+async def create_plan_item(
+    plan_id: int,
+    item_data: TravelPlanItemCreate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """创建行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    return await service.create_item(plan_id, item_data)
+
+
+@router.put("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
+async def update_plan_item(
+    plan_id: int,
+    item_id: int,
+    item_data: TravelPlanItemUpdate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """更新行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    item = await service.update_item(plan_id, item_id, item_data)
+    if not item:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+    return item
+
+
+@router.delete("/{plan_id}/items/{item_id}")
+async def delete_plan_item(
+    plan_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    success = await service.delete_item(plan_id, item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+    return {"message": "行程项目已删除"}
+
+
+@router.put("/{plan_id}/items/reorder")
+async def reorder_plan_items(
+    plan_id: int,
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重排序行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+
+    item_ids = request_data.get("item_ids", [])
+    if not isinstance(item_ids, list):
+        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
+
+    success = await service.reorder_items(plan_id, item_ids)
+    if not success:
+        raise HTTPException(status_code=400, detail="重排序失败")
+    return {"message": "排序已更新"}
