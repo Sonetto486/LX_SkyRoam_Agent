@@ -329,7 +329,16 @@ class TravelPlanService:
         return plan
     
     async def delete_travel_plan(self, plan_id: int) -> bool:
-        """删除旅行计划"""
+        """删除旅行计划（先删除关联的行程项目和评分记录）"""
+        # 先删除关联的评分记录
+        await self.db.execute(
+            delete(TravelPlanRating).where(TravelPlanRating.travel_plan_id == plan_id)
+        )
+        # 再删除关联的行程项目
+        await self.db.execute(
+            delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
+        )
+        # 最后删除旅行计划
         result = await self.db.execute(
             delete(TravelPlan).where(TravelPlan.id == plan_id)
         )
@@ -357,9 +366,18 @@ class TravelPlanService:
         return True
 
     async def delete_travel_plans(self, ids: List[int]) -> int:
-        """批量删除旅行计划，返回删除条数"""
+        """批量删除旅行计划，返回删除条数（先删除关联的行程项目和评分记录）"""
         if not ids:
             return 0
+        # 先删除关联的评分记录
+        await self.db.execute(
+            delete(TravelPlanRating).where(TravelPlanRating.travel_plan_id.in_(ids))
+        )
+        # 再删除关联的行程项目
+        await self.db.execute(
+            delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id.in_(ids))
+        )
+        # 最后删除旅行计划
         result = await self.db.execute(
             delete(TravelPlan).where(TravelPlan.id.in_(ids))
         )
