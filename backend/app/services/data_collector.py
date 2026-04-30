@@ -11,7 +11,7 @@ import httpx
 
 from app.core.config import settings
 from app.tools.mcp_client import MCPClient
-from app.tools.amap_mcp_client import AmapMCPClient
+from app.tools.amap_rest_client import amap_rest_client
 from app.tools.city_resolver import CityResolver
 from app.tools.unified_map_service import UnifiedMapService
 from app.tools.baidu_maps_integration import (
@@ -27,10 +27,10 @@ from app.core.redis import get_cache, set_cache, cache_key
 
 class DataCollector:
     """数据收集器"""
-    
+
     def __init__(self):
         self.mcp_client = MCPClient()
-        self.amap_client = AmapMCPClient()
+        # 使用全局的高德地图 REST 客户端（直接调用 REST API，无需 MCP 服务器）
         self.city_resolver = CityResolver()
         # self.web_scraper = WebScraper()  # 已移除爬虫功能
         self.xhs_client = XHSAPIClient(settings.XHS_API_BASE)  # 小红书API客户端
@@ -552,7 +552,7 @@ class DataCollector:
             if weather_source == "amap":
                 # 使用高德地图天气API
                 try:
-                    weather_data = await self.amap_client.get_weather(
+                    weather_data = await amap_rest_client.get_weather(
                         city=destination,
                         extensions="all"  # 获取预报天气
                     )
@@ -590,7 +590,7 @@ class DataCollector:
             if not weather_data and weather_source != "amap":
                 try:
                     logger.info(f"主要天气数据源失败，尝试高德地图备用数据源: {destination}")
-                    weather_data = await self.amap_client.get_weather(
+                    weather_data = await amap_rest_client.get_weather(
                         city=destination,
                         extensions="all"
                     )
@@ -1187,7 +1187,7 @@ class DataCollector:
             # 根据环境变量选择地图API
             if self.map_provider == "amap":
                 # 使用高德地图API获取实际距离
-                amap_routes = await self.amap_client.get_directions(
+                amap_routes = await amap_rest_client.get_directions(
                     origin=departure,
                     destination=destination,
                     mode="driving"
@@ -1511,7 +1511,7 @@ class DataCollector:
         except Exception:
             pass
         try:
-            await self.amap_client.close()
+            await amap_rest_client.close()
         except Exception:
             pass
         try:

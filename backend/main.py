@@ -27,11 +27,11 @@ async def lifespan(app: FastAPI):
     # 启动时初始化
     logger = setup_logging()
     logger.info("🚀 启动 LX SkyRoam Agent...")
-    
-    # 初始化数据库（智能检查表是否存在，不存在则创建）
+
+    # 初始化数据库（智能检查表和列是否存在，不存在则创建/添加）
     await init_db(use_alembic=False, create_tables_directly=True)
     logger.info("✅ 数据库初始化完成")
-    
+
     # 初始化Redis（非必需，失败时不会阻止应用启动）
     try:
         await init_redis()
@@ -39,13 +39,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Redis初始化失败: {e}")
         logger.warning("⚠️ 应用将在没有Redis的情况下运行，某些功能可能受限")
-    
+
     # 启动后台任务
     await start_background_tasks()
     logger.info("✅ 后台任务启动完成")
-    
+
     yield
-    
+
     # 关闭时清理
     logger.info("🛑 关闭 LX SkyRoam Agent...")
     logger.info("✅ 应用关闭完成")
@@ -106,6 +106,45 @@ async def health_check():
         "service": "LX SkyRoam Agent",
         "version": "1.0.0"
     }
+
+
+@app.get("/health/celery")
+async def celery_health_check():
+    """Celery Worker 健康检查"""
+    try:
+        from app.core.celery import celery_app
+
+        # 使用 Celery 的 control 来检查 workers
+        # ping 会向所有 workers 发送 ping 请求并等待响应
+        ping_result = celery_app.control.ping(timeout=5)
+
+        if ping_result and len(ping_result) > 0:
+            worker_names = []
+            for result in ping_result:
+                worker_names.extend(result.keys())
+
+            return {
+                "status": "healthy",
+                "workers": worker_names,
+                "worker_count": len(worker_names),
+                "message": f"检测到 {len(worker_names)} 个 Celery Worker 正在运行"
+            }
+        else:
+            return {
+                "status": "unhealthy",
+                "workers": [],
+                "worker_count": 0,
+                "message": "没有检测到运行中的 Celery Worker。请运行: celery -A app.core.celery worker --loglevel=info"
+            }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "error",
+            "workers": [],
+            "worker_count": 0,
+            "message": f"检查 Celery Worker 状态失败: {str(e)}"
+        }
 
 
 if __name__ == "__main__":

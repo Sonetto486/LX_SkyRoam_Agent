@@ -78,11 +78,17 @@ class AgentService:
             # 6. 方案评分和排序
             logger.info("开始方案评分和排序...")
             scored_plans = await self._score_plans(generated_plans, plan, preferences)
+
+            logger.info(f"评分后的方案数量: {len(scored_plans) if scored_plans else 0}")
+
             if not scored_plans:
+                logger.warning("评分后方案为空，尝试使用传统方式生成...")
                 fallback_plans = await self.plan_generator._generate_traditional_plans(processed_data, plan, preferences, raw_data)
                 if fallback_plans:
                     scored_plans = await self._score_plans(fallback_plans, plan, preferences)
+                    logger.info(f"传统方式生成的方案数量: {len(scored_plans) if scored_plans else 0}")
                 else:
+                    logger.error("传统方式生成也失败，无法生成方案")
                     await self._update_plan_status(plan_id, "failed")
                     try:
                         await self.data_collector.close()
@@ -91,15 +97,20 @@ class AgentService:
                     return False
 
             # 7. 保存结果
+            logger.info(f"准备保存 {len(scored_plans)} 个方案到数据库...")
             await self._save_generated_plans(plan_id, scored_plans)
+            logger.info("方案保存完成")
+
             try:
-                if scored_plans:
+                if scored_plans and len(scored_plans) > 0:
                     await self._set_selected_plan_default(plan_id, scored_plans[0])
-            except Exception:
-                pass
-            
+                    logger.info("默认方案设置完成")
+            except Exception as e:
+                logger.warning(f"设置默认方案失败: {e}")
+
             # 8. 更新状态为完成
             await self._update_plan_status(plan_id, "completed")
+            logger.info("状态已更新为 completed")
             
             logger.info(f"旅行方案生成完成，计划ID: {plan_id}")
             try:
@@ -351,26 +362,36 @@ class AgentService:
         from app.core.database import async_session
         from datetime import datetime, timedelta
 
+        logger.info(f"_save_generated_plans 开始，plan_id={plan_id}, plans数量={len(plans) if plans else 0}")
+
+        if not plans or len(plans) == 0:
+            logger.warning("plans 为空，跳过保存")
+            return
+
         serialized_plans = self._serialize_for_json(plans)
+        logger.info(f"序列化后的 plans 大小: {len(str(serialized_plans))} 字符")
 
         async with async_session() as session:
             session: AsyncSession
 
             # 1. 保存 JSON 到 generated_plans 字段
-            await session.execute(
+            result = await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
                 .values(generated_plans=serialized_plans)
             )
+            logger.info(f"更新 generated_plans 字段，影响行数: {result.rowcount}")
 
             # 2. 删除旧的 items 记录
-            await session.execute(
+            delete_result = await session.execute(
                 delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
             )
+            logger.info(f"删除旧的 items 记录，删除数量: {delete_result.rowcount}")
 
             # 3. 获取计划信息以确定日期
             plan = await self._get_travel_plan(plan_id)
             if not plan:
+                logger.warning(f"无法获取计划 {plan_id}，提交并返回")
                 await session.commit()
                 return
 
@@ -379,42 +400,49 @@ class AgentService:
                 start_date = start_date.date() if callable(getattr(start_date, 'date', None)) else start_date
 
             # 4. 将生成的方案同步到 items 表
-            if plans and len(plans) > 0:
-                first_plan = plans[0]
-                daily_itineraries = first_plan.get('daily_itineraries', [])
+            first_plan = plans[0]
+            daily_itineraries = first_plan.get('daily_itineraries', [])
+            logger.info(f"每日行程数量: {len(daily_itineraries)}")
 
-                for day_index, day_data in enumerate(daily_itineraries):
-                    # 计算当天日期
-                    if isinstance(start_date, datetime):
-                        day_date = start_date + timedelta(days=day_index)
-                    else:
-                        day_date = datetime.combine(
-                            start_date + timedelta(days=day_index),
-                            datetime.min.time()
-                        )
+            items_added = 0
+            for day_index, day_data in enumerate(daily_itineraries):
+                # 计算当天日期
+                if isinstance(start_date, datetime):
+                    day_date = start_date + timedelta(days=day_index)
+                else:
+                    day_date = datetime.combine(
+                        start_date + timedelta(days=day_index),
+                        datetime.min.time()
+                    )
 
-                    attractions = day_data.get('attractions', [])
-                    for attr_index, attraction in enumerate(attractions):
-                        # 提取景点信息
-                        name = attraction.get('name', '') if isinstance(attraction, dict) else str(attraction)
-                        if not name:
-                            continue
+                attractions = day_data.get('attractions', [])
+                logger.info(f"Day {day_index + 1}: {len(attractions)} 个景点")
 
-                        item = TravelPlanItem(
-                            travel_plan_id=plan_id,
-                            title=name,
-                            description=attraction.get('description', '') if isinstance(attraction, dict) else '',
-                            item_type='attraction',
-                            start_time=day_date,
-                            location=attraction.get('location', '') if isinstance(attraction, dict) else '',
-                            address=attraction.get('address', '') if isinstance(attraction, dict) else '',
-                            coordinates=attraction.get('coordinates') if isinstance(attraction, dict) else None,
-                            details=attraction if isinstance(attraction, dict) else {'name': name},
-                            images=attraction.get('images') if isinstance(attraction, dict) else None,
-                        )
-                        session.add(item)
+                for attr_index, attraction in enumerate(attractions):
+                    # 提取景点信息
+                    name = attraction.get('name', '') if isinstance(attraction, dict) else str(attraction)
+                    if not name:
+                        continue
+
+                    item = TravelPlanItem(
+                        travel_plan_id=plan_id,
+                        title=name,
+                        description=attraction.get('description', '') if isinstance(attraction, dict) else '',
+                        item_type='attraction',
+                        start_time=day_date,
+                        location=attraction.get('location', '') if isinstance(attraction, dict) else '',
+                        address=attraction.get('address', '') if isinstance(attraction, dict) else '',
+                        coordinates=attraction.get('coordinates') if isinstance(attraction, dict) else None,
+                        details=attraction if isinstance(attraction, dict) else {'name': name},
+                        images=attraction.get('images') if isinstance(attraction, dict) else None,
+                    )
+                    session.add(item)
+                    items_added += 1
+
+            logger.info(f"添加了 {items_added} 个 items 记录")
 
             await session.commit()
+            logger.info(f"事务提交完成，plan_id={plan_id}")
             
     
     async def _set_selected_plan_default(self, plan_id: int, plan_data: Dict[str, Any]):

@@ -221,6 +221,12 @@ async def get_travel_plan(
         'is_public': plan.is_public,
         'public_at': plan.public_at,
         'items': [],
+        # 新增：行程扩展信息
+        'cities': plan.cities,
+        'members': plan.members,
+        'packing_list': plan.packing_list,
+        'travel_mode': plan.travel_mode,
+        'tags': plan.tags,
     }
 
     # 处理 items（已通过 selectinload 预加载）
@@ -241,6 +247,12 @@ async def get_travel_plan(
                 'travel_plan_id': item.travel_plan_id,
                 'created_at': item.created_at,
                 'updated_at': item.updated_at,
+                # 新增：地点扩展信息
+                'opening_hours': item.opening_hours,
+                'phone': item.phone,
+                'website': item.website,
+                'facilities': item.facilities,
+                'priority': item.priority,
             })
 
     plan_data = await _enrich_plan_with_attraction_details(plan_data, db)
@@ -408,6 +420,49 @@ async def generate_travel_plans(
         "status": "generating",
         "task_id": async_result.id,
     }
+
+
+@router.post("/{plan_id}/generate-sync")
+async def generate_travel_plans_sync(
+    plan_id: int,
+    request: TravelPlanGenerateRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """同步生成旅行方案（不需要 Celery Worker，直接在请求中执行）"""
+    service = TravelPlanService(db)
+    agent_service = AgentService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权生成该计划")
+    # 防止重复触发生成任务
+    if plan.status == "generating":
+        raise HTTPException(status_code=409, detail="该计划正在生成中，请稍候")
+
+    try:
+        # 直接执行生成，不使用 Celery
+        success = await agent_service.generate_travel_plans(
+            plan_id, request.preferences, request.requirements
+        )
+
+        if success:
+            # 获取更新后的计划
+            updated_plan = await service.get_travel_plan(plan_id)
+            return {
+                "message": "旅行方案生成成功",
+                "plan_id": plan_id,
+                "status": "completed",
+                "generated_plans": updated_plan.generated_plans if updated_plan else None,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="生成失败，请稍后重试")
+    except Exception as e:
+        logger.error(f"同步生成失败: {e}")
+        # 更新状态为失败
+        await agent_service._update_plan_status(plan_id, "failed")
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
 
 @router.post("/{plan_id}/refine")

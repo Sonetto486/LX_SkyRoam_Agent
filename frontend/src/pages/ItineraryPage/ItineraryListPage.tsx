@@ -158,7 +158,14 @@ const ItineraryListPage: React.FC = () => {
   // 获取预算显示
   const getBudgetDisplay = (plan: TravelPlan): string => {
     if (plan.budget) {
-      return `¥${plan.budget.toLocaleString()}`;
+      // 将预算数值转换为类型显示
+      if (plan.budget <= 3000) {
+        return '经济型（< 3000元/人）';
+      } else if (plan.budget <= 8000) {
+        return '舒适型（3000-8000元/人）';
+      } else {
+        return '豪华型（> 8000元/人）';
+      }
     }
     return '未设置';
   };

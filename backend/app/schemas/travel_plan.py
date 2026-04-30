@@ -15,7 +15,7 @@ class TravelPlanBase(BaseModel):
     destination: str = Field(..., description="目的地")
     start_date: datetime = Field(..., description="开始日期")
     end_date: datetime = Field(..., description="结束日期")
-    
+
     @field_validator('start_date', 'end_date', mode='before')
     @classmethod
     def parse_datetime(cls, v):
@@ -43,6 +43,13 @@ class TravelPlanBase(BaseModel):
     preferences: Optional[Dict[str, Any]] = Field(None, description="用户偏好（应包含travelers、ageGroups等信息）")
     requirements: Optional[Dict[str, Any]] = Field(None, description="特殊要求")
 
+    # 新增：行程扩展信息
+    cities: Optional[List[str]] = Field(None, description="途经城市列表")
+    members: Optional[List[Dict[str, Any]]] = Field(None, description="参与成员")
+    packing_list: Optional[List[Dict[str, Any]]] = Field(None, description="物品清单")
+    travel_mode: Optional[str] = Field(None, description="出行方式: flight, train, car, bus")
+    tags: Optional[List[str]] = Field(None, description="行程标签")
+
 
 class TravelPlanCreateRequest(TravelPlanBase):
     """创建旅行计划请求体（不含用户ID）"""
@@ -69,6 +76,12 @@ class TravelPlanUpdate(BaseModel):
     preferences: Optional[Dict[str, Any]] = None
     requirements: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
+    # 新增：行程扩展信息
+    cities: Optional[List[str]] = None
+    members: Optional[List[Dict[str, Any]]] = None
+    packing_list: Optional[List[Dict[str, Any]]] = None
+    travel_mode: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 class TravelPlanItemResponse(BaseModel):
@@ -136,6 +149,12 @@ class TravelPlanResponse(TravelPlanBase):
             'items': [],  # items 由 API 层单独处理
             'is_public': getattr(obj, 'is_public', False),
             'public_at': getattr(obj, 'public_at', None),
+            # 新增：行程扩展信息
+            'cities': getattr(obj, 'cities', None),
+            'members': getattr(obj, 'members', None),
+            'packing_list': getattr(obj, 'packing_list', None),
+            'travel_mode': getattr(obj, 'travel_mode', None),
+            'tags': getattr(obj, 'tags', None),
         }
         return cls(**data)
 
@@ -205,6 +224,12 @@ class TravelPlanItemBase(BaseModel):
     coordinates: Optional[Dict[str, float]] = Field(None, description="坐标 {lat, lng}")
     details: Optional[Dict[str, Any]] = Field(None, description="详细信息")
     images: Optional[List[str]] = Field(None, description="图片URL列表")
+    # 新增：地点扩展信息
+    opening_hours: Optional[Dict[str, Any]] = Field(None, description="开放时间")
+    phone: Optional[str] = Field(None, description="联系电话")
+    website: Optional[str] = Field(None, description="网址")
+    facilities: Optional[List[str]] = Field(None, description="服务设施")
+    priority: Optional[str] = Field(None, description="优先级: must, optional, backup")
 
     @field_validator('start_time', 'end_time', mode='before')
     @classmethod
@@ -241,6 +266,12 @@ class TravelPlanItemUpdate(BaseModel):
     coordinates: Optional[Dict[str, float]] = None
     details: Optional[Dict[str, Any]] = None
     images: Optional[List[str]] = None
+    # 新增：地点扩展信息
+    opening_hours: Optional[Dict[str, Any]] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    facilities: Optional[List[str]] = None
+    priority: Optional[str] = None
 
     @field_validator('start_time', 'end_time', mode='before')
     @classmethod
@@ -268,3 +299,76 @@ class TravelPlanItemResponse(TravelPlanItemBase):
 
     class Config:
         from_attributes = True
+
+
+# =============== 收藏地点相关模式 ===============
+class FavoriteLocationBase(BaseModel):
+    """收藏地点基础模式"""
+    name: str = Field(..., description="地点名称")
+    address: Optional[str] = Field(None, description="地址")
+    coordinates: Optional[Dict[str, float]] = Field(None, description="坐标 {lat, lng}")
+    category: Optional[str] = Field(None, description="分类: attraction, restaurant, hotel")
+    phone: Optional[str] = Field(None, description="电话")
+    poi_id: Optional[str] = Field(None, description="POI ID")
+    source: Optional[str] = Field(None, description="来源: amap, baidu, manual")
+    notes: Optional[str] = Field(None, description="备注")
+
+
+class FavoriteLocationCreate(FavoriteLocationBase):
+    """创建收藏地点请求"""
+    pass
+
+
+class FavoriteLocationUpdate(BaseModel):
+    """更新收藏地点请求"""
+    name: Optional[str] = None
+    address: Optional[str] = None
+    coordinates: Optional[Dict[str, float]] = None
+    category: Optional[str] = None
+    phone: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class FavoriteLocationResponse(FavoriteLocationBase):
+    """收藏地点响应"""
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# =============== 地点搜索相关模式 ===============
+class LocationSearchRequest(BaseModel):
+    """地点搜索请求"""
+    keyword: str = Field(..., description="搜索关键词", min_length=1)
+    city: Optional[str] = Field(None, description="城市名称，用于限定搜索范围")
+    location: Optional[Dict[str, float]] = Field(None, description="中心点坐标 {lat, lng}，用于周边搜索")
+    radius: Optional[int] = Field(None, description="搜索半径（米），配合location使用")
+    category: Optional[str] = Field(None, description="地点类型: attraction, restaurant, hotel")
+    page: int = Field(1, ge=1, description="页码")
+    page_size: int = Field(20, ge=1, le=50, description="每页数量")
+
+
+class LocationSearchResult(BaseModel):
+    """地点搜索结果"""
+    id: Optional[str] = Field(None, description="POI ID")
+    name: str = Field(..., description="地点名称")
+    address: Optional[str] = Field(None, description="地址")
+    location: Optional[Dict[str, float]] = Field(None, description="坐标 {lat, lng}")
+    category: Optional[str] = Field(None, description="分类")
+    distance: Optional[float] = Field(None, description="距离（米）")
+    tel: Optional[str] = Field(None, description="电话")
+    rating: Optional[float] = Field(None, description="评分")
+    cost: Optional[float] = Field(None, description="人均消费")
+    type: Optional[str] = Field(None, description="类型编码")
+
+
+class LocationSearchResponse(BaseModel):
+    """地点搜索响应"""
+    results: List[LocationSearchResult] = Field(default_factory=list, description="搜索结果列表")
+    total: int = Field(0, description="总数量")
+    page: int = Field(1, description="当前页码")
+    page_size: int = Field(20, description="每页数量")

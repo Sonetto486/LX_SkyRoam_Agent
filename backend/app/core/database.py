@@ -130,7 +130,8 @@ async def get_async_db():
                 await session.rollback()
             except Exception:
                 pass  # 忽略回滚错误
-            logger.error(f"数据库会话错误: {e}")
+            import traceback
+            logger.error(f"数据库会话错误: {e}\n{traceback.format_exc()}")
             raise
         finally:
             try:
@@ -312,46 +313,144 @@ async def check_table_exists(table_name: str) -> bool:
 async def create_tables_if_not_exists():
     """
     智能创建表：检查表是否存在，不存在则创建
+    同时检查并添加缺失的列（用于模型更新后的自动迁移）
     基于当前模型定义，不依赖 Alembic 迁移历史
     """
     try:
         # 导入所有模型以确保它们被注册到 Base.metadata
         from app.models import user, travel_plan, destination, attraction_detail
-        
+
         engine = _get_async_engine_for_current_loop()
-        
+
         async with engine.begin() as conn:
             from sqlalchemy import text
-            
+
             # 查询数据库中已存在的表
             result = await conn.execute(
                 text("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_type = 'BASE TABLE'
                 """)
             )
             existing_tables = {row[0] for row in result.fetchall()}
-            
+
             # 获取模型定义的所有表
             model_tables = set(Base.metadata.tables.keys())
-            
+
             # 找出需要创建的表
             tables_to_create = model_tables - existing_tables
             tables_existing = model_tables & existing_tables
-            
+
             if tables_to_create:
                 logger.info(f"发现 {len(tables_to_create)} 个表需要创建: {', '.join(sorted(tables_to_create))}")
                 # 使用 create_all 创建缺失的表（SQLAlchemy 会自动跳过已存在的表）
                 await conn.run_sync(Base.metadata.create_all)
                 logger.info(f"✅ 成功创建了 {len(tables_to_create)} 个表")
-            else:
-                logger.info(f"✅ 所有表已存在（共 {len(tables_existing)} 个表）")
-        
+
+            # 检查并添加缺失的列
+            columns_added = await check_and_add_missing_columns(conn, existing_tables)
+
+            if not tables_to_create and not columns_added:
+                logger.info(f"✅ 所有表和列已存在（共 {len(tables_existing)} 个表）")
+
     except Exception as e:
         logger.error(f"❌ 创建表失败: {e}")
         raise
+
+
+async def check_and_add_missing_columns(conn, existing_tables: set) -> int:
+    """
+    检查并添加缺失的列
+
+    Args:
+        conn: 数据库连接
+        existing_tables: 已存在的表名集合
+
+    Returns:
+        添加的列数量
+    """
+    from sqlalchemy import text
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    columns_added = 0
+
+    # 定义需要检查的新列（表名 -> [(列名, 列类型, 是否可空), ...])
+    new_columns = {
+        'travel_plans': [
+            ('cities', 'JSONB', True),
+            ('members', 'JSONB', True),
+            ('packing_list', 'JSONB', True),
+            ('travel_mode', 'VARCHAR(50)', True),
+            ('tags', 'JSONB', True),
+        ],
+        'travel_plan_items': [
+            ('opening_hours', 'JSONB', True),
+            ('phone', 'VARCHAR(50)', True),
+            ('website', 'VARCHAR(200)', True),
+            ('facilities', 'JSONB', True),
+            ('priority', 'VARCHAR(20)', True),
+        ],
+    }
+
+    for table_name, columns in new_columns.items():
+        if table_name not in existing_tables:
+            continue
+
+        # 获取该表已有的列
+        result = await conn.execute(
+            text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = :table_name
+            """),
+            {"table_name": table_name}
+        )
+        existing_columns = {row[0] for row in result.fetchall()}
+
+        # 检查并添加缺失的列
+        for col_name, col_type, nullable in columns:
+            if col_name not in existing_columns:
+                try:
+                    null_str = "NULL" if nullable else "NOT NULL"
+                    await conn.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} {null_str}")
+                    )
+                    logger.info(f"✅ 表 {table_name} 添加列 {col_name}")
+                    columns_added += 1
+                except Exception as e:
+                    logger.warning(f"⚠️ 添加列 {table_name}.{col_name} 失败: {e}")
+
+    # 检查并创建 favorite_locations 表
+    if 'favorite_locations' not in existing_tables:
+        try:
+            await conn.execute(
+                text("""
+                    CREATE TABLE favorite_locations (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id),
+                        name VARCHAR(200) NOT NULL,
+                        address TEXT,
+                        coordinates JSONB,
+                        category VARCHAR(50),
+                        phone VARCHAR(50),
+                        poi_id VARCHAR(100),
+                        source VARCHAR(20),
+                        notes TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT TRUE
+                    )
+                """)
+            )
+            logger.info("✅ 创建表 favorite_locations")
+            columns_added += 1
+        except Exception as e:
+            logger.warning(f"⚠️ 创建表 favorite_locations 失败: {e}")
+
+    return columns_added
 
 
 async def create_tables_directly():

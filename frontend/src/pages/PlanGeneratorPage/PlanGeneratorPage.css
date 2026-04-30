@@ -194,3 +194,112 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: 8px;
 }
+
+/* 出行方式选择器 */
+.travel-mode-selector {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 24px;
+  border: 2px solid #e8e8e8;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  min-width: 80px;
+}
+
+.mode-option:hover {
+  border-color: #1890ff;
+  background-color: #f0f7ff;
+}
+
+.mode-option.selected {
+  border-color: #1890ff;
+  background-color: #e6f7ff;
+}
+
+.mode-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.mode-label {
+  font-size: 14px;
+  color: #333;
+}
+
+/* 标签选择器 */
+.tags-selector .ant-tag {
+  padding: 4px 12px;
+  font-size: 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.tags-selector .ant-tag:hover {
+  opacity: 0.8;
+}
+
+/* 成员和物品区域 */
+.members-section,
+.packing-section {
+  padding: 8px 0;
+}
+
+/* 行程概览卡片 */
+.summary-card {
+  padding: 20px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+}
+
+.summary-card h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  color: #1890ff;
+}
+
+/* 生成区域 */
+.generate-section {
+  padding: 16px 0;
+}
+
+/* 步骤导航 */
+.step-navigation {
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 预览弹窗样式 */
+.plan-preview-modal .ant-modal-body {
+  padding: 24px;
+}
+
+.plan-preview-content {
+  min-height: 300px;
+}
+
+.plan-preview-content .plan-summary {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background-color: #e6f7ff;
+  border-radius: 8px;
+  color: #1890ff;
+}
+
+.plan-preview-content .plan-summary span {
+  color: #333;
+}
+
+.preview-actions {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}

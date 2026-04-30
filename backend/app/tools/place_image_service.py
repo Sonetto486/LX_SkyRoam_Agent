@@ -6,10 +6,7 @@
 import asyncio
 from typing import List, Optional, Dict, Any
 from loguru import logger
-from app.tools.amap_mcp_client import AmapMCPClient
-
-# 硬编码的高德地图 API 密钥
-HARDCODED_AMAP_API_KEY = '3c860a8217597619941f033146dde8ec'
+from app.tools.amap_rest_client import amap_rest_client
 
 # 重试配置
 MAX_RETRIES = 3
@@ -18,42 +15,41 @@ RETRY_DELAY = 1.0  # 秒
 
 class PlaceImageService:
     """地点图片服务"""
-    
+
     def __init__(self):
-        self.amap_client = AmapMCPClient()
         self.request_count = 0
-    
+
     async def get_place_images(self, keywords: str, address: str = "") -> List[str]:
         """
         获取地点图片
-        
+
         Args:
             keywords: 地点名称
             address: 地点地址（可选）
-            
+
         Returns:
             图片URL列表
         """
         for attempt in range(MAX_RETRIES):
             try:
                 logger.debug(f"开始获取地点图片(第{attempt+1}次尝试): {keywords}")
-                
+
                 # 添加请求间隔，避免QPS超限
                 if self.request_count > 0:
                     await asyncio.sleep(RETRY_DELAY)
                 self.request_count += 1
-                
+
                 # 1. 搜索地点
                 # 优先使用带地址的搜索
                 if address:
-                    places = await self.amap_client.search_places(
+                    places = await amap_rest_client.search_places(
                         query=keywords,
                         city=address.split('市')[0] if '市' in address else "",
                         category="景点"
                     )
                 else:
                     # 如果没有地址，使用周边搜索（全国范围）
-                    places = await self.amap_client.search_places_around(
+                    places = await amap_rest_client.search_places_around(
                         location="",  # 空字符串表示全国搜索
                         keywords=keywords,
                         radius=5000,

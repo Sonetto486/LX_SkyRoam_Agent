@@ -41,6 +41,13 @@ class TravelPlan(BaseModel):
     is_public = Column(Boolean, default=False, nullable=False)
     public_at = Column(DateTime, nullable=True)
 
+    # 新增：行程扩展信息
+    cities = Column(JSON, nullable=True)  # 途经城市列表 ["城市1", "城市2"]
+    members = Column(JSON, nullable=True)  # 参与成员 [{"name": "张三", "role": "组织者", "avatar": "url"}]
+    packing_list = Column(JSON, nullable=True)  # 物品清单 [{"name": "护照", "category": "证件", "checked": false}]
+    travel_mode = Column(String(50), nullable=True)  # 出行方式: flight, train, car, bus, self_drive
+    tags = Column(JSON, nullable=True)  # 行程标签 ["蜜月", "亲子", "自驾"]
+
     # 关联关系
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="travel_plans")
@@ -122,7 +129,14 @@ class TravelPlanItem(BaseModel):
     # 详细信息
     details = Column(JSON, nullable=True)  # 存储具体信息（价格、评分、联系方式等）
     images = Column(JSON, nullable=True)   # 存储图片URL列表
-    
+
+    # 新增：地点扩展信息
+    opening_hours = Column(JSON, nullable=True)  # 开放时间 {"weekday": "09:00-18:00", "weekend": "10:00-20:00"}
+    phone = Column(String(50), nullable=True)  # 联系电话
+    website = Column(String(200), nullable=True)  # 网址
+    facilities = Column(JSON, nullable=True)  # 服务设施 ["停车场", "餐厅", "WiFi"]
+    priority = Column(String(20), nullable=True)  # 优先级: must(必去), optional(可选), backup(备选)
+
     # 关联关系
     travel_plan_id = Column(Integer, ForeignKey("travel_plans.id"), nullable=False)
     travel_plan = relationship("TravelPlan", back_populates="items")
@@ -157,3 +171,26 @@ class TravelPlanRating(BaseModel):
             return f"<TravelPlanRating(id={obj_id})>"
         except Exception:
             return f"<TravelPlanRating(instance)>"
+
+
+# 新增：收藏地点模型
+class FavoriteLocation(BaseModel):
+    """收藏地点模型"""
+    __tablename__ = "favorite_locations"
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(200), nullable=False)  # 地点名称
+    address = Column(Text, nullable=True)  # 地址
+    coordinates = Column(JSON, nullable=True)  # 坐标 {lat, lng}
+    category = Column(String(50), nullable=True)  # 分类: attraction, restaurant, hotel
+    phone = Column(String(50), nullable=True)  # 电话
+    poi_id = Column(String(100), nullable=True)  # 高德/百度 POI ID
+    source = Column(String(20), nullable=True)  # 来源: amap, baidu, manual
+    notes = Column(Text, nullable=True)  # 备注
+
+    def __repr__(self):
+        try:
+            obj_id = getattr(self, 'id', 'N/A')
+            return f"<FavoriteLocation(id={obj_id})>"
+        except Exception:
+            return f"<FavoriteLocation(instance)>"

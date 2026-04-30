@@ -1,0 +1,111 @@
+.location-search {
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.search-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 12px;
+}
+
+.search-tabs .ant-btn {
+  border-radius: 20px;
+}
+
+.search-results,
+.favorites-list {
+  margin-top: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.location-card {
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.location-card:hover {
+  border-color: #1890ff;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+}
+
+.location-title {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.location-info {
+  font-size: 12px;
+  color: #666;
+}
+
+.location-info .info-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.location-info .info-item .anticon {
+  color: #999;
+}
+
+.location-info .rating {
+  color: #faad14;
+}
+
+.location-info .cost {
+  color: #52c41a;
+}
+
+.location-info .distance {
+  color: #1890ff;
+}
+
+.favorite-icon {
+  font-size: 18px;
+  color: #d9d9d9;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.favorite-icon:hover {
+  color: #faad14;
+  transform: scale(1.1);
+}
+
+.favorite-icon.active {
+  color: #faad14;
+}
+
+/* 滚动条样式 */
+.search-results::-webkit-scrollbar,
+.favorites-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-results::-webkit-scrollbar-thumb,
+.favorites-list::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover,
+.favorites-list::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}

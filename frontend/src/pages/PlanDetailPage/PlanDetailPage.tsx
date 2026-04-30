@@ -360,20 +360,32 @@ interface LimitedTagListProps {
 const LimitedTagList: React.FC<LimitedTagListProps> = ({ items, color = 'default', max, tagStyle, renderItem }) => {
   if (!items || items.length === 0) return null;
   const data = typeof max === 'number' ? items.slice(0, max) : items;
-  const mergedStyle: React.CSSProperties = { 
-    fontSize: 10, 
+  const mergedStyle: React.CSSProperties = {
+    fontSize: 10,
     maxWidth: 'calc(100% - 4px)',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     flex: '0 1 auto',
-    ...(tagStyle || {}) 
+    ...(tagStyle || {})
   };
+
+  const renderTagContent = (item: any, index: number): React.ReactNode => {
+    if (renderItem) return renderItem(item, index);
+    if (typeof item === 'string') return item;
+    if (typeof item === 'number') return String(item);
+    // 对于对象，尝试获取常见的名称字段
+    if (item && typeof item === 'object') {
+      return item.name || item.title || item.dish_name || item.tip || item.label || item.text || '推荐项';
+    }
+    return '推荐项';
+  };
+
   return (
     <div className="limited-tags" style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
       {data.map((item, index) => (
         <Tag key={index} color={color} style={mergedStyle as any}>
-          {renderItem ? renderItem(item, index) : (typeof item === 'string' ? item : item?.name || '推荐项')}
+          {renderTagContent(item, index)}
         </Tag>
       ))}
     </div>
@@ -599,9 +611,14 @@ const AttractionSection: React.FC<{ attractions: Attraction[] }> = ({ attraction
   </Card>
 );
 
-const DailyTipsSection: React.FC<{ tips: string[] }> = ({ tips }) => (
+const DailyTipsSection: React.FC<{ tips: any[] }> = ({ tips }) => (
   <Card size="small" title="当日建议" bordered={false}>
-    <LimitedTagList items={tips} color="geekblue" tagStyle={{ fontSize: '10px' }} />
+    <LimitedTagList
+      items={tips}
+      color="geekblue"
+      tagStyle={{ fontSize: '10px' }}
+      renderItem={(tip: any) => (typeof tip === 'string' ? tip : (tip?.text || tip?.tip || tip?.content || tip?.name || '建议'))}
+    />
   </Card>
 );
 

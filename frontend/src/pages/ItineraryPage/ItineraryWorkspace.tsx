@@ -70,6 +70,12 @@ interface TravelPlan {
   selected_plan?: any;
   is_public: boolean;
   items?: TravelPlanItem[];
+  // 新增字段
+  cities?: string[];
+  members?: Array<{ name: string; role: string; avatar?: string }>;
+  packing_list?: Array<{ name: string; category: string; checked: boolean }>;
+  travel_mode?: string;
+  tags?: string[];
 }
 
 // 行程项目接口
@@ -421,7 +427,14 @@ const getDayActivities = (): DayActivity[] => {
   // 获取预算显示
   const getBudgetDisplay = (): string => {
     if (plan?.budget) {
-      return `¥${plan.budget.toLocaleString()}`;
+      // 将预算数值转换为类型显示
+      if (plan.budget <= 3000) {
+        return '经济型（< 3000元/人）';
+      } else if (plan.budget <= 8000) {
+        return '舒适型（3000-8000元/人）';
+      } else {
+        return '豪华型（> 8000元/人）';
+      }
     }
     return '未设置';
   };
@@ -903,10 +916,29 @@ const getDayActivities = (): DayActivity[] => {
         open={planInfoModalVisible}
         onCancel={() => setPlanInfoModalVisible(false)}
         onOk={() => {
-          // 表单提交逻辑
-          setPlanInfoModalVisible(false);
+          // 收集表单数据
+          const title = (document.getElementById('plan-title') as HTMLInputElement)?.value;
+          const description = (document.getElementById('plan-description') as HTMLTextAreaElement)?.value;
+          const departure = (document.getElementById('plan-departure') as HTMLInputElement)?.value;
+          const destination = (document.getElementById('plan-destination') as HTMLInputElement)?.value;
+          const travelers = (document.getElementById('plan-travelers') as HTMLInputElement)?.value;
+          const budget = (document.getElementById('plan-budget') as HTMLInputElement)?.value;
+          const travelMode = (document.getElementById('plan-travel-mode') as HTMLSelectElement)?.value;
+
+          handleSavePlanInfo({
+            title,
+            description,
+            departure,
+            destination,
+            budget: budget ? parseFloat(budget) : undefined,
+            travel_mode: travelMode,
+            preferences: {
+              ...plan?.preferences,
+              travelers: travelers ? parseInt(travelers) : undefined,
+            },
+          });
         }}
-        width={600}
+        width={700}
       >
         {plan && (
           <div className="plan-info-form">
@@ -966,6 +998,57 @@ const getDayActivities = (): DayActivity[] => {
                 />
               </div>
             </div>
+            <div className="form-item">
+              <Text strong>出行方式</Text>
+              <Select
+                style={{ width: '100%' }}
+                defaultValue={plan.travel_mode || 'flight'}
+                id="plan-travel-mode"
+                options={[
+                  { value: 'flight', label: '飞机' },
+                  { value: 'train', label: '火车' },
+                  { value: 'car', label: '自驾' },
+                  { value: 'bus', label: '大巴' },
+                  { value: 'self_drive', label: '自驾游' },
+                ]}
+              />
+            </div>
+            {plan.cities && plan.cities.length > 0 && (
+              <div className="form-item">
+                <Text strong>途经城市</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.cities.map((city, index) => (
+                    <Tag key={index} color="blue" style={{ marginBottom: 4 }}>
+                      {city}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {plan.members && plan.members.length > 0 && (
+              <div className="form-item">
+                <Text strong>参与成员</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.members.map((member, index) => (
+                    <Tag key={index} color="green" style={{ marginBottom: 4 }}>
+                      {member.name} ({member.role})
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {plan.tags && plan.tags.length > 0 && (
+              <div className="form-item">
+                <Text strong>行程标签</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.tags.map((tag, index) => (
+                    <Tag key={index} color="purple" style={{ marginBottom: 4 }}>
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
