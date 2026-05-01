@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Row, Col, Progress, Tag, Steps, Modal, Popconfirm } from 'antd';
-import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, SaveOutlined, LoadingOutlined, PlusOutlined, DeleteOutlined, CheckOutlined, ReloadOutlined, CloseOutlined, EditOutlined } from '@ant-design/icons';
+import React, { useState, useRef, useEffect } from 'react';
+import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Row, Col, Progress, Tag, Steps, Modal, Popconfirm, Alert, Spin } from 'antd';
+import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, SaveOutlined, LoadingOutlined, PlusOutlined, DeleteOutlined, CheckOutlined, ReloadOutlined, CloseOutlined, EditOutlined, StopOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import './PlanGeneratorPage.css';
@@ -56,6 +56,7 @@ interface PackingItem {
 const PlanGeneratorPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false); // 防止重复点击
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [planId, setPlanId] = useState<number | null>(null);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -66,7 +67,19 @@ const PlanGeneratorPage: React.FC = () => {
   const [cities, setCities] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [showGeneratingModal, setShowGeneratingModal] = useState(false); // 生成中的模态框
+  const [abortController, setAbortController] = useState<AbortController | null>(null); // 用于中止请求
+  const [celeryTaskId, setCeleryTaskId] = useState<string | null>(null); // Celery 任务 ID，用于取消
   const navigate = useNavigate();
+
+  // 清理函数 - 组件卸载时中止请求
+  useEffect(() => {
+    return () => {
+      if (abortController) {
+        abortController.abort();
+      }
+    };
+  }, [abortController]);
 
   // 轮询生成状态
   const pollGenerationStatus = async (id: number) => {
@@ -85,7 +98,8 @@ const PlanGeneratorPage: React.FC = () => {
 
   // 等待生成完成
   const waitForGeneration = async (id: number): Promise<boolean> => {
-    const maxAttempts = 120;
+    // 增加超时时间到 5 分钟（300 秒），因为 LLM 生成可能需要较长时间
+    const maxAttempts = 300;
     let attempts = 0;
 
     while (attempts < maxAttempts) {
@@ -97,14 +111,18 @@ const PlanGeneratorPage: React.FC = () => {
         continue;
       }
 
+      console.log(`轮询状态 [${attempts}/${maxAttempts}]:`, status.status, status);
+
       setGenerationStatus(status.status);
 
       if (status.status === 'completed') {
         setGenerationProgress(100);
+        console.log('=== 检测到 completed 状态 ===');
         return true;
       }
 
       if (status.status === 'failed') {
+        console.log('=== 检测到 failed 状态 ===');
         return false;
       }
 
@@ -115,6 +133,15 @@ const PlanGeneratorPage: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
+    // 超时后，最后检查一次状态，避免误删已完成的计划
+    console.log('=== 轮询超时，最后检查一次状态 ===');
+    const finalStatus = await pollGenerationStatus(id);
+    if (finalStatus && finalStatus.status === 'completed') {
+      console.log('=== 最后检查发现已完成 ===');
+      return true;
+    }
+
+    console.log('=== 确认超时 ===');
     return false;
   };
 
@@ -187,6 +214,12 @@ const PlanGeneratorPage: React.FC = () => {
         throw new Error(errorData.detail || '触发生成失败');
       }
 
+      // 保存 task_id 用于取消
+      const generateData = await generateRes.json();
+      if (generateData.task_id) {
+        setCeleryTaskId(generateData.task_id);
+      }
+
       // 等待生成完成
       const success = await waitForGeneration(planId);
       if (!success) {
@@ -209,6 +242,12 @@ const PlanGeneratorPage: React.FC = () => {
   };
 
   const handleGenerate = async () => {
+    // 防止重复点击
+    if (isGenerating) {
+      message.warning('正在生成中，请稍候...');
+      return;
+    }
+
     // 从表单获取所有值
     const values = form.getFieldsValue(true);
 
@@ -238,12 +277,20 @@ const PlanGeneratorPage: React.FC = () => {
       message.info('Celery Worker 未运行，将使用同步模式生成（可能需要较长时间）');
     }
 
+    // 设置生成状态
+    setIsGenerating(true);
     setLoading(true);
     setGenerationProgress(0);
-    setGenerationStatus('');
+    setGenerationStatus('准备生成...');
     setGeneratedPlan(null);
     setPlanId(null);
+    setCeleryTaskId(null); // 清除旧的 task ID
     setShowPreview(false);
+    setShowGeneratingModal(true); // 显示生成中的模态框
+
+    // 创建 AbortController 用于中止
+    const controller = new AbortController();
+    setAbortController(controller);
 
     let newPlanId: number | null = null;
 
@@ -306,6 +353,11 @@ const PlanGeneratorPage: React.FC = () => {
         planDetail = await generateAsync(newPlanId!, preferences);
       }
 
+      // 检查是否被中止
+      if (controller.signal.aborted) {
+        throw new Error('生成已中止');
+      }
+
       setGenerationProgress(95);
 
       // 检查 generated_plans 是否有效
@@ -328,14 +380,30 @@ const PlanGeneratorPage: React.FC = () => {
       }
 
       console.log('=== 生成成功 ===');
+      console.log('planDetail:', planDetail);
+      console.log('generated_plans:', planDetail.generated_plans);
       console.log('daily_itineraries:', dailyItineraries);
 
       setGenerationProgress(100);
+      setGenerationStatus('生成完成！');
       setGeneratedPlan(planDetail);
-      setShowPreview(true);
+      setCeleryTaskId(null); // 清除 task ID，生成完成
+      setShowGeneratingModal(false); // 关闭生成中的模态框
+      setShowPreview(true); // 显示预览模态框
+
+      console.log('=== 状态更新 ===');
+      console.log('generatedPlan 已设置:', !!planDetail);
+      console.log('showPreview 已设置为 true');
+
       message.success('旅行计划生成成功！请预览并确认');
 
     } catch (error: any) {
+      // 如果是被中止的，不显示错误
+      if (error.message === '生成已中止' || error.name === 'AbortError') {
+        message.info('已中止生成');
+        return;
+      }
+
       console.error('生成失败:', error);
       // 如果计划已创建但生成失败，删除它
       if (newPlanId) {
@@ -343,8 +411,87 @@ const PlanGeneratorPage: React.FC = () => {
         setPlanId(null);
       }
       message.error(error.message || '生成旅行计划失败，请重试');
+      setShowGeneratingModal(false);
     } finally {
       setLoading(false);
+      setIsGenerating(false);
+      setAbortController(null);
+    }
+  };
+
+  // 中止生成
+  const handleAbortGeneration = async () => {
+    // 先中止所有正在进行的请求
+    if (abortController) {
+      abortController.abort();
+    }
+
+    // 如果有 Celery 任务，先取消它
+    const currentTaskId = celeryTaskId;
+    if (currentTaskId) {
+      setCeleryTaskId(null);
+      try {
+        // 使用独立的 fetch 取消 Celery 任务
+        const cancelController = new AbortController();
+        const timeoutId = setTimeout(() => cancelController.abort(), 3000);
+
+        await fetch(buildApiUrl(`/travel-plans/tasks/cancel/${currentTaskId}`), {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          signal: cancelController.signal,
+        });
+
+        clearTimeout(timeoutId);
+        console.log('Celery 任务已取消:', currentTaskId);
+      } catch (error: any) {
+        console.error('取消 Celery 任务失败:', error);
+        // 继续执行删除计划的操作，即使取消任务失败
+      }
+    }
+
+    // 重置状态
+    setIsGenerating(false);
+    setLoading(false);
+    setShowGeneratingModal(false);
+    setGenerationProgress(0);
+    setGenerationStatus('');
+    setAbortController(null);
+
+    // 如果有创建的计划，使用新的请求删除它（不受 abortController 影响）
+    const currentPlanId = planId;
+    if (currentPlanId) {
+      setPlanId(null);
+      setGeneratedPlan(null);
+
+      // 创建新的 AbortController 用于删除请求（独立于原来的）
+      try {
+        const deleteController = new AbortController();
+        // 设置超时，确保删除请求不会无限等待
+        const timeoutId = setTimeout(() => deleteController.abort(), 5000);
+
+        await fetch(buildApiUrl(`/travel-plans/${currentPlanId}`), {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          signal: deleteController.signal,
+        });
+
+        clearTimeout(timeoutId);
+        message.info('已中止生成，无效计划已删除');
+      } catch (error: any) {
+        // 如果是超时或中止，仍然显示成功
+        if (error.name === 'AbortError') {
+          message.info('已中止生成');
+        } else {
+          console.error('删除计划失败:', error);
+          message.info('已中止生成，但删除计划可能失败，请手动清理');
+        }
+      }
+    } else {
+      message.info('已中止生成');
     }
   };
 
@@ -613,9 +760,19 @@ const PlanGeneratorPage: React.FC = () => {
                     {day.meals && (
                       <div style={{ marginTop: 8, padding: 8, background: '#f6ffed', borderRadius: 4 }}>
                         <strong>餐饮推荐：</strong>
-                        {Object.entries(day.meals).map(([key, value]: [string, any]) => (
-                          <Tag key={key} color="green">{key}: {value}</Tag>
-                        ))}
+                        {Array.isArray(day.meals) ? (
+                          day.meals.map((meal: any, mealIdx: number) => (
+                            <Tag key={mealIdx} color="green">
+                              {meal.type || meal.time || '餐饮'}: {meal.restaurant_name || meal.name || (typeof meal === 'string' ? meal : JSON.stringify(meal))}
+                            </Tag>
+                          ))
+                        ) : (
+                          Object.entries(day.meals).map(([key, value]: [string, any]) => (
+                            <Tag key={key} color="green">
+                              {key}: {typeof value === 'object' ? (value?.restaurant_name || value?.name || JSON.stringify(value)) : value}
+                            </Tag>
+                          ))
+                        )}
                       </div>
                     )}
                   </div>
@@ -924,11 +1081,22 @@ const PlanGeneratorPage: React.FC = () => {
                 block
                 size="large"
                 loading={loading}
+                disabled={isGenerating}
                 icon={<ClockCircleOutlined />}
                 style={{ marginTop: 24 }}
               >
-                生成旅行计划
+                {isGenerating ? '生成中...' : '生成旅行计划'}
               </Button>
+
+              {isGenerating && (
+                <Alert
+                  message="正在生成旅行计划"
+                  description="请耐心等待，生成过程中请勿关闭页面。您可以点击下方按钮中止生成。"
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 16 }}
+                />
+              )}
             </div>
           </div>
 
@@ -948,16 +1116,54 @@ const PlanGeneratorPage: React.FC = () => {
         </Form>
       </Card>
 
-      {/* 生成进度 */}
-      {loading && (
-        <Card className="generation-progress-card">
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <LoadingOutlined style={{ fontSize: 32, marginBottom: 16 }} />
-            <Progress percent={generationProgress} status="active" />
-            <p style={{ marginTop: 8, color: '#666' }}>{generationStatus || '处理中...'}</p>
+      {/* 生成中的模态框 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <LoadingOutlined style={{ color: '#1890ff' }} />
+            <span>正在生成旅行计划...</span>
           </div>
-        </Card>
-      )}
+        }
+        open={showGeneratingModal}
+        onCancel={handleAbortGeneration}
+        footer={
+          <div style={{ textAlign: 'center' }}>
+            <Popconfirm
+              title="确定要中止生成吗？"
+              description="中止后已生成的数据将被删除"
+              onConfirm={handleAbortGeneration}
+              okText="确定中止"
+              cancelText="取消"
+            >
+              <Button danger icon={<StopOutlined />} size="large">
+                中止生成
+              </Button>
+            </Popconfirm>
+          </div>
+        }
+        width={500}
+        centered
+        maskClosable={false}
+        closable={false}
+      >
+        <div style={{ textAlign: 'center', padding: '30px 0' }}>
+          <Spin size="large" style={{ marginBottom: 24 }} />
+          <Progress
+            percent={generationProgress}
+            status="active"
+            strokeColor={{
+              '0%': '#108ee9',
+              '100%': '#87d068',
+            }}
+          />
+          <p style={{ marginTop: 16, color: '#666', fontSize: 16 }}>
+            {generationStatus || '处理中...'}
+          </p>
+          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>
+            预计需要 2-5 分钟，请耐心等待
+          </p>
+        </div>
+      </Modal>
 
       {/* 预览弹窗 */}
       <Modal
