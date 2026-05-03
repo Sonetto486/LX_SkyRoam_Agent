@@ -528,6 +528,7 @@ const ItineraryListPage: React.FC = () => {
                 className="form-input"
                 defaultValue={editingItinerary.title}
                 id="edit-title"
+                aria-label="行程标题"
               />
             </div>
             <div className="form-item">
@@ -537,6 +538,7 @@ const ItineraryListPage: React.FC = () => {
                 defaultValue={editingItinerary.description || ''}
                 id="edit-description"
                 rows={3}
+                aria-label="行程描述"
               />
             </div>
             <div className="form-row">
@@ -546,6 +548,7 @@ const ItineraryListPage: React.FC = () => {
                   className="form-input"
                   defaultValue={editingItinerary.departure || ''}
                   id="edit-departure"
+                  aria-label="出发地"
                 />
               </div>
               <div className="form-item">
@@ -554,6 +557,7 @@ const ItineraryListPage: React.FC = () => {
                   className="form-input"
                   defaultValue={editingItinerary.destination}
                   id="edit-destination"
+                  aria-label="目的地"
                 />
               </div>
             </div>
@@ -564,6 +568,7 @@ const ItineraryListPage: React.FC = () => {
                   style={{ width: '100%' }}
                   defaultValue={dayjs(editingItinerary.start_date)}
                   id="edit-start-date"
+                  aria-label="开始日期"
                 />
               </div>
               <div className="form-item">
@@ -572,6 +577,7 @@ const ItineraryListPage: React.FC = () => {
                   style={{ width: '100%' }}
                   defaultValue={dayjs(editingItinerary.end_date)}
                   id="edit-end-date"
+                  aria-label="结束日期"
                 />
               </div>
             </div>
@@ -584,6 +590,7 @@ const ItineraryListPage: React.FC = () => {
                   max={20}
                   defaultValue={editingItinerary.preferences?.travelers || 1}
                   id="edit-travelers"
+                  aria-label="出行人数"
                 />
               </div>
               <div className="form-item">
@@ -593,6 +600,7 @@ const ItineraryListPage: React.FC = () => {
                   min={0}
                   defaultValue={editingItinerary.budget || 0}
                   id="edit-budget"
+                  aria-label="预算（元）"
                 />
               </div>
             </div>
