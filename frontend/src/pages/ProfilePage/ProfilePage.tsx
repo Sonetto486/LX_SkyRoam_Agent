@@ -17,12 +17,6 @@ interface User {
   bio: string;
   favorite_locations?: number[];
   highlighted_locations?: number[];
-  travelStats: {
-    trips: number;
-    destinations: number;
-    days: number;
-    favorites: number;
-  };
   collections: {
     id: number;
     name: string;
@@ -41,10 +35,70 @@ interface User {
 const ProfilePage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [travelStats, setTravelStats] = useState({
+    trips: 0,
+    destinations: 0,
+    days: 0,
+    favorites: 0,
+  });
   const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null); // 保存当前选中的地图点信息
   const [form] = Form.useForm();
   const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  const calculatePlanDays = (plan: any) => {
+    if (typeof plan?.duration_days === 'number') {
+      return plan.duration_days;
+    }
+    if (plan?.start_date && plan?.end_date) {
+      const start = new Date(plan.start_date);
+      const end = new Date(plan.end_date);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff + 1 : 0;
+      }
+    }
+    return 0;
+  };
+
+  const fetchTravelStats = async (favoriteCount: number) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
+
+      const response = await axios.get(`${baseURL}/travel-plans`, {
+        params: { skip: 0, limit: 1000 },
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const plans = response.data?.plans || [];
+      const totalTrips = typeof response.data?.total === 'number' ? response.data.total : plans.length;
+
+      const destinationSet = new Set<string>();
+      let totalDays = 0;
+
+      plans.forEach((plan: any) => {
+        const destination = plan?.destination;
+        if (Array.isArray(destination)) {
+          destination.forEach((dest) => dest && destinationSet.add(String(dest)));
+        } else if (destination) {
+          destinationSet.add(String(destination));
+        }
+        totalDays += calculatePlanDays(plan);
+      });
+
+      setTravelStats({
+        trips: totalTrips,
+        destinations: destinationSet.size,
+        days: totalDays,
+        favorites: favoriteCount,
+      });
+    } catch (error) {
+      console.error('Failed to fetch travel stats', error);
+    }
+  };
 
   // 获取用户数据
   const fetchUserProfile = async () => {
@@ -64,6 +118,10 @@ const ProfilePage: React.FC = () => {
       const userData = response.data;
       
       // 合并后端返回的真实用户数据与暂时的Mock展示数据
+      const favoriteCount = Array.isArray(userData.favorite_locations)
+        ? userData.favorite_locations.length
+        : 0;
+
       setUser({
         id: userData.id.toString(),
         username: userData.username,
@@ -73,13 +131,6 @@ const ProfilePage: React.FC = () => {
         bio: userData.photo_mood || userData.preferences || '热爱旅行，喜欢探索世界各地的文化和风景',
         favorite_locations: userData.favorite_locations || [],
         highlighted_locations: userData.highlighted_locations || [],
-        // 以下统计数据和列表目前保持Mock，实际应根据后端关联查询返回（如行程、收藏记录）
-        travelStats: {
-          trips: 12,
-          destinations: 28,
-          days: 67,
-          favorites: 45
-        },
         collections: [
           {
             id: 1,
@@ -111,6 +162,8 @@ const ProfilePage: React.FC = () => {
           }
         ]
       });
+
+      fetchTravelStats(favoriteCount);
     } catch (error) {
       console.error('Failed to fetch user profile', error);
       message.error('获取个人信息失败，请确保已登录');
@@ -126,29 +179,19 @@ const ProfilePage: React.FC = () => {
   // 高德地图初始化与标记点渲染
   useEffect(() => {
     if (!user) return;
-    
+
     // 合并地点 ids
     const allIds = [
       ...(user.favorite_locations || []),
       ...(user.highlighted_locations || []),
     ];
-    if (allIds.length === 0) return;
+    const uniqueIds = Array.from(new Set(allIds));
 
     let mapInstance: any = null;
 
     const fetchLocationsAndInitMap = async () => {
       try {
         const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
-        const idsStr = Array.from(new Set(allIds)).join(',');
-        
-        // 调用我们刚刚写的批量获取地点经纬度接口
-        const res = await axios.get(`${baseURL}/locations/batch`, {
-          params: { ids: idsStr }
-        });
-        const locations = res.data;
-        
-        // 打印批量获取到的所有地点信息，方便确认后端是否成功返回了图片等扩展字段
-        console.log('🌍 [Map Data Loaded] 获取到的所有地点信息:', locations);
 
         // 设置高德地图安全密钥（由于Typescript中window对象默认没有这个属性，需要通过类型断言绕过或声明）
         (window as any)._AMapSecurityConfig = {
@@ -168,6 +211,21 @@ const ProfilePage: React.FC = () => {
             zoom: 4,
             center: [104.06, 30.67], // 中国中心参考坐标
           });
+
+          if (uniqueIds.length === 0) {
+            return;
+          }
+
+          const idsStr = uniqueIds.join(',');
+
+          // 调用我们刚刚写的批量获取地点经纬度接口
+          const res = await axios.get(`${baseURL}/locations/batch`, {
+            params: { ids: idsStr }
+          });
+          const locations = res.data;
+          
+          // 打印批量获取到的所有地点信息，方便确认后端是否成功返回了图片等扩展字段
+          console.log('🌍 [Map Data Loaded] 获取到的所有地点信息:', locations);
 
           // 创建一个共享的信息窗体 InfoWindow
           const infoWindow = new AMap.InfoWindow({
@@ -380,28 +438,28 @@ const ProfilePage: React.FC = () => {
           <Col xs={12} sm={6}>
             <Statistic 
               title="旅行次数" 
-              value={user.travelStats.trips} 
+              value={travelStats.trips} 
               prefix={<CalendarOutlined />} 
             />
           </Col>
           <Col xs={12} sm={6}>
             <Statistic 
               title="目的地" 
-              value={user.travelStats.destinations} 
+              value={travelStats.destinations} 
               prefix={<EnvironmentOutlined />} 
             />
           </Col>
           <Col xs={12} sm={6}>
             <Statistic 
               title="旅行天数" 
-              value={user.travelStats.days} 
+              value={travelStats.days} 
               prefix={<CalendarOutlined />} 
             />
           </Col>
           <Col xs={12} sm={6}>
             <Statistic 
               title="收藏地点" 
-              value={user.travelStats.favorites} 
+              value={travelStats.favorites} 
               prefix={<StarOutlined />} 
             />
           </Col>
@@ -412,17 +470,10 @@ const ProfilePage: React.FC = () => {
       <Card className="map-card" bodyStyle={{ padding: 0, overflow: 'hidden' }}>
         <Title level={3} style={{ padding: '24px 24px 0 24px', margin: 0 }}>我的足迹</Title>
         <div className="interactive-map">
-          {(!user?.favorite_locations?.length && !user?.highlighted_locations?.length) ? (
-             <div className="map-placeholder">
-               <h3>互动地图</h3>
-               <p>你还没有收藏或点亮的足迹点，快去发现世界吧！</p>
-             </div>
-          ) : (
-             <div 
-                ref={mapContainerRef} 
-                className="amap-container"
-             ></div>
-          )}
+          <div 
+            ref={mapContainerRef} 
+            className="amap-container"
+          ></div>
         </div>
       </Card>
 
