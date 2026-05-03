@@ -28,6 +28,7 @@ langchain>=0.0.350
 langchain-openai>=0.0.2
 tiktoken==0.5.2
 chromadb==0.5.5
+dashscope==1.20.14
 
 # Web Scraping
 scrapy==2.11.0

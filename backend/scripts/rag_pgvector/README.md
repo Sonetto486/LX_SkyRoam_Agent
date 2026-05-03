@@ -14,10 +14,13 @@
 可在 `backend/.env` 中配置：
 - `CHROMA_PERSIST_DIR`（默认 `backend/data/chroma`）
 - `CHROMA_COLLECTION`（默认 `rag_xhs_notes`）
-- `OPENAI_API_KEY`（远程模型 API Key）
+- `EMBEDDING_PROVIDER`（`openai` 或 `dashscope`）
+- `DASHSCOPE_API_KEY`（阿里云百炼 API Key）
+- `DASHSCOPE_EMBEDDING_MODEL`（默认 `text-embedding-v2`）
+- `OPENAI_API_KEY`（远程模型 API Key，用于问答）
 - `OPENAI_API_BASE`（远程模型 API Base，OpenAI 兼容）
 - `OPENAI_MODEL`（问答模型）
-- `OPENAI_EMBEDDING_MODEL`（向量化模型）
+- `OPENAI_EMBEDDING_MODEL`（向量化模型，若 `EMBEDDING_PROVIDER=openai`）
 - `OPENAI_TEMPERATURE`（默认 `0.7`）
 - `OPENAI_TIMEOUT`（默认 `300`）
 
