@@ -935,9 +935,9 @@ const TravelPlanPage: React.FC = () => {
                             {r?.address && <Text type="secondary">{r.address}</Text>}
                             {Array.isArray(r?.specialties) && r.specialties.length > 0 && (
                               <Space wrap size={4}>
-                                {r.specialties.slice(0, 5).map((s: string, idx: number) => (
+                                {r.specialties.slice(0, 5).map((s: any, idx: number) => (
                                   <Tag key={idx} color="geekblue">
-                                    {s}
+                                    {typeof s === 'string' ? s : (s?.name || s?.dish_name || '特色菜')}
                                   </Tag>
                                 ))}
                               </Space>

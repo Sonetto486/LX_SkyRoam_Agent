@@ -64,8 +64,10 @@ async def find_qrcode_img_from_canvas(page: Page, canvas_selector: str) -> str:
 
     """
 
-    # 等待Canvas元素加载完成
+       # 等待Canvas元素加载完成
     canvas = await page.wait_for_selector(canvas_selector)
+    if not canvas:
+        raise Exception(f"无法找到 Canvas 元素: {canvas_selector}")
 
     # 截取Canvas元素的截图
     screenshot = await canvas.screenshot()
@@ -84,7 +86,8 @@ def show_qrcode(qr_code) -> None:  # type: ignore
 
     # Add a square border around the QR code and display it within the border to improve scanning accuracy.
     width, height = image.size
-    new_image = Image.new('RGB', (width + 20, height + 20), color=(255, 255, 255))
+        # pyright: ignore reportArgumentType
+    new_image = Image.new('RGB', (width + 20, height + 20), color=0xffffff)
     new_image.paste(image, (10, 10))
     draw = ImageDraw.Draw(new_image)
     draw.rectangle((0, 0, width + 19, height + 19), outline=(0, 0, 0), width=1)
@@ -202,9 +205,9 @@ def extract_text_from_html(html: str) -> str:
     clean_text = re.sub(r'<[^>]+>', '', clean_html).strip()
     return clean_text
 
-def extract_url_params_to_dict(url: str) -> Dict:
+def extract_url_params_to_dict(url: str) -> Dict[str, str]:
     """Extract URL parameters to dict"""
-    url_params_dict = dict()
+    url_params_dict: Dict[str, str] = dict()
     if not url:
         return url_params_dict
     parsed_url = urllib.parse.urlparse(url)

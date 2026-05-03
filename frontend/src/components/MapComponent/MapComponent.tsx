@@ -12,7 +12,7 @@ interface Marker {
   name: string;
   position: { lat: number; lng: number };
   address: string;
-  isHovered: boolean;
+  isHovered?: boolean;
   day?: number;
   time?: string;
 }
@@ -35,20 +35,28 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const isMountedRef = useRef(true);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 更新标记的函数（使用 useCallback 避免重复创建）
+  // 更新标记和路线
   const updateMarkers = useCallback(() => {
     if (!mapLoaded || !mapInstanceRef.current || !isMountedRef.current) return;
+
     // 清除旧标记
     markersRef.current.forEach(marker => {
       try { mapInstanceRef.current.remove(marker); } catch (e) { }
     });
     markersRef.current = [];
 
+    // 清除旧路线
+    polylineRef.current.forEach(polyline => {
+      try { mapInstanceRef.current.remove(polyline); } catch (e) { }
+    });
+    polylineRef.current = [];
+
+    // 添加标记点
     markers.forEach(marker => {
       try {
         const amapMarker = new window.AMap.Marker({
@@ -75,21 +83,50 @@ const MapComponent: React.FC<MapComponentProps> = ({
       } catch (e) { }
     });
 
+    // 绘制路线：按天分组
+    const markersByDay: Record<number, Marker[]> = {};
+    markers.forEach(m => {
+      const day = m.day || 1;
+      if (!markersByDay[day]) markersByDay[day] = [];
+      markersByDay[day].push(m);
+    });
+
+    // 为每天绘制路线
+    Object.entries(markersByDay).forEach(([day, dayMarkers]) => {
+      if (dayMarkers.length < 2) return;
+
+      const dayNum = parseInt(day);
+      const path = dayMarkers.map(m => [m.position.lng, m.position.lat]);
+      const isCurrentDay = viewMode === 'full' || dayNum === currentDay;
+
+      const polyline = new window.AMap.Polyline({
+        path: path,
+        strokeColor: isCurrentDay ? '#1890ff' : '#999999',
+        strokeWeight: isCurrentDay ? 4 : 2,
+        strokeOpacity: isCurrentDay ? 0.9 : 0.5,
+        strokeStyle: isCurrentDay ? 'solid' : 'dashed',
+        lineJoin: 'round',
+        lineCap: 'round'
+      });
+      mapInstanceRef.current.add(polyline);
+      polylineRef.current.push(polyline);
+    });
+
+    // 自适应视图
     if (markers.length > 0 && isMountedRef.current) {
       try {
         const positions = markers.map(m => [m.position.lng, m.position.lat]);
         mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
       } catch (e) { }
     }
-  }, [markers, mapLoaded]);
+  }, [markers, mapLoaded, viewMode, currentDay]);
 
   useEffect(() => {
     isMountedRef.current = true;
-    abortControllerRef.current = new AbortController();
 
     const amapKey = process.env.REACT_APP_AMAP_KEY;
     if (!amapKey) {
-      console.error('高德地图 API Key 未配置，请在 .env 文件中设置 REACT_APP_AMAP_KEY');
+      console.error('高德地图 API Key 未配置');
       if (isMountedRef.current) setLoadError(true);
       return;
     }
@@ -133,38 +170,25 @@ const MapComponent: React.FC<MapComponentProps> = ({
         if (isMountedRef.current) setLoadError(true);
       };
       document.head.appendChild(script);
-
-      abortControllerRef.current?.signal.addEventListener('abort', () => {
-        if (script.parentNode) script.parentNode.removeChild(script);
-      });
     };
 
     loadAMap();
 
     return () => {
       isMountedRef.current = false;
-      abortControllerRef.current?.abort();
       if (mapInstanceRef.current) {
-        try {
-          mapInstanceRef.current.destroy();
-        } catch (e) { }
+        try { mapInstanceRef.current.destroy(); } catch (e) { }
         mapInstanceRef.current = null;
       }
       markersRef.current = [];
-      if (mapRef.current) {
-        mapRef.current.innerHTML = ''; // 彻底清空容器
-      }
+      polylineRef.current = [];
     };
-  }, [center.lng, center.lat, zoom, updateMarkers]);
+  }, [center.lng, center.lat, zoom]);
 
-  // 监听中心点变化
+  // 监听标记变化
   useEffect(() => {
-    if (!mapLoaded || !mapInstanceRef.current || !isMountedRef.current) return;
-    try {
-      mapInstanceRef.current.setCenter([center.lng, center.lat]);
-      updateMarkers();
-    } catch (e) { }
-  }, [center, mapLoaded, updateMarkers]);
+    updateMarkers();
+  }, [markers, mapLoaded, viewMode, currentDay, updateMarkers]);
 
   if (loadError) {
     return (
@@ -174,7 +198,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <h3>地图加载失败</h3>
             <p>请检查高德地图 API Key 配置</p>
             <p>中心坐标: {center.lat}, {center.lng}</p>
-            <p>标记数量: {markers.length}</p>
           </div>
         </div>
       </div>
@@ -185,7 +208,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     <div className="map-container" style={{ position: 'relative' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
       {!mapLoaded && (
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5' }}>
           地图加载中...
         </div>
       )}

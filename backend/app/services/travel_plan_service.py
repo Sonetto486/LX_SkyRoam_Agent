@@ -8,7 +8,7 @@ from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.orm import selectinload
 
 from app.models.travel_plan import TravelPlan, TravelPlanItem, TravelPlanRating
-from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate, TravelPlanResponse
+from app.schemas.travel_plan import TravelPlanCreate, TravelPlanUpdate, TravelPlanResponse, TravelPlanItemCreate, TravelPlanItemUpdate
 
 
 class TravelPlanService:
@@ -329,7 +329,16 @@ class TravelPlanService:
         return plan
     
     async def delete_travel_plan(self, plan_id: int) -> bool:
-        """删除旅行计划"""
+        """删除旅行计划（先删除关联的行程项目和评分记录）"""
+        # 先删除关联的评分记录
+        await self.db.execute(
+            delete(TravelPlanRating).where(TravelPlanRating.travel_plan_id == plan_id)
+        )
+        # 再删除关联的行程项目
+        await self.db.execute(
+            delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
+        )
+        # 最后删除旅行计划
         result = await self.db.execute(
             delete(TravelPlan).where(TravelPlan.id == plan_id)
         )
@@ -357,9 +366,18 @@ class TravelPlanService:
         return True
 
     async def delete_travel_plans(self, ids: List[int]) -> int:
-        """批量删除旅行计划，返回删除条数"""
+        """批量删除旅行计划，返回删除条数（先删除关联的行程项目和评分记录）"""
         if not ids:
             return 0
+        # 先删除关联的评分记录
+        await self.db.execute(
+            delete(TravelPlanRating).where(TravelPlanRating.travel_plan_id.in_(ids))
+        )
+        # 再删除关联的行程项目
+        await self.db.execute(
+            delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id.in_(ids))
+        )
+        # 最后删除旅行计划
         result = await self.db.execute(
             delete(TravelPlan).where(TravelPlan.id.in_(ids))
         )
@@ -558,36 +576,44 @@ class TravelPlanService:
         res = await self.db.execute(q)
         return res.scalar_one_or_none()
 
-    # =============== 行程项目(Item)相关方法 ===============
-    async def add_item(self, plan_id: int, item_data: Dict[str, Any]) -> Optional[TravelPlanItem]:
-        """添加行程项目"""
-        # 验证计划存在
-        plan = await self.get_travel_plan(plan_id)
-        if not plan:
-            return None
-
-        item = TravelPlanItem(travel_plan_id=plan_id, **item_data)
+    # =============== 行程项目相关方法 ===============
+    async def create_item(self, plan_id: int, item_data: TravelPlanItemCreate) -> TravelPlanItem:
+        """创建行程项目"""
+        item = TravelPlanItem(
+            travel_plan_id=plan_id,
+            **item_data.dict()
+        )
         self.db.add(item)
         await self.db.commit()
         await self.db.refresh(item)
         return item
 
-    async def get_item(self, item_id: int) -> Optional[TravelPlanItem]:
-        """获取单个行程项目"""
-        result = await self.db.execute(
-            select(TravelPlanItem).where(TravelPlanItem.id == item_id)
+    async def get_items(self, plan_id: int) -> List[TravelPlanItem]:
+        """获取行程的所有项目"""
+        q = (
+            select(TravelPlanItem)
+            .where(TravelPlanItem.travel_plan_id == plan_id)
+            .order_by(TravelPlanItem.start_time.nulls_first(), TravelPlanItem.created_at)
         )
-        return result.scalar_one_or_none()
+        res = await self.db.execute(q)
+        return res.scalars().all()
 
-    async def update_item(self, item_id: int, item_data: Dict[str, Any]) -> Optional[TravelPlanItem]:
+    async def get_item(self, plan_id: int, item_id: int) -> Optional[TravelPlanItem]:
+        """获取单个行程项目"""
+        q = (
+            select(TravelPlanItem)
+            .where(TravelPlanItem.id == item_id, TravelPlanItem.travel_plan_id == plan_id)
+        )
+        res = await self.db.execute(q)
+        return res.scalar_one_or_none()
+
+    async def update_item(self, plan_id: int, item_id: int, item_data: TravelPlanItemUpdate) -> Optional[TravelPlanItem]:
         """更新行程项目"""
-        item = await self.get_item(item_id)
+        item = await self.get_item(plan_id, item_id)
         if not item:
             return None
 
-        # 过滤掉空值
-        update_data = {k: v for k, v in item_data.items() if v is not None}
-
+        update_data = item_data.dict(exclude_unset=True)
         if update_data:
             await self.db.execute(
                 update(TravelPlanItem)
@@ -595,61 +621,38 @@ class TravelPlanService:
                 .values(**update_data)
             )
             await self.db.commit()
-            return await self.get_item(item_id)
-
+            await self.db.refresh(item)
         return item
 
-    async def delete_item(self, item_id: int) -> bool:
+    async def delete_item(self, plan_id: int, item_id: int) -> bool:
         """删除行程项目"""
         result = await self.db.execute(
-            delete(TravelPlanItem).where(TravelPlanItem.id == item_id)
+            delete(TravelPlanItem)
+            .where(TravelPlanItem.id == item_id, TravelPlanItem.travel_plan_id == plan_id)
         )
         await self.db.commit()
         return result.rowcount > 0
 
     async def reorder_items(self, plan_id: int, item_ids: List[int]) -> bool:
-        """重排序行程项目
-
-        Args:
-            plan_id: 行程ID
-            item_ids: 按新顺序排列的项目ID列表
-
-        Returns:
-            是否成功
-        """
-        # 验证计划存在
+        """重排序行程项目（根据传入的ID顺序更新排序值）"""
+        # 获取计划信息以确定基准日期
         plan = await self.get_travel_plan(plan_id)
         if not plan:
             return False
 
-        # 获取所有项目
-        items = await self.db.execute(
-            select(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
-        )
-        existing_items = {item.id: item for item in items.scalars().all()}
-
-        # 验证所有ID都属于该计划
-        for item_id in item_ids:
-            if item_id not in existing_items:
-                return False
-
-        # 更新排序（使用start_time作为排序依据）
-        base_time = datetime.utcnow()
+        # 按顺序更新每个项目的排序字段
+        # 使用 PostgreSQL 的 jsonb 合并操作符
         for index, item_id in enumerate(item_ids):
-            await self.db.execute(
-                update(TravelPlanItem)
-                .where(TravelPlanItem.id == item_id)
-                .values(duration_hours=float(index))  # 临时用duration_hours存储顺序
-            )
-
+            # 先获取当前 item
+            item = await self.get_item(plan_id, item_id)
+            if item:
+                # 合并 details 字典
+                current_details = item.details or {}
+                updated_details = {**current_details, '_order': index}
+                await self.db.execute(
+                    update(TravelPlanItem)
+                    .where(TravelPlanItem.id == item_id, TravelPlanItem.travel_plan_id == plan_id)
+                    .values(details=updated_details)
+                )
         await self.db.commit()
         return True
-
-    async def get_items_by_plan(self, plan_id: int) -> List[TravelPlanItem]:
-        """获取行程的所有项目"""
-        result = await self.db.execute(
-            select(TravelPlanItem)
-            .where(TravelPlanItem.travel_plan_id == plan_id)
-            .order_by(TravelPlanItem.start_time, TravelPlanItem.id)
-        )
-        return result.scalars().all()

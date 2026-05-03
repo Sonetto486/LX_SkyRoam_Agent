@@ -26,7 +26,7 @@ from tenacity import RetryError
 from . import config
 from .base.base_crawler import AbstractCrawler
 from .config import CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES
-from .model.m_xiaohongshu import NoteUrlInfo, CreatorUrlInfo
+from .help import parse_note_info_from_note_url, parse_creator_info_from_url, get_search_id, NoteUrlInfo, CreatorUrlInfo
 from .proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
 from .store import xhs as xhs_store
 from .tools import utils
@@ -159,8 +159,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
                         if note_detail:
                             await xhs_store.update_xhs_note(note_detail)
                             await self.get_notice_media(note_detail)
-                            note_ids.append(note_detail.get("note_id"))
-                            xsec_tokens.append(note_detail.get("xsec_token"))
+                            note_id = note_detail.get("note_id")
+                            xsec_token = note_detail.get("xsec_token")
+                            if note_id and xsec_token:
+                                note_ids.append(str(note_id))
+                                xsec_tokens.append(str(xsec_token))
                     page += 1
                     utils.logger.info(f"[XiaoHongShuCrawler.search] Note details: {note_details}")
                     await self.batch_get_note_comments(note_ids, xsec_tokens)
@@ -178,21 +181,20 @@ class XiaoHongShuCrawler(AbstractCrawler):
         for creator_url in config.XHS_CREATOR_ID_LIST:
             try:
                 # Parse creator URL to get user_id and security tokens
-                creator_info: CreatorUrlInfo = parse_creator_info_from_url(creator_url)
-                utils.logger.info(f"[XiaoHongShuCrawler.get_creators_and_notes] Parse creator URL info: {creator_info}")
-                user_id = creator_info.user_id
+                creator_url_info: CreatorUrlInfo = parse_creator_info_from_url(creator_url)
+                utils.logger.info(f"[XiaoHongShuCrawler.get_creators_and_notes] Parse creator URL info: {creator_url_info}")
+                user_id = creator_url_info.user_id
 
-                createor_info = None
                 # 屏蔽用户信息获取，这个数据没啥用
-                if createor_info:
+                if False:  # 暂时屏蔽，因为 creator_detail_info 未使用
                     # get creator detail info from web html content
-                    createor_info: Dict = await self.xhs_client.get_creator_info(
+                    creator_detail: Dict = await self.xhs_client.get_creator_info(
                         user_id=user_id,
-                        xsec_token=creator_info.xsec_token,
-                        xsec_source=creator_info.xsec_source
+                        xsec_token=creator_url_info.xsec_token,
+                        xsec_source=creator_url_info.xsec_source
                     )
-                    if createor_info:
-                        await xhs_store.save_creator(user_id, creator=createor_info)
+                    if creator_detail:
+                        await xhs_store.save_creator(user_id, creator=creator_detail)
             except ValueError as e:
                 utils.logger.error(f"[XiaoHongShuCrawler.get_creators_and_notes] Failed to parse creator URL: {e}")
                 continue
@@ -209,8 +211,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
             note_ids = []
             xsec_tokens = []
             for note_item in all_notes_list:
-                note_ids.append(note_item.get("note_id"))
-                xsec_tokens.append(note_item.get("xsec_token"))
+                note_id = note_item.get("note_id")
+                xsec_token = note_item.get("xsec_token")
+                if note_id and xsec_token:
+                    note_ids.append(str(note_id))
+                    xsec_tokens.append(str(xsec_token))
             await self.batch_get_note_comments(note_ids, xsec_tokens)
 
     async def fetch_creator_notes_detail(self, note_list: List[Dict]):
@@ -219,11 +224,11 @@ class XiaoHongShuCrawler(AbstractCrawler):
         """
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
         task_list = [
-            self.get_note_detail_async_task(
-                note_id=post_item.get("note_id"),
-                xsec_source=post_item.get("xsec_source"),
-                xsec_token=post_item.get("xsec_token"),
-                semaphore=semaphore,
+                self.get_note_detail_async_task(
+                    note_id=str(post_item.get("note_id")) if post_item.get("note_id") else "",
+                    xsec_source=str(post_item.get("xsec_source")) if post_item.get("xsec_source") else "",
+                    xsec_token=str(post_item.get("xsec_token")) if post_item.get("xsec_token") else "",
+                    semaphore=semaphore,
             ) for post_item in note_list
         ]
 

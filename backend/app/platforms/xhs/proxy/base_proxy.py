@@ -21,7 +21,7 @@ from typing import List
 from .. import config
 from ..cache.abs_cache import AbstractCache
 from ..cache.cache_factory import CacheFactory
-from ..tools.utils import utils
+from ..tools.utils import logger
 
 from .types import IpInfoModel
 
@@ -71,5 +71,5 @@ class IpCache:
                     continue
                 all_ip_list.append(IpInfoModel(**json.loads(ip_value)))
         except Exception as e:
-            utils.logger.error("[IpCache.load_all_ip] get ip err from redis db", e)
+            logger.error("[IpCache.load_all_ip] get ip err from redis db", e)
         return all_ip_list

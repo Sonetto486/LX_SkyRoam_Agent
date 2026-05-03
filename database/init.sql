@@ -276,13 +276,11 @@ CREATE TABLE IF NOT EXISTS topic (
     intro TEXT,
     cover_url VARCHAR(255),
     region VARCHAR(100),
-    continent VARCHAR(50),
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_topic_region ON topic(region);
-CREATE INDEX IF NOT EXISTS idx_topic_continent ON topic(continent);
 CREATE INDEX IF NOT EXISTS idx_topic_search ON topic USING gin(to_tsvector('chinese', name || ' ' || intro));
 
 

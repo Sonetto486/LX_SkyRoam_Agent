@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小红书旅游攻略生成器</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        // 配置 Tailwind 自定义颜色
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4ECDC4',
+                        secondary: '#45B7D1',
+                        accent: '#FF6B6B',
+                        light: '#F7FFF7',
+                        dark: '#292F36'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-hover {
+                transition: all 0.3s ease;
+            }
+            .card-hover:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            }
+        }
+    </style>
+</head>
+<body class="bg-light min-h-screen font-sans">
+    <!-- 顶部标题 -->
+    <header class="bg-gradient-to-r from-primary to-secondary text-white py-8 px-4 shadow-md">
+        <div class="container mx-auto max-w-4xl">
+            <h1 class="text-3xl md:text-4xl font-bold text-center text-shadow">
+                <i class="fa fa-map-marker mr-2"></i>小红书旅游攻略生成器
+            </h1>
+            <p class="text-center mt-2 opacity-90">
+                粘贴小红书笔记链接，一键生成旅游攻略
+            </p>
+        </div>
+    </header>
+
+    <!-- 中间输入区域 -->
+    <main class="container mx-auto max-w-4xl px-4 py-8">
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8 card-hover">
+            <div class="mb-4">
+                <label for="xhs-link" class="block text-dark font-medium mb-2">小红书笔记链接</label>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <input type="text" id="xhs-link" placeholder="请粘贴小红书笔记链接..." 
+                           class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                    <div class="flex gap-2">
+                        <button id="generate-btn" class="bg-primary hover:bg-opacity-90 text-white px-6 py-3 rounded-lg font-medium transition-all flex items-center justify-center">
+                            <i class="fa fa-magic mr-2"></i>生成攻略
+                        </button>
+                        <button id="clear-btn" class="bg-gray-200 hover:bg-gray-300 text-dark px-4 py-3 rounded-lg font-medium transition-all">
+                            <i class="fa fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="error-message" class="hidden bg-red-50 border-l-4 border-red-400 p-3 text-red-700 rounded mb-4">
+                <div class="flex items-center">
+                    <i class="fa fa-exclamation-circle mr-2"></i>
+                    <span id="error-text"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载动画 -->
+        <div id="loading" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                <p class="text-dark font-medium">正在生成攻略中...</p>
+            </div>
+        </div>
+
+        <!-- 底部内容展示区 -->
+        <div id="result-container" class="hidden">
+            <!-- 原始笔记内容 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-8 card-hover">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-dark flex items-center">
+                        <i class="fa fa-file-text-o mr-2 text-primary"></i>原始小红书笔记内容
+                    </h2>
+                </div>
+                <div id="original-content" class="text-gray-700 leading-relaxed whitespace-pre-wrap"></div>
+            </div>
+
+            <!-- 生成的攻略 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-8 card-hover">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-dark flex items-center">
+                        <i class="fa fa-map-o mr-2 text-primary"></i>生成的旅游攻略
+                    </h2>
+                    <button id="copy-guide" class="bg-secondary hover:bg-opacity-90 text-white px-4 py-2 rounded-lg font-medium transition-all flex items-center">
+                        <i class="fa fa-copy mr-2"></i>复制攻略
+                    </button>
+                </div>
+                <div id="guide-content" class="text-gray-700 leading-relaxed">
+                    <!-- 攻略内容将在这里生成 -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-white py-6 px-4 mt-12">
+        <div class="container mx-auto max-w-4xl text-center">
+            <p>© 2026 小红书旅游攻略生成器 | 仅供学习和研究使用</p>
+        </div>
+    </footer>
+
+    <script>
+        // DOM 元素
+        const linkInput = document.getElementById('xhs-link');
+        const generateBtn = document.getElementById('generate-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        const loading = document.getElementById('loading');
+        const resultContainer = document.getElementById('result-container');
+        const originalContent = document.getElementById('original-content');
+        const guideContent = document.getElementById('guide-content');
+        const copyGuideBtn = document.getElementById('copy-guide');
+
+        // 示例小红书笔记内容（模拟数据）
+        const mockNoteContent = `
+上海三日游攻略来啦！
+
+第一天：
+上午：外滩 - 感受上海的标志性建筑群
+中午：南京路步行街 - 吃了小杨生煎，味道超级好！
+下午：豫园 - 体验传统园林文化
+晚上：新天地 - 夜生活好去处
+
+第二天：
+上午：上海博物馆 - 了解上海历史
+中午：陆家嘴 - 打卡东方明珠
+下午：田子坊 - 文艺小资聚集地
+晚上：外滩夜景 - 必看！
+
+第三天：
+上午：迪士尼乐园 - 一整天都在玩
+中午：乐园内用餐
+下午：继续游玩
+晚上：烟花表演 - 超级震撼！
+
+交通：
+- 地铁非常方便，建议购买一日票
+- 打车也很便捷，但高峰期可能会堵车
+
+住宿：
+推荐住在人民广场附近，交通便利
+
+美食推荐：
+- 小杨生煎
+- 南翔小笼包
+- 上海菜：红烧肉、糖醋排骨
+
+避坑指南：
+- 节假日迪士尼人很多，建议早去
+- 外滩拍照最好傍晚去，光线最美
+- 南京路步行街的小吃价格偏贵
+        `;
+
+        // 生成攻略的函数
+        function generateGuide(content) {
+            // 这里是模拟生成攻略的逻辑
+            // 实际项目中，这里可以对接大模型API来生成更智能的攻略
+            
+            // 解析内容，提取关键信息
+            const sections = {
+                行程规划: "",
+                必去景点: "",
+                特色美食: "",
+                住宿建议: "",
+                出行小贴士: ""
+            };
+
+            // 简单的内容提取逻辑
+            const lines = content.split('\n');
+            let currentSection = null;
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.includes('第一天') || line.includes('第二天') || line.includes('第三天')) {
+                    sections['行程规划'] += line + '\n';
+                    currentSection = '行程规划';
+                } else if (line.includes('交通')) {
+                    sections['出行小贴士'] += line + '\n';
+                    currentSection = '出行小贴士';
+                } else if (line.includes('住宿')) {
+                    sections['住宿建议'] += line + '\n';
+                    currentSection = '住宿建议';
+                } else if (line.includes('美食')) {
+                    sections['特色美食'] += line + '\n';
+                    currentSection = '特色美食';
+                } else if (line.includes('避坑')) {
+                    sections['出行小贴士'] += line + '\n';
+                    currentSection = '出行小贴士';
+                } else if (line.includes('：') && !line.includes('上午') && !line.includes('中午') && !line.includes('下午') && !line.includes('晚上')) {
+                    sections['必去景点'] += line + '\n';
+                } else if (currentSection) {
+                    sections[currentSection] += line + '\n';
+                }
+            });
+
+            // 构建攻略HTML
+            let guideHTML = '';
+            Object.entries(sections).forEach(([title, content]) => {
+                if (content.trim()) {
+                    guideHTML += `
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-primary mb-2 flex items-center">
+                            <i class="fa fa-angle-right mr-2"></i>${title}
+                        </h3>
+                        <div class="pl-6 border-l-2 border-gray-200">
+                            ${content.trim().split('\n').map(line => `<p class="mb-1">${line}</p>`).join('')}
+                        </div>
+                    </div>
+                    `;
+                }
+            });
+
+            return guideHTML;
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // 隐藏错误信息
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+
+        // 生成攻略按钮点击事件
+        generateBtn.addEventListener('click', async () => {
+            const link = linkInput.value.trim();
+            
+            // 验证输入
+            if (!link) {
+                showError('请输入小红书链接');
+                return;
+            }
+
+            // 简单的链接验证
+            if (!link.includes('xiaohongshu.com')) {
+                showError('请输入有效的小红书链接');
+                return;
+            }
+
+            hideError();
+            
+            // 显示加载动画
+            loading.classList.remove('hidden');
+
+            try {
+                // 调用后端API
+                const response = await fetch('http://localhost:8001/api/v1/xiaohongshu/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ link: link })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API请求失败');
+                }
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 提取笔记内容
+                    const plan = data.data;
+                    let noteContent = `标题：${plan.title}\n\n`;
+                    
+                    // 从行程中提取内容
+                    plan.itinerary.forEach(day => {
+                        noteContent += `第${day.day}天：\n`;
+                        day.activities.forEach(activity => {
+                            noteContent += `${activity.time}：${activity.name} - ${activity.description}\n`;
+                        });
+                        noteContent += '\n';
+                    });
+                    
+                    // 添加其他信息
+                    if (plan.food_recommendations && plan.food_recommendations.length > 0) {
+                        noteContent += '美食推荐：\n';
+                        plan.food_recommendations.forEach(food => {
+                            noteContent += `- ${food}\n`;
+                        });
+                        noteContent += '\n';
+                    }
+                    
+                    if (plan.accommodation) {
+                        noteContent += `住宿建议：${plan.accommodation}\n\n`;
+                    }
+                    
+                    if (plan.transportation) {
+                        noteContent += `交通建议：${plan.transportation}\n\n`;
+                    }
+                    
+                    if (plan.tips && plan.tips.length > 0) {
+                        noteContent += '出行小贴士：\n';
+                        plan.tips.forEach(tip => {
+                            noteContent += `- ${tip}\n`;
+                        });
+                    }
+                    
+                    originalContent.textContent = noteContent;
+
+                    // 生成攻略
+                    const guideHTML = generateGuide(noteContent);
+                    guideContent.innerHTML = guideHTML;
+                } else {
+                    throw new Error('API返回失败');
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                showError('获取小红书内容失败，请稍后再试');
+                loading.classList.add('hidden');
+                return;
+            }
+
+            // 隐藏加载动画，显示结果
+            loading.classList.add('hidden');
+            resultContainer.classList.remove('hidden');
+
+            // 滚动到结果区域
+            resultContainer.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        // 清空按钮点击事件
+        clearBtn.addEventListener('click', () => {
+            linkInput.value = '';
+            hideError();
+            resultContainer.classList.add('hidden');
+        });
+
+        // 复制攻略按钮点击事件
+        copyGuideBtn.addEventListener('click', async () => {
+            const guideText = guideContent.textContent;
+            try {
+                await navigator.clipboard.writeText(guideText);
+                // 显示复制成功提示
+                const originalText = copyGuideBtn.innerHTML;
+                copyGuideBtn.innerHTML = '<i class="fa fa-check mr-2"></i>已复制';
+                copyGuideBtn.classList.remove('bg-secondary');
+                copyGuideBtn.classList.add('bg-green-500');
+                setTimeout(() => {
+                    copyGuideBtn.innerHTML = originalText;
+                    copyGuideBtn.classList.remove('bg-green-500');
+                    copyGuideBtn.classList.add('bg-secondary');
+                }, 2000);
+            } catch (err) {
+                console.error('复制失败:', err);
+            }
+        });
+
+        // 预留 AI 接口对接位置
+        // 当需要对接真实的大模型API时，可以替换以下函数
+        /*
+        async function generateGuideWithAI(content) {
+            // 调用大模型API生成攻略
+            // 示例API调用代码：
+            // const response = await fetch('AI_API_ENDPOINT', {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json'
+            //     },
+            //     body: JSON.stringify({
+            //         prompt: "基于以下小红书笔记内容，生成一份详细的旅游攻略，包含行程规划、必去景点、特色美食、住宿建议和出行小贴士：\n" + content,
+            //         max_tokens: 1000
+            //     })
+            // });
+            
+            // const data = await response.json();
+            // return data.choices[0].text;
+            
+            // 暂时返回模拟数据
+            return generateGuide(content);
+        }
+        */
+    </script>
+</body>
+</html>

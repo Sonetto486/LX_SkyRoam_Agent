@@ -4,7 +4,8 @@ OpenAI客户端工具
 """
 
 import openai
-from typing import Optional, Dict, Any, List, AsyncGenerator
+from openai.types.chat import ChatCompletionMessageParam
+from typing import Optional, Dict, Any, List, AsyncGenerator, Iterable
 from loguru import logger
 import asyncio
 from app.core.config import settings
@@ -28,18 +29,11 @@ class OpenAIClient:
     def _configure_client(self):
         """配置OpenAI客户端"""
         try:
-            # 设置API密钥
-            openai.api_key = self.api_key
-            
-            # 如果设置了自定义API地址，则使用自定义地址
+            # 记录配置信息
             if self.api_base and self.api_base != "https://api.openai.com/v1":
-                openai.api_base = self.api_base
                 logger.info(f"使用自定义OpenAI API地址: {self.api_base}")
             else:
                 logger.info("使用默认OpenAI API地址")
-            
-            # 设置默认参数
-            openai.api_timeout = self.timeout
             
         except Exception as e:
             logger.error(f"配置OpenAI客户端失败: {e}")
@@ -55,7 +49,7 @@ class OpenAIClient:
     ) -> str:
         """生成文本"""
         try:
-            messages = []
+            messages: List[ChatCompletionMessageParam] = []
             
             # 添加系统提示
             if system_prompt:
@@ -226,7 +220,7 @@ class OpenAIClient:
     
     async def _call_api(
         self, 
-        messages: List[Dict[str, str]], 
+        messages: Iterable[ChatCompletionMessageParam], 
         **kwargs
     ) -> Any:
         """调用OpenAI API"""
@@ -254,9 +248,9 @@ class OpenAIClient:
     
     async def _call_api_stream(
         self, 
-        messages: List[Dict[str, str]], 
+        messages: Iterable[ChatCompletionMessageParam], 
         **kwargs
-    ):
+    ) -> AsyncGenerator:
         """调用OpenAI流式API"""
         try:
             # 使用异步客户端

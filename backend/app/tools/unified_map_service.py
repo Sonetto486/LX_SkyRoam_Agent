@@ -14,7 +14,7 @@ from app.tools.baidu_maps_integration import (
     map_search_places as baidu_search_places,
     map_reverse_geocode as baidu_reverse_geocode
 )
-from app.tools.amap_mcp_client import AmapMCPClient
+from app.tools.amap_rest_client import amap_rest_client
 from app.tools.tianditu_maps_integration import (
     map_geocode as tianditu_geocode,
     map_directions as tianditu_directions,
@@ -24,9 +24,9 @@ from app.tools.tianditu_maps_integration import (
 
 class UnifiedMapService:
     """统一地图服务，支持多提供商回退"""
-    
+
     def __init__(self):
-        self.amap_client = AmapMCPClient()
+        # 使用全局的高德地图 REST 客户端（直接调用 REST API，无需 MCP 服务器）
         # 获取回退顺序，确保主提供商在第一位
         primary_provider = settings.MAP_PROVIDER
         # 解析回退顺序字符串（逗号分隔）
@@ -52,7 +52,7 @@ class UnifiedMapService:
                 logger.debug(f"尝试使用 {provider} 进行地理编码: {address}")
                 
                 if provider == "amap":
-                    result = await self.amap_client.geocode(address, city)
+                    result = await amap_rest_client.geocode(address, city)
                     if result:
                         return self._normalize_geocode_result(result, "amap")
                 
@@ -112,7 +112,7 @@ class UnifiedMapService:
                 logger.debug(f"尝试使用 {provider} 进行周边搜索: {keywords} @ {location}, types={types}")
                 
                 if provider == "amap":
-                    places = await self.amap_client.search_places_around(
+                    places = await amap_rest_client.search_places_around(
                         location=location,
                         keywords=keywords,
                         types=types,
@@ -200,7 +200,7 @@ class UnifiedMapService:
                 logger.debug(f"尝试使用 {provider} 进行路线规划: {origin} -> {destination}")
                 
                 if provider == "amap":
-                    routes = await self.amap_client.get_directions(
+                    routes = await amap_rest_client.get_directions(
                         origin=origin,
                         destination=destination,
                         mode=mode
@@ -361,7 +361,7 @@ class UnifiedMapService:
     async def close(self):
         """关闭所有客户端"""
         try:
-            await self.amap_client.close()
+            await amap_rest_client.close()
         except Exception:
             pass
 

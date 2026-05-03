@@ -31,6 +31,12 @@ def init_loging_config():
 
 logger = init_loging_config()
 
+class Utils:
+    def __init__(self):
+        self.logger = logger
+
+utils = Utils()
+
 def str2bool(v):
     if isinstance(v, bool):
         return v

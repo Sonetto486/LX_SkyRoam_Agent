@@ -35,6 +35,17 @@ class PlaywrightXHSCrawler:
         self.cookies_file = self.cookies_dir / "xhs_cookies.json"
         
         logger.info(f"Cookie存储路径: {self.cookies_file}")
+        # ... (原有 __init__ 代码) ...
+
+    def _get_page(self) -> Page:
+        """安全获取 page 对象，确保不为 None (解决 Pyright 报错)"""
+        assert self.page is not None, "Page 未初始化，请先调用 start()"
+        return self.page
+
+    def _get_context(self) -> BrowserContext:
+        """安全获取 context 对象，确保不为 None (解决 Pyright 报错)"""
+        assert self.context is not None, "Context 未初始化，请先调用 start()"
+        return self.context
         
     async def start(self):
         """启动浏览器"""
@@ -63,8 +74,8 @@ class PlaywrightXHSCrawler:
             self.page = await self.context.new_page()
             # 优化默认超时时间，减少不必要等待
             try:
-                self.page.set_default_timeout(5000)
-                self.page.set_default_navigation_timeout(10000)
+               self._get_page().set_default_timeout(5000)
+               self._get_page().set_default_navigation_timeout(10000)
             except Exception:
                 pass
             
@@ -147,22 +158,24 @@ class PlaywrightXHSCrawler:
             logger.info("开始二维码登录流程")
             
             # 访问小红书登录页面
-            await self.page.goto('https://www.xiaohongshu.com/explore')
+            await self._get_page().goto('https://www.xiaohongshu.com/explore')
             try:
-                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
+                await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
             except Exception:
-                await self.page.wait_for_timeout(300)
+                await self._get_page().wait_for_timeout(300)
             
             # 查找登录按钮
             try:
-                login_button = await self.page.wait_for_selector('text=登录', timeout=5000)
-                await login_button.click()
+                # --- 修复 1: 检查 login_button 是否为 None ---
+                login_button = await self._get_page().wait_for_selector('text=登录', timeout=5000)
+                if login_button:
+                    await login_button.click()
             except:
                 logger.info("可能已经在登录页面或已登录")
             
             # 等待二维码出现
             try:
-                qr_code = await self.page.wait_for_selector('.qrcode img, .login-qrcode img, [class*="qr"] img', timeout=10000)
+                qr_code = await self._get_page().wait_for_selector('.qrcode img, .login-qrcode img, [class*="qr"] img', timeout=10000)
                 logger.info("二维码已显示，请使用小红书APP扫码登录")
                 logger.info("等待扫码登录完成...")
                 
@@ -171,7 +184,7 @@ class PlaywrightXHSCrawler:
                 while time.time() - start_time < timeout:
                     try:
                         # 首先检查登录容器是否消失（这是最可靠的登录成功标志）
-                        login_container = await self.page.query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
+                        login_container = await self._get_page().query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
                         if not login_container:
                             # 再次确认是否真的登录成功
                             selectors_to_confirm = [
@@ -184,19 +197,19 @@ class PlaywrightXHSCrawler:
                             element_found = False
                             for selector in selectors_to_confirm:
                                 try:
-                                    await self.page.wait_for_selector(selector, timeout=5000)
+                                    await self._get_page().wait_for_selector(selector, timeout=5000)
                                     element_found = True
                                     break
                                 except Exception:
                                     continue
                             if not element_found:
                                 try:
-                                    await self.page.wait_for_load_state('networkidle', timeout=5000)
+                                    await self._get_page().wait_for_load_state('networkidle', timeout=5000)
                                 except Exception:
-                                    await self.page.wait_for_timeout(500)
+                                    await self._get_page().wait_for_timeout(500)
                             
                             # 再次检查登录容器是否存在
-                            login_container = await self.page.query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
+                            login_container = await self._get_page().query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
                             if not login_container:
                                 logger.info("登录框已消失，确认登录成功！")
                                 self.is_logged_in = True
@@ -204,10 +217,10 @@ class PlaywrightXHSCrawler:
                                 return True
                         
                         # 检查URL变化（作为辅助判断）
-                        current_url = self.page.url
+                        current_url = self._get_page().url
                         if 'login' not in current_url and 'explore' in current_url:
                             # 再次确认登录容器是否消失
-                            login_container = await self.page.query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
+                            login_container = await self._get_page().query_selector('.login-container, .login-modal, .login-qrcode, [class*="login-"]')
                             if not login_container:
                                 logger.info("通过URL检测和登录框消失确认登录成功！")
                                 self.is_logged_in = True
@@ -220,9 +233,9 @@ class PlaywrightXHSCrawler:
                         logger.debug(f"检查登录状态时出错: {e}")
                     
                     try:
-                        await self.page.wait_for_load_state('networkidle', timeout=2000)
+                        await self._get_page().wait_for_load_state('networkidle', timeout=2000)
                     except Exception:
-                        await self.page.wait_for_timeout(500)
+                        await self._get_page().wait_for_timeout(500)    
                 
                 logger.warning("登录超时")
                 return False
@@ -238,7 +251,7 @@ class PlaywrightXHSCrawler:
     async def _is_error_page(self) -> bool:
         """检测当前页面是否是错误页面（404、403等）"""
         try:
-            current_url = self.page.url
+            current_url = self._get_page().url
             
             # 检查URL中是否包含错误标识
             error_indicators = ['/404', '/403', '/error', 'error_code', 'error_msg']
@@ -248,7 +261,7 @@ class PlaywrightXHSCrawler:
             
             # 检查页面标题
             try:
-                title = await self.page.title()
+                title = await self._get_page().title()
                 if title and ('错误' in title or '404' in title or '403' in title or 'error' in title.lower()):
                     logger.warning(f"页面标题显示错误: {title}")
                     return True
@@ -270,7 +283,7 @@ class PlaywrightXHSCrawler:
                 ]
                 for selector in error_selectors:
                     try:
-                        element = await self.page.query_selector(selector)
+                        element = await self._get_page().query_selector(selector)
                         if element:
                             text = await element.inner_text()
                             if text and len(text.strip()) > 0:
@@ -295,16 +308,16 @@ class PlaywrightXHSCrawler:
             # 步骤1: 回到首页
             logger.info("步骤1: 回到首页...")
             try:
-                await self.page.goto('https://www.xiaohongshu.com/explore', timeout=10000)
-                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                await self.page.wait_for_timeout(1000)  # 等待页面稳定
+                await self._get_page().goto('https://www.xiaohongshu.com/explore', timeout=10000)
+                await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
+                await self._get_page().wait_for_timeout(1000)  # 等待页面稳定
                 logger.info("成功回到首页")
             except Exception as e:
                 logger.warning(f"回到首页失败: {e}，尝试刷新")
                 try:
-                    await self.page.reload(timeout=10000)
-                    await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                    await self.page.wait_for_timeout(1000)
+                    await self._get_page().reload(timeout=10000)
+                    await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
+                    await self._get_page().wait_for_timeout(1000)   
                 except Exception as e2:
                     logger.error(f"刷新页面也失败: {e2}")
                     return False
@@ -312,9 +325,9 @@ class PlaywrightXHSCrawler:
             # 步骤2: 刷新页面
             logger.info("步骤2: 刷新页面...")
             try:
-                await self.page.reload(timeout=10000)
-                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                await self.page.wait_for_timeout(1000)
+                await self._get_page().reload(timeout=10000)
+                await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
+                await self._get_page().wait_for_timeout(1000)   
                 logger.info("页面刷新成功")
             except Exception as e:
                 logger.warning(f"刷新页面失败: {e}")
@@ -325,7 +338,7 @@ class PlaywrightXHSCrawler:
                 if not await self.check_login_status():
                     logger.warning("登录状态异常，尝试重新加载Cookies")
                     await self.reload_cookies()
-                    await self.page.wait_for_timeout(1000)
+                    await self._get_page().wait_for_timeout(1000)   
             except Exception as e:
                 logger.warning(f"检查登录状态失败: {e}")
             
@@ -333,9 +346,9 @@ class PlaywrightXHSCrawler:
             logger.info(f"步骤4: 重新搜索关键词: {keyword}...")
             try:
                 search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=note"
-                await self.page.goto(search_url, timeout=10000)
-                await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
-                await self.page.wait_for_timeout(1500)  # 等待搜索结果加载
+                await self._get_page().goto(search_url, timeout=10000)
+                await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
+                await self._get_page().wait_for_timeout(1500)  # 等待搜索结果加载
                 logger.info("重新搜索成功")
             except Exception as e:
                 logger.error(f"重新搜索失败: {e}")
@@ -357,7 +370,7 @@ class PlaywrightXHSCrawler:
                 element_found = False
                 for selector in selectors_to_try:
                     try:
-                        await self.page.wait_for_selector(selector, timeout=3000)
+                        await self._get_page().wait_for_selector(selector, timeout=3000)
                         element_found = True
                         break
                     except Exception:
@@ -366,13 +379,13 @@ class PlaywrightXHSCrawler:
                 if not element_found:
                     logger.warning("恢复后未找到搜索结果元素")
                     # 不返回False，可能只是需要更多时间加载
-                    await self.page.wait_for_timeout(2000)
+                    await self._get_page().wait_for_timeout(2000)   
             except Exception as e:
                 logger.warning(f"验证恢复时出错: {e}")
             
             logger.info("恢复流程完成")
             # 等待一段时间让页面稳定
-            await self.page.wait_for_timeout(2000)
+            await self._get_page().wait_for_timeout(2000)   
             return True
             
         except Exception as e:
@@ -385,47 +398,47 @@ class PlaywrightXHSCrawler:
             # 不重复跳转页面，直接检查当前页面状态
 
             try:
-                await self.page.wait_for_load_state('domcontentloaded', timeout=3000)
+                await self._get_page().wait_for_load_state('domcontentloaded', timeout=3000)
             except Exception:
-                await self.page.wait_for_timeout(300)
+                await self._get_page().wait_for_timeout(300)
             
             # 首先检查是否存在登录容器（如果存在说明未登录）
-            login_container = await self.page.query_selector('.login-container')
+            login_container = await self._get_page().query_selector('.login-container')
             if login_container:
                 self.is_logged_in = False
                 logger.info("检测到登录容器，用户未登录")
                 return False
             
             # 检查是否有登录按钮或登录相关文本
-            login_elements = await self.page.query_selector_all('text=登录, text=立即登录, .login-btn, [class*="login"]')
+            login_elements = await self._get_page().query_selector_all('text=登录, text=立即登录, .login-btn, [class*="login"]')   
             if login_elements:
                 self.is_logged_in = False
                 logger.info("检测到登录按钮，用户未登录")
                 return False
             
             # 检查是否有用户相关的元素（头像、用户名等）
-            user_elements = await self.page.query_selector_all('.avatar, .user-avatar, [class*="avatar"], [class*="user"], .profile, [class*="profile"]')
+            user_elements = await self._get_page().query_selector_all('.avatar, .user-avatar, [class*="avatar"], [class*="user"], .profile, [class*="profile"]')
             if user_elements:
                 self.is_logged_in = True
                 logger.info("检测到用户元素，用户已登录")
                 return True
             
             # 检查URL是否包含用户相关信息
-            current_url = self.page.url
+            current_url = self._get_page().url
             if 'user' in current_url or 'profile' in current_url:
                 self.is_logged_in = True
                 logger.info("URL显示用户已登录")
                 return True
             
             # 检查页面标题
-            title = await self.page.title()
+            title = await self._get_page().title()
             if '登录' in title or 'login' in title.lower():
                 self.is_logged_in = False
                 logger.info("页面标题显示需要登录")
                 return False
             
             # 如果以上都没有明确指示，尝试检查页面内容
-            page_content = await self.page.content()
+            page_content = await self._get_page().content()
             if 'login-container' in page_content or '扫码登录' in page_content:
                 self.is_logged_in = False
                 logger.info("页面内容显示需要登录")
@@ -471,12 +484,12 @@ class PlaywrightXHSCrawler:
                 
                 # 构建搜索URL
                 search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=note"
-                await self.page.goto(search_url)
-
+                await self._get_page().goto(search_url)
+                
                 try:
-                    await self.page.wait_for_load_state('domcontentloaded', timeout=5000)
+                    await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
                 except Exception:
-                    await self.page.wait_for_timeout(500)
+                    await self._get_page().wait_for_timeout(500)    
                 
                 # 再次检测错误页面
                 if await self._is_error_page():
@@ -507,7 +520,7 @@ class PlaywrightXHSCrawler:
                     element_found = False
                     for selector in selectors_to_try:
                         try:
-                            await self.page.wait_for_selector(selector, timeout=5000)
+                            await self._get_page().wait_for_selector(selector, timeout=5000)
                             element_found = True
                             logger.info(f"找到页面元素: {selector}")
                             break
@@ -518,16 +531,16 @@ class PlaywrightXHSCrawler:
                         logger.warning("未找到标准的笔记元素，尝试通用方法")
 
                         try:
-                            await self.page.wait_for_load_state('networkidle', timeout=3000)
+                            await self._get_page().wait_for_load_state('networkidle', timeout=3000)
                         except Exception:
-                            await self.page.wait_for_timeout(500)
+                            await self._get_page().wait_for_timeout(500)
                     
                 except Exception as e:
                     logger.warning(f"等待页面元素失败: {e}")
                     try:
-                        await self.page.wait_for_load_state('networkidle', timeout=3000)
+                        await self._get_page().wait_for_load_state('networkidle', timeout=3000)
                     except Exception:
-                        await self.page.wait_for_timeout(500)
+                        await self._get_page().wait_for_timeout(500)
                 
                 # 检测是否进入错误页面
                 if await self._is_error_page():
@@ -590,18 +603,18 @@ class PlaywrightXHSCrawler:
                             pass
                         prev_count = 0
                         try:
-                            prev_count = await self.page.evaluate('document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length')
+                            prev_count = await self._get_page().evaluate('document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length')
                         except Exception:
                             pass
-                        await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                        await self._get_page().evaluate('window.scrollTo(0, document.body.scrollHeight)')
 
                         try:
-                            await self.page.wait_for_function(f'document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length > {prev_count}', timeout=3000)
+                            await self._get_page().wait_for_function(f'document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length > {prev_count}', timeout=3000)
                         except Exception:
                             try:
-                                await self.page.wait_for_load_state('networkidle', timeout=2000)
+                                await self._get_page().wait_for_load_state('networkidle', timeout=2000)
                             except Exception:
-                                await self.page.wait_for_timeout(500)
+                                await self._get_page().wait_for_timeout(500)    
                         scroll_count += 1
                 
                 # 成功获取到数据，返回结果
@@ -673,7 +686,7 @@ class PlaywrightXHSCrawler:
             note_elements = []
             for selector in selectors_to_try:
                 try:
-                    elements = await self.page.query_selector_all(selector)
+                    elements = await self._get_page().query_selector_all(selector)  
                     if elements:
                         note_elements = elements
                         logger.info(f"使用选择器 '{selector}' 找到 {len(elements)} 个元素")
@@ -685,11 +698,15 @@ class PlaywrightXHSCrawler:
             # 如果还是没找到，尝试获取所有链接
             if not note_elements:
                 logger.info("尝试获取所有链接元素")
-                all_links = await self.page.query_selector_all('a[href]')
-                note_elements = [link for link in all_links 
-                               if await link.get_attribute('href') and 
-                               ('/explore/' in await link.get_attribute('href') or 
-                                '/discovery/' in await link.get_attribute('href'))]
+                all_links = await self._get_page().query_selector_all('a[href]')  
+                # --- 修复：先获取 href 并检查是否为 None ---
+                filtered_links = []
+                for link in all_links:
+                    href = await link.get_attribute('href')
+                    if href is not None:  # 确保不是 None 再进行字符串操作
+                        if '/explore/' in href or '/discovery/' in href:
+                            filtered_links.append(link)
+                note_elements = filtered_links
                 logger.info(f"通过链接过滤找到 {len(note_elements)} 个可能的笔记元素")
 
             # 仍然保留一个安全上限，避免一次性解析过多元素
@@ -710,7 +727,6 @@ class PlaywrightXHSCrawler:
         except Exception as e:
             logger.error(f"从页面提取笔记失败: {e}")
             return []
-    
     async def _extract_single_note(self, element, keyword: str) -> Optional[Dict[str, Any]]:
         """提取单个笔记的数据，包括点击进入详情页获取完整内容"""
         try:
@@ -789,7 +805,7 @@ class PlaywrightXHSCrawler:
         """点击进入笔记详情页获取完整描述"""
         try:
             # 获取当前页面URL，用于后续返回
-            current_url = self.page.url
+            current_url = self._get_page().url
             href = None
             try:
                 link = await note_element.query_selector('a[href*="/explore/"]')
@@ -833,7 +849,7 @@ class PlaywrightXHSCrawler:
                         
                         # 滚动到元素可见
                         await click_element.scroll_into_view_if_needed()
-                        await self.page.wait_for_timeout(300)
+                        await self._get_page().wait_for_timeout(300)       
                         
                         # 点击元素
                         await click_element.click(timeout=3000)
@@ -850,7 +866,7 @@ class PlaywrightXHSCrawler:
                 try:
                     logger.debug("尝试JavaScript点击")
                     if href:
-                        await self.page.evaluate('u => { const a = document.createElement("a"); a.href = u; a.style.display="none"; document.body.appendChild(a); a.click(); a.remove(); }', href)
+                        await self._get_page().evaluate('u => { const a = document.createElement("a"); a.href = u; a.style.display="none"; document.body.appendChild(a); a.click(); a.remove(); }', href)
                     else:
                         await note_element.evaluate('el => el.click()')
                     clicked = True
@@ -866,7 +882,7 @@ class PlaywrightXHSCrawler:
                         full_url = f"https://www.xiaohongshu.com{href}" if href.startswith('/') else href
                     logger.debug(f"直接导航到: {full_url}")
                     if full_url:
-                        await self.page.goto(full_url, timeout=10000)
+                        await self._get_page().goto(full_url, timeout=10000)
                     clicked = True
                     logger.debug("导航成功")
                 except Exception as e:
@@ -877,7 +893,7 @@ class PlaywrightXHSCrawler:
                 return ""
             
             try:
-                await self.page.wait_for_timeout(1500)
+                await self._get_page().wait_for_timeout(1500)  
             except Exception:
                 pass
             
@@ -886,28 +902,34 @@ class PlaywrightXHSCrawler:
                 modal_open = await self._is_note_modal_open()
             except Exception:
                 modal_open = False
-            current_page_url = self.page.url
-            if '/explore/' not in current_page_url and not modal_open:
+            current_page_url = self._get_page().url
+            
+            # --- 修复 2: 先检查 href 是否为 None 再进行比较 ---
+            if href is not None and '/explore/' not in current_page_url and not modal_open:
                 if href:
                     try:
                         full_url = f"https://www.xiaohongshu.com{href}" if href.startswith('/') else href
-                        await self.page.goto(full_url, timeout=10000)
-                        await self.page.wait_for_timeout(1000)
-                        current_page_url = self.page.url
+                        await self._get_page().goto(full_url, timeout=10000)
+                        await self._get_page().wait_for_timeout(1000)
+                        current_page_url = self._get_page().url 
                     except Exception as e:
                         logger.debug(f"导航尝试失败: {e}")
                 try:
                     modal_open = await self._is_note_modal_open()
                 except Exception:
                     modal_open = False
+            
+            # 这里再次检查时也需要注意 href 可能为 None 的逻辑，
+            # 但主要逻辑是看当前 URL，所以暂不修改深层逻辑，仅修复上面的报错行
+            
             if '/explore/' not in current_page_url and not modal_open:
                 # 检测是否是错误页面
                 if await self._is_error_page():
                     logger.warning(f"检测到错误页面，停止获取详情: {current_page_url}")
                     # 尝试返回搜索结果页面
                     try:
-                        await self.page.go_back(timeout=5000)
-                        await self.page.wait_for_timeout(1000)
+                        await self._get_page().go_back(timeout=5000)
+                        await self._get_page().wait_for_timeout(1000)
                     except Exception:
                         pass
                     return ""
@@ -919,8 +941,8 @@ class PlaywrightXHSCrawler:
                 logger.warning(f"进入详情页后检测到错误页面，停止获取详情: {current_page_url}")
                 # 尝试返回搜索结果页面
                 try:
-                    await self.page.go_back(timeout=5000)
-                    await self.page.wait_for_timeout(1000)
+                    await self._get_page().go_back(timeout=5000)
+                    await self._get_page().wait_for_timeout(1000)
                 except Exception:
                     pass
                 return ""
@@ -945,7 +967,7 @@ class PlaywrightXHSCrawler:
             detailed_desc = ""
             for selector in desc_selectors:
                 try:
-                    desc_element = await self.page.query_selector(selector)
+                    desc_element = await self._get_page().query_selector(selector)
                     if desc_element:
                         text = await desc_element.inner_text()
                         if text and len(text.strip()) > 10:  # 确保获取到有意义的内容
@@ -960,7 +982,7 @@ class PlaywrightXHSCrawler:
             if not detailed_desc:
                 try:
                     # 等待更长时间让内容加载
-                    await self.page.wait_for_timeout(2000)
+                    await self._get_page().wait_for_timeout(2000)
                     
                     # 尝试获取所有可能的文本内容
                     text_selectors = [
@@ -972,7 +994,7 @@ class PlaywrightXHSCrawler:
                     
                     for selector in text_selectors:
                         try:
-                            elements = await self.page.query_selector_all(selector)
+                            elements = await self._get_page().query_selector_all(selector)
                             for element in elements:
                                 text = await element.inner_text()
                                 if text and len(text.strip()) > 20 and len(text.strip()) < 2000:
@@ -996,14 +1018,14 @@ class PlaywrightXHSCrawler:
                 if await self._is_note_modal_open():
                     await self._close_note_modal()
                 else:
-                    await self.page.go_back(timeout=5000)
-                await self.page.wait_for_timeout(1000)
+                    await self._get_page().go_back(timeout=5000)
+                    await self._get_page().wait_for_timeout(1000)
                 logger.debug("已返回搜索结果页面或关闭弹窗")
             except Exception as e:
                 logger.debug(f"返回或关闭失败: {e}")
                 try:
-                    await self.page.goto(current_url, timeout=10000)
-                    await self.page.wait_for_timeout(2000)
+                    await self._get_page().goto(current_url, timeout=10000)
+                    await self._get_page().wait_for_timeout(2000)
                 except Exception as e2:
                     logger.debug(f"重新导航到搜索页面失败: {e2}")
             
@@ -1025,7 +1047,7 @@ class PlaywrightXHSCrawler:
             ]
             for s in selectors:
                 try:
-                    el = await self.page.query_selector(s)
+                    el = await self._get_page().query_selector(s)
                     if el:
                         return True
                 except Exception:
@@ -1045,32 +1067,32 @@ class PlaywrightXHSCrawler:
             ]
             for s in close_selectors:
                 try:
-                    el = await self.page.query_selector(s)
+                    el = await self._get_page().query_selector(s)
                     if el:
                         await el.scroll_into_view_if_needed()
-                        await self.page.wait_for_timeout(100)
+                        await self._get_page().wait_for_timeout(100)
                         try:
                             await el.click(timeout=1000)
                         except Exception:
                             try:
-                                await self.page.evaluate('e => e.click()', el)
+                                await self._get_page().evaluate('e => e.click()', el)
                             except Exception:
                                 pass
-                        await self.page.wait_for_timeout(300)
+                        await self._get_page().wait_for_timeout(300)
                         if not await self._is_note_modal_open():
                             return True
                 except Exception:
                     continue
             try:
-                await self.page.keyboard.press('Escape')
-                await self.page.wait_for_timeout(300)
+                await self._get_page().keyboard.press('Escape')
+                await self._get_page().wait_for_timeout(300)
                 if not await self._is_note_modal_open():
                     return True
             except Exception:
                 pass
             try:
-                await self.page.evaluate('window.history.back()')
-                await self.page.wait_for_timeout(400)
+                await self._get_page().evaluate('window.history.back()')
+                await self._get_page().wait_for_timeout(400)
                 if not await self._is_note_modal_open():
                     return True
             except Exception:
@@ -1098,7 +1120,7 @@ class PlaywrightXHSCrawler:
             # 优先尝试使用增强的Cookie管理器
             try:
                 from app.services.enhanced_cookie_manager import enhanced_cookie_manager
-                user_agent = await self.page.evaluate('navigator.userAgent')
+                user_agent = await self._get_page().evaluate('navigator.userAgent') 
                 await enhanced_cookie_manager.save_cookies_enhanced(
                     self.context, 
                     user_agent=user_agent
@@ -1109,13 +1131,14 @@ class PlaywrightXHSCrawler:
                 logger.warning(f"⚠️ 增强Cookie管理器保存失败: {e}，回退到原始方法")
             
             # 回退到原始Cookie保存方法
-            cookies = await self.context.cookies()
+            # --- 修复 3: 使用 context 而不是 page 获取 cookies ---
+            cookies = await self._get_context().cookies()      
             
             # 添加保存时间戳
             cookie_data = {
                 'cookies': cookies,
                 'saved_at': int(time.time()),
-                'user_agent': await self.page.evaluate('navigator.userAgent')
+                'user_agent': await self._get_page().evaluate('navigator.userAgent')
             }
             
             with open(self.cookies_file, 'w', encoding='utf-8') as f:
@@ -1170,7 +1193,7 @@ class PlaywrightXHSCrawler:
                     logger.info(f"📅 Cookies有效期还有 {7-days_old:.1f} 天")
             
             # 加载cookies
-            await self.context.add_cookies(cookies)
+            await self._get_context().add_cookies(cookies)
             logger.info(f"✅ 通过原始方法成功加载 {len(cookies)} 个cookie")
             return True
             
@@ -1207,7 +1230,7 @@ class PlaywrightXHSCrawler:
         result = await self._load_cookies()
         if result:
             try:
-                await self.page.goto('https://www.xiaohongshu.com/explore')
+                await self._get_page().goto('https://www.xiaohongshu.com/explore')
             except Exception:
                 pass
         return result

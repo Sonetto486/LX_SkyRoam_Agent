@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+<<<<<<< HEAD
 import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin, Drawer, Descriptions, Image, Carousel } from 'antd';
+=======
+import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin } from 'antd';
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
 import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined, UserOutlined } from '@ant-design/icons';
 import AMapLoader from '@amap/amap-jsapi-loader';
 import './ProfilePage.css';
@@ -42,7 +46,10 @@ const ProfilePage: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
+<<<<<<< HEAD
   const [selectedLocation, setSelectedLocation] = useState<any>(null); // 保存当前选中的地图点信息
+=======
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
   const [form] = Form.useForm();
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
@@ -146,9 +153,12 @@ const ProfilePage: React.FC = () => {
           params: { ids: idsStr }
         });
         const locations = res.data;
+<<<<<<< HEAD
         
         // 打印批量获取到的所有地点信息，方便确认后端是否成功返回了图片等扩展字段
         console.log('🌍 [Map Data Loaded] 获取到的所有地点信息:', locations);
+=======
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
 
         // 设置高德地图安全密钥（由于Typescript中window对象默认没有这个属性，需要通过类型断言绕过或声明）
         (window as any)._AMapSecurityConfig = {
@@ -160,7 +170,11 @@ const ProfilePage: React.FC = () => {
            // 在此处填写你申请的高德 Web JS API Key
            key: '3c860a8217597619941f033146dde8ec',  // <-- 用户需要替换的地方
            version: '2.0',
+<<<<<<< HEAD
            plugins: ['AMap.Marker', 'AMap.MarkerCluster'],
+=======
+           plugins: ['AMap.Marker'],
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
         });
 
         if (mapContainerRef.current) {
@@ -169,6 +183,7 @@ const ProfilePage: React.FC = () => {
             center: [104.06, 30.67], // 中国中心参考坐标
           });
 
+<<<<<<< HEAD
           // 创建一个共享的信息窗体 InfoWindow
           const infoWindow = new AMap.InfoWindow({
             offset: new AMap.Pixel(0, -15),
@@ -285,6 +300,33 @@ const ProfilePage: React.FC = () => {
                  showInfoWindow(context.data, context.marker.getPosition());
                });
             }
+=======
+          // 添加标记点
+          locations.forEach((loc: any) => {
+            if (!loc.latitude || !loc.longitude) return;
+            
+            const isFav = user.favorite_locations?.includes(loc.id);
+            const isHigh = user.highlighted_locations?.includes(loc.id);
+            
+            const markerColor = isHigh ? '#FF4D4F' : (isFav ? '#FFD700' : '#40a9ff');
+            
+            // 使用完全自定义的HTML内容来显示不同颜色的圆形标记
+            const markerContent = `<div style="background-color: ${markerColor}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
+            
+            // 可以通过自定义 icon 或者自带 marker 设置点样式
+            const marker = new AMap.Marker({
+               position: new AMap.LngLat(loc.longitude, loc.latitude),
+               title: loc.name,
+               content: markerContent,
+               offset: new AMap.Pixel(-8, -8), // 图标的偏移量，使圆心对准坐标点
+            });
+
+            marker.on('click', () => {
+              message.info(`地点：${loc.name}`);
+            });
+
+            mapInstance.add(marker);
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
           });
           
           if (locations.length > 0) {

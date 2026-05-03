@@ -56,6 +56,13 @@ interface TravelPlan {
     ageGroups?: string[];
     foodPreferences?: string[];
     dietaryRestrictions?: string[];
+      parsed_locations?: Array<{
+      id?: string | number;
+      day: number;
+      name: string;
+      address?: string;
+      position?: { lat: number; lng: number };
+    }>;
   };
   status: string;
   score?: number;
@@ -63,6 +70,12 @@ interface TravelPlan {
   selected_plan?: any;
   is_public: boolean;
   items?: TravelPlanItem[];
+  // 新增字段
+  cities?: string[];
+  members?: Array<{ name: string; role: string; avatar?: string }>;
+  packing_list?: Array<{ name: string; category: string; checked: boolean }>;
+  travel_mode?: string;
+  tags?: string[];
 }
 
 // 行程项目接口
@@ -277,12 +290,45 @@ const ItineraryWorkspace: React.FC = () => {
   };
 
   // 获取每日活动数据
-  const getDayActivities = (): DayActivity[] => {
-    if (!plan) return [];
+const getDayActivities = (): DayActivity[] => {
+  if (!plan) return [];
 
-    // 如果有 selected_plan，从中提取每日行程
-    if (plan.selected_plan?.daily_itineraries) {
-      return plan.selected_plan.daily_itineraries.map((day: any, index: number) => ({
+  // 优先使用 items 数据（用户手动添加或从生成内容同步的活动）
+  if (plan.items && plan.items.length > 0) {
+    const dayMap = new Map<string, TravelPlanItem[]>();
+    plan.items.forEach(item => {
+      const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
+      if (!dayMap.has(date)) {
+        dayMap.set(date, []);
+      }
+      dayMap.get(date)!.push(item);
+    });
+    return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+  }
+
+  // 如果有 selected_plan，从中提取每日行程
+  if (plan.selected_plan?.daily_itineraries) {
+    return plan.selected_plan.daily_itineraries.map((day: any, index: number) => ({
+      date: day.date || getDateByOffset(plan.start_date, index),
+      activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
+        id: index * 100 + attrIndex,
+        title: attr.name || attr,
+        description: attr.description || '',
+        item_type: 'attraction',
+        location: attr.location || '',
+        address: attr.address || '',
+        coordinates: attr.coordinates || { lat: 0, lng: 0 },
+        images: attr.images || [],
+        details: attr,
+      })),
+    }));
+  }
+
+  // 如果有 generated_plans，使用第一个方案
+  if (plan.generated_plans && plan.generated_plans.length > 0) {
+    const firstPlan = plan.generated_plans[0];
+    if (firstPlan.daily_itineraries) {
+      return firstPlan.daily_itineraries.map((day: any, index: number) => ({
         date: day.date || getDateByOffset(plan.start_date, index),
         activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
           id: index * 100 + attrIndex,
@@ -297,44 +343,42 @@ const ItineraryWorkspace: React.FC = () => {
         })),
       }));
     }
+  }
 
-    // 如果有 generated_plans，使用第一个方案
-    if (plan.generated_plans && plan.generated_plans.length > 0) {
-      const firstPlan = plan.generated_plans[0];
-      if (firstPlan.daily_itineraries) {
-        return firstPlan.daily_itineraries.map((day: any, index: number) => ({
-          date: day.date || getDateByOffset(plan.start_date, index),
-          activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
-            id: index * 100 + attrIndex,
-            title: attr.name || attr,
-            description: attr.description || '',
-            item_type: 'attraction',
-            location: attr.location || '',
-            address: attr.address || '',
-            coordinates: attr.coordinates || { lat: 0, lng: 0 },
-            images: attr.images || [],
-            details: attr,
-          })),
-        }));
-      }
-    }
+  // 兼容智能导入的 parsed_locations
+  if (plan.preferences?.parsed_locations) {
+    const locationMap: Record<string, TravelPlanItem[]> = {};
+    plan.preferences.parsed_locations.forEach((loc: any) => {
+      const dayKey = `day_${loc.day || 1}`;
+      if (!locationMap[dayKey]) locationMap[dayKey] = [];
 
-    // 如果有 items，按日期分组
-    if (plan.items && plan.items.length > 0) {
-      const dayMap = new Map<string, TravelPlanItem[]>();
-      plan.items.forEach(item => {
-        const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
-        if (!dayMap.has(date)) {
-          dayMap.set(date, []);
-        }
-        dayMap.get(date)!.push(item);
-      });
-      return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
-    }
+      const activityTitle = loc.name || "未命名景点";
+      const activityAddress = (loc.address && loc.address !== "未知")
+        ? loc.address
+        : activityTitle || "未知地址";
 
-    // 默认返回空数组
-    return [];
-  };
+      locationMap[dayKey].push({
+        id: Number(loc.id) || Date.now(),
+        title: activityTitle,
+        address: activityAddress,
+        location: activityAddress,
+        item_type: loc.type || "景点",
+        coordinates: loc.position || loc.coordinates || { lat: 0, lng: 0 },
+        start_time: plan.start_date,
+      } as TravelPlanItem);
+    });
+
+    const aiDays = Object.values(locationMap).map((activities, i) => ({
+      date: getDateByOffset(plan.start_date, i),
+      activities
+    }));
+
+    if (aiDays.length) return aiDays;
+  }
+
+  // 默认返回空数组
+  return [];
+};
 
   // 根据偏移量计算日期
   const getDateByOffset = (startDate: string, offset: number): string => {
@@ -383,7 +427,14 @@ const ItineraryWorkspace: React.FC = () => {
   // 获取预算显示
   const getBudgetDisplay = (): string => {
     if (plan?.budget) {
-      return `¥${plan.budget.toLocaleString()}`;
+      // 将预算数值转换为类型显示
+      if (plan.budget <= 3000) {
+        return '经济型（< 3000元/人）';
+      } else if (plan.budget <= 8000) {
+        return '舒适型（3000-8000元/人）';
+      } else {
+        return '豪华型（> 8000元/人）';
+      }
     }
     return '未设置';
   };
@@ -840,6 +891,8 @@ const ItineraryWorkspace: React.FC = () => {
         visible={activityModalVisible}
         activity={editingActivity}
         date={dayActivities[activeDay]?.date}
+        startDate={plan?.start_date}
+        endDate={plan?.end_date}
         onCancel={() => {
           setActivityModalVisible(false);
           setEditingActivity(null);
@@ -863,10 +916,29 @@ const ItineraryWorkspace: React.FC = () => {
         open={planInfoModalVisible}
         onCancel={() => setPlanInfoModalVisible(false)}
         onOk={() => {
-          // 表单提交逻辑
-          setPlanInfoModalVisible(false);
+          // 收集表单数据
+          const title = (document.getElementById('plan-title') as HTMLInputElement)?.value;
+          const description = (document.getElementById('plan-description') as HTMLTextAreaElement)?.value;
+          const departure = (document.getElementById('plan-departure') as HTMLInputElement)?.value;
+          const destination = (document.getElementById('plan-destination') as HTMLInputElement)?.value;
+          const travelers = (document.getElementById('plan-travelers') as HTMLInputElement)?.value;
+          const budget = (document.getElementById('plan-budget') as HTMLInputElement)?.value;
+          const travelMode = (document.getElementById('plan-travel-mode') as HTMLSelectElement)?.value;
+
+          handleSavePlanInfo({
+            title,
+            description,
+            departure,
+            destination,
+            budget: budget ? parseFloat(budget) : undefined,
+            travel_mode: travelMode,
+            preferences: {
+              ...plan?.preferences,
+              travelers: travelers ? parseInt(travelers) : undefined,
+            },
+          });
         }}
-        width={600}
+        width={700}
       >
         {plan && (
           <div className="plan-info-form">
@@ -926,6 +998,57 @@ const ItineraryWorkspace: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="form-item">
+              <Text strong>出行方式</Text>
+              <Select
+                style={{ width: '100%' }}
+                defaultValue={plan.travel_mode || 'flight'}
+                id="plan-travel-mode"
+                options={[
+                  { value: 'flight', label: '飞机' },
+                  { value: 'train', label: '火车' },
+                  { value: 'car', label: '自驾' },
+                  { value: 'bus', label: '大巴' },
+                  { value: 'self_drive', label: '自驾游' },
+                ]}
+              />
+            </div>
+            {plan.cities && plan.cities.length > 0 && (
+              <div className="form-item">
+                <Text strong>途经城市</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.cities.map((city, index) => (
+                    <Tag key={index} color="blue" style={{ marginBottom: 4 }}>
+                      {city}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {plan.members && plan.members.length > 0 && (
+              <div className="form-item">
+                <Text strong>参与成员</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.members.map((member, index) => (
+                    <Tag key={index} color="green" style={{ marginBottom: 4 }}>
+                      {member.name} ({member.role})
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
+            {plan.tags && plan.tags.length > 0 && (
+              <div className="form-item">
+                <Text strong>行程标签</Text>
+                <div style={{ marginTop: 8 }}>
+                  {plan.tags.map((tag, index) => (
+                    <Tag key={index} color="purple" style={{ marginBottom: 4 }}>
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>

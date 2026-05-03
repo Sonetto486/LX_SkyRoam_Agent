@@ -13,10 +13,6 @@ RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/
         gcc \
         g++ \
         libpq-dev \
-        libmysqlclient-dev \
-        pkg-config \
-        libmysqlclient-dev \
-        pkg-config \
         vim \
         curl \
     && rm -rf /var/lib/apt/lists/*

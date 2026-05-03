@@ -41,6 +41,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         try:
             redis_client = await get_redis()
+            
+            # 检查 Redis 客户端是否初始化成功
+            if redis_client is None:
+                # Redis 连接失败，跳过速率限制检查
+                logger.warning("RateLimit middleware skipped: Redis client not available")
+                return await call_next(request)
+                
             window = settings.RATE_LIMIT_WINDOW_SECONDS
             max_requests = settings.RATE_LIMIT_MAX_REQUESTS
 

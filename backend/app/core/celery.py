@@ -59,6 +59,9 @@ celery_app.conf.update(
     worker_max_tasks_per_child=1000,
     result_expires=3600,  # 1小时
     broker_connection_retry_on_startup=True,
+    # 确保Worker正确注册和检测
+    worker_send_task_events=True,  # 发送任务事件
+    task_send_sent_event=True,  # 发送任务发送事件
 )
 
 # 初始化日志（仅在 Celery 进程中初始化，避免被Web进程导入时重复输出）

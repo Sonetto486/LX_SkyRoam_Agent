@@ -36,7 +36,8 @@ class XiaoHongShuLogin(AbstractLogin):
         config.LOGIN_TYPE = login_type
         self.browser_context = browser_context
         self.context_page = context_page
-        self.login_phone = login_phone
+        # 修复：确保 login_phone 绝对是 str，消灭 None
+        self.login_phone = login_phone or ""  
         self.cookie_str = cookie_str
 
     @retry(stop=stop_after_attempt(600), wait=wait_fixed(1), retry=retry_if_result(lambda value: value is False))
@@ -52,7 +53,7 @@ class XiaoHongShuLogin(AbstractLogin):
 
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
-        current_web_session = cookie_dict.get("web_session")
+        current_web_session = str(cookie_dict.get("web_session", ""))
         if current_web_session != no_logged_in_session:
             return True
         return False
@@ -79,30 +80,45 @@ class XiaoHongShuLogin(AbstractLogin):
                 selector="xpath=//*[@id='app']/div[1]/div[2]/div[1]/ul/div[1]/button",
                 timeout=5000
             )
-            await login_button_ele.click()
+            # 修复：加上 if 判断防止返回 None 报错
+            if login_button_ele:
+                await login_button_ele.click()
+            
             # 弹窗的登录对话框也有两种形态，一种是直接可以看到手机号和验证码的
             # 另一种是需要点击切换到手机登录的
             element = await self.context_page.wait_for_selector(
                 selector='xpath=//div[@class="login-container"]//div[@class="other-method"]/div[1]',
                 timeout=5000
             )
-            await element.click()
+            if element:
+                await element.click()
         except Exception as e:
             utils.logger.info("[XiaoHongShuLogin.login_by_mobile] have not found mobile button icon and keep going ...")
 
         await asyncio.sleep(1)
         login_container_ele = await self.context_page.wait_for_selector("div.login-container")
+        
+        # 修复：拦截 None，帮助 Pyright 推断后续必有值
+        if not login_container_ele:
+            raise Exception("[XiaoHongShuLogin.login_by_mobile] 无法加载登录面板 (login-container)")
+
         input_ele = await login_container_ele.query_selector("label.phone > input")
-        await input_ele.fill(self.login_phone)
+        if input_ele:
+            # 此时 self.login_phone 已经是纯字符串了，不会报错
+            await input_ele.fill(self.login_phone)
         await asyncio.sleep(0.5)
 
         send_btn_ele = await login_container_ele.query_selector("label.auth-code > span")
-        await send_btn_ele.click()  # 点击发送验证码
+        if send_btn_ele:
+            await send_btn_ele.click()  # 点击发送验证码
+            
         sms_code_input_ele = await login_container_ele.query_selector("label.auth-code > input")
         submit_btn_ele = await login_container_ele.query_selector("div.input-container > button")
+        
         cache_client = CacheFactory.create_cache(config.CACHE_TYPE_MEMORY)
         max_get_sms_code_time = 60 * 2  # 最长获取验证码的时间为2分钟
         no_logged_in_session = ""
+        
         while max_get_sms_code_time > 0:
             utils.logger.info(f"[XiaoHongShuLogin.login_by_mobile] get sms code from redis remaining time {max_get_sms_code_time}s ...")
             await asyncio.sleep(1)
@@ -114,15 +130,22 @@ class XiaoHongShuLogin(AbstractLogin):
 
             current_cookie = await self.browser_context.cookies()
             _, cookie_dict = utils.convert_cookies(current_cookie)
-            no_logged_in_session = cookie_dict.get("web_session")
+            # 修复：加 str() 和空字符串默认值，杜绝 None
+            no_logged_in_session = str(cookie_dict.get("web_session", ""))
 
-            await sms_code_input_ele.fill(value=sms_code_value.decode())  # 输入短信验证码
+            # 修复：加上对输入框是否存在的判断
+            if sms_code_input_ele:
+                await sms_code_input_ele.fill(value=sms_code_value.decode())  # 输入短信验证码
             await asyncio.sleep(0.5)
+            
+            # 使用 locator 不会返回 None，无需担心
             agree_privacy_ele = self.context_page.locator("xpath=//div[@class='agreements']//*[local-name()='svg']")
             await agree_privacy_ele.click()  # 点击同意隐私协议
             await asyncio.sleep(0.5)
 
-            await submit_btn_ele.click()  # 点击登录
+            # 修复：加上对按钮是否存在的判断
+            if submit_btn_ele:
+                await submit_btn_ele.click()  # 点击登录
 
             # todo ... 应该还需要检查验证码的正确性有可能输入的验证码不正确
             break
@@ -163,7 +186,8 @@ class XiaoHongShuLogin(AbstractLogin):
         # get not logged session
         current_cookie = await self.browser_context.cookies()
         _, cookie_dict = utils.convert_cookies(current_cookie)
-        no_logged_in_session = cookie_dict.get("web_session")
+        # 修复：强制给默认值并转换为 str，防止 check_login_state 报参数类型错误
+        no_logged_in_session = str(cookie_dict.get("web_session", ""))
 
         # show login qrcode
         # fix issue #12
@@ -191,7 +215,7 @@ class XiaoHongShuLogin(AbstractLogin):
                 continue
             await self.browser_context.add_cookies([{
                 'name': key,
-                'value': value,
+                'value': str(value), # 强制转str以策万全
                 'domain': ".xiaohongshu.com",
                 'path': "/"
             }])

@@ -45,3 +45,31 @@
 .activity-edit-modal textarea.ant-input {
   border-radius: 6px;
 }
+
+/* Tabs 样式 */
+.activity-edit-modal .ant-tabs-nav {
+  margin-bottom: 16px;
+}
+
+/* 服务设施标签 */
+.facilities-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.facilities-tags .ant-tag {
+  padding: 4px 12px;
+  font-size: 13px;
+  border-radius: 16px;
+  transition: all 0.3s;
+}
+
+.facilities-tags .ant-tag:hover {
+  opacity: 0.8;
+}
+
+/* 优先级标签 */
+.activity-edit-modal .ant-select-selection-item .ant-tag {
+  margin: 0;
+}

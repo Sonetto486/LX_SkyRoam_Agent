@@ -4,19 +4,20 @@
 
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import asyncio
 from loguru import logger
-from typing import Optional
+from typing import Optional, Any  # 【修复】：引入大写的 Any
 
 from app.core.config import settings
 
-# 每个事件循环维护独立的异步引擎与Session工厂，避免跨循环复用
-_engines_by_loop: dict[int, any] = {}
-_sessionmaker_by_loop: dict[int, any] = {}
-_sync_engine: Optional[any] = None
-_SessionLocal: Optional[any] = None
+# 【修复】：将小写 any 替换为大写 Any
+_engines_by_loop: dict[int, Any] = {}
+_sessionmaker_by_loop: dict[int, Any] = {}
+_sync_engine: Optional[Any] = None
+_SessionLocal: Optional[Any] = None
 
 
 def _current_loop_id():
@@ -35,15 +36,8 @@ def _get_async_engine_for_current_loop():
     loop_id = _current_loop_id()
     engine = _engines_by_loop.get(loop_id)
     if not engine:
-        # 根据数据库类型选择合适的异步驱动
-        db_url = settings.DATABASE_URL
-        if db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-        elif db_url.startswith("mysql://"):
-            db_url = db_url.replace("mysql://", "mysql+aiomysql://")
-        
         engine = create_async_engine(
-            db_url,
+            settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"),
             echo=settings.DATABASE_ECHO,
             pool_pre_ping=True,
             pool_recycle=300
@@ -71,10 +65,10 @@ def _get_sessionmaker_for_current_loop():
     sm = _sessionmaker_by_loop.get(loop_id)
     if not sm:
         engine = _get_async_engine_for_current_loop()
-        sm = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        # 使用 async_sessionmaker
+        sm = async_sessionmaker(engine, expire_on_commit=False)
         _sessionmaker_by_loop[loop_id] = sm
     return sm
-
 
 def get_async_engine():
     """获取当前事件循环对应的异步引擎"""
@@ -136,7 +130,8 @@ async def get_async_db():
                 await session.rollback()
             except Exception:
                 pass  # 忽略回滚错误
-            logger.error(f"数据库会话错误: {e}")
+            import traceback
+            logger.error(f"数据库会话错误: {e}\n{traceback.format_exc()}")
             raise
         finally:
             try:
@@ -308,7 +303,8 @@ async def check_table_exists(table_name: str) -> bool:
                 """),
                 {"table_name": table_name}
             )
-            return result.scalar()
+            # 【修复】：强制转换为 bool，消除 Pyright 返回类型错误
+            return bool(result.scalar())
     except Exception as e:
         logger.warning(f"检查表 {table_name} 是否存在时出错: {e}")
         return False
@@ -317,52 +313,144 @@ async def check_table_exists(table_name: str) -> bool:
 async def create_tables_if_not_exists():
     """
     智能创建表：检查表是否存在，不存在则创建
+    同时检查并添加缺失的列（用于模型更新后的自动迁移）
     基于当前模型定义，不依赖 Alembic 迁移历史
-    
-    这个方法会：
-    1. 检查数据库中已存在的表
-    2. 对比模型定义的表
-    3. 只创建不存在的表
-    4. 不会覆盖或修改已存在的表
     """
     try:
         # 导入所有模型以确保它们被注册到 Base.metadata
         from app.models import user, travel_plan, destination, attraction_detail
-        
+
         engine = _get_async_engine_for_current_loop()
-        
+
         async with engine.begin() as conn:
             from sqlalchemy import text
-            
+
             # 查询数据库中已存在的表
             result = await conn.execute(
                 text("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_type = 'BASE TABLE'
                 """)
             )
             existing_tables = {row[0] for row in result.fetchall()}
-            
+
             # 获取模型定义的所有表
             model_tables = set(Base.metadata.tables.keys())
-            
+
             # 找出需要创建的表
             tables_to_create = model_tables - existing_tables
             tables_existing = model_tables & existing_tables
-            
+
             if tables_to_create:
                 logger.info(f"发现 {len(tables_to_create)} 个表需要创建: {', '.join(sorted(tables_to_create))}")
                 # 使用 create_all 创建缺失的表（SQLAlchemy 会自动跳过已存在的表）
                 await conn.run_sync(Base.metadata.create_all)
                 logger.info(f"✅ 成功创建了 {len(tables_to_create)} 个表")
-            else:
-                logger.info(f"✅ 所有表已存在（共 {len(tables_existing)} 个表）")
-        
+
+            # 检查并添加缺失的列
+            columns_added = await check_and_add_missing_columns(conn, existing_tables)
+
+            if not tables_to_create and not columns_added:
+                logger.info(f"✅ 所有表和列已存在（共 {len(tables_existing)} 个表）")
+
     except Exception as e:
         logger.error(f"❌ 创建表失败: {e}")
         raise
+
+
+async def check_and_add_missing_columns(conn, existing_tables: set) -> int:
+    """
+    检查并添加缺失的列
+
+    Args:
+        conn: 数据库连接
+        existing_tables: 已存在的表名集合
+
+    Returns:
+        添加的列数量
+    """
+    from sqlalchemy import text
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    columns_added = 0
+
+    # 定义需要检查的新列（表名 -> [(列名, 列类型, 是否可空), ...])
+    new_columns = {
+        'travel_plans': [
+            ('cities', 'JSONB', True),
+            ('members', 'JSONB', True),
+            ('packing_list', 'JSONB', True),
+            ('travel_mode', 'VARCHAR(50)', True),
+            ('tags', 'JSONB', True),
+        ],
+        'travel_plan_items': [
+            ('opening_hours', 'JSONB', True),
+            ('phone', 'VARCHAR(50)', True),
+            ('website', 'VARCHAR(200)', True),
+            ('facilities', 'JSONB', True),
+            ('priority', 'VARCHAR(20)', True),
+        ],
+    }
+
+    for table_name, columns in new_columns.items():
+        if table_name not in existing_tables:
+            continue
+
+        # 获取该表已有的列
+        result = await conn.execute(
+            text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND table_name = :table_name
+            """),
+            {"table_name": table_name}
+        )
+        existing_columns = {row[0] for row in result.fetchall()}
+
+        # 检查并添加缺失的列
+        for col_name, col_type, nullable in columns:
+            if col_name not in existing_columns:
+                try:
+                    null_str = "NULL" if nullable else "NOT NULL"
+                    await conn.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} {null_str}")
+                    )
+                    logger.info(f"✅ 表 {table_name} 添加列 {col_name}")
+                    columns_added += 1
+                except Exception as e:
+                    logger.warning(f"⚠️ 添加列 {table_name}.{col_name} 失败: {e}")
+
+    # 检查并创建 favorite_locations 表
+    if 'favorite_locations' not in existing_tables:
+        try:
+            await conn.execute(
+                text("""
+                    CREATE TABLE favorite_locations (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id),
+                        name VARCHAR(200) NOT NULL,
+                        address TEXT,
+                        coordinates JSONB,
+                        category VARCHAR(50),
+                        phone VARCHAR(50),
+                        poi_id VARCHAR(100),
+                        source VARCHAR(20),
+                        notes TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN DEFAULT TRUE
+                    )
+                """)
+            )
+            logger.info("✅ 创建表 favorite_locations")
+            columns_added += 1
+        except Exception as e:
+            logger.warning(f"⚠️ 创建表 favorite_locations 失败: {e}")
+
+    return columns_added
 
 
 async def create_tables_directly():
@@ -387,73 +475,43 @@ async def create_tables_directly():
 
 async def create_default_users():
     """
-    创建默认用户数据
-    
-    安全策略：
-    - 如果用户ID已存在，跳过（不覆盖）
-    - 如果username或email已存在，跳过（不覆盖）
-    - 只有在用户完全不存在时才创建
+    创建默认用户数据并同步自增序列
     """
     try:
         from app.models.user import User
         from app.core.db_seed_data import DEFAULT_USERS
+        from sqlalchemy import text  # 引入 text 用于执行原生 SQL
 
         engine = _get_async_engine_for_current_loop()
         async with engine.begin() as conn:
             user_table = User.__table__
             created_count = 0
-            skipped_count = 0
             
             for user_data in DEFAULT_USERS:
-                user_id = user_data.get("id")
-                username = user_data.get("username")
-                email = user_data.get("email")
-                
-                # 先检查用户是否已存在（通过ID、username或email）
-                # 这样可以避免因为username/email唯一性约束而报错
-                from sqlalchemy import select
-                check_stmt = select(user_table.c.id).where(
-                    (user_table.c.id == user_id) |
-                    (user_table.c.username == username) |
-                    (user_table.c.email == email)
-                ).limit(1)
-                
-                check_result = await conn.execute(check_stmt)
-                existing_user_id = check_result.scalar_one_or_none()
-                
-                if existing_user_id:
-                    skipped_count += 1
-                    logger.debug(f"跳过已存在的用户: {username} (ID: {user_id}, 数据库中已存在ID: {existing_user_id})")
-                    continue
-                
-                # 用户不存在，使用 ON CONFLICT DO NOTHING 安全插入
-                # 即使在高并发情况下，也不会覆盖现有用户
+                # 使用 PostgreSQL 的 ON CONFLICT DO NOTHING
+                # 即使 ID 1 已经存在，也不会报错，而是直接跳过
                 stmt = pg_insert(user_table).values(user_data).on_conflict_do_nothing(
-                    index_elements=["id"]  # 主键冲突
+                    index_elements=["id"]
                 )
                 result = await conn.execute(stmt)
-                
                 if result.rowcount > 0:
                     created_count += 1
-                    logger.debug(f"创建默认用户: {username}")
-                else:
-                    # 这种情况理论上不应该发生（因为我们已经检查过了）
-                    # 但为了安全，还是处理一下
-                    skipped_count += 1
-                    logger.debug(f"跳过用户 {username}（插入时检测到冲突）")
             
             if created_count > 0:
-                logger.info(f"✅ 创建了 {created_count} 个默认用户")
-            if skipped_count > 0:
-                logger.info(f"ℹ️  跳过了 {skipped_count} 个已存在的用户（不会覆盖）")
-            if created_count == 0 and skipped_count == 0:
-                logger.info("✅ 默认用户检查完成")
+                logger.info(f"✅ 成功插入 {created_count} 个默认用户")
+                
+                # 【关键修复】：手动同步 PostgreSQL 的 ID 序列
+                # 否则下次正常注册用户时，数据库仍会尝试分配已存在的 ID (如 1, 2...)
+                await conn.execute(text(
+                    f"SELECT setval(pg_get_serial_sequence('{user_table.name}', 'id'), "
+                    f"coalesce(max(id), 0) + 1, false) FROM {user_table.name};"
+                ))
+                logger.info("🔄 已同步 users 表自增序列")
+            else:
+                logger.info("ℹ️  所有默认用户已存在，无需重复插入")
                 
     except Exception as e:
-        logger.warning(f"⚠️ 默认用户创建失败: {e}（可能是用户已存在或权限问题）")
-        # 如果创建失败，可能是权限问题或用户已存在，继续执行（不阻止应用启动）
-
-
+        logger.warning(f"⚠️ 默认用户创建或序列同步失败: {e}")
 async def close_db():
     """关闭所有数据库连接"""
     # 关闭所有异步引擎
@@ -473,18 +531,26 @@ async def close_db():
 
 
 # 便捷异步Session上下文管理器
+# 便捷异步Session上下文管理器
 class async_session:
     """异步数据库会话上下文管理器"""
     def __init__(self):
-        self._session = None
+        self._session: Optional[AsyncSession] = None
         self._factory = None
     
-    async def __aenter__(self):
+    async def __aenter__(self) -> AsyncSession:
         self._factory = _get_sessionmaker_for_current_loop()
         self._session = self._factory()
+        
+        # 【核心修复】：帮助 Pyright 进行类型收窄，消除返回类型报警
+        assert self._session is not None
+        
         return self._session
     
     async def __aexit__(self, exc_type, exc, tb):
+        if self._session is None:
+            return
+        
         try:
             if exc:
                 await self._session.rollback()
@@ -492,85 +558,12 @@ class async_session:
                 await self._session.commit()
         finally:
             await self._session.close()
-
-
 async def seed_initial_data():
     """插入基础演示数据（种子数据）"""
     try:
         # 创建默认用户
         await create_default_users()
-
-        # 检查并添加 topic 表的 continent 字段
-        await check_and_add_topic_continent()
-
-        # 可以在这里添加其他种子数据的插入逻辑
-        # 例如：默认目的地、活动类型等
-
+        
         logger.info("✅ 种子数据插入完成")
     except Exception as e:
         logger.warning(f"⚠️ 种子数据插入失败: {e}（可能数据已存在）")
-        # 种子数据插入失败不应该阻止应用启动
-
-
-async def check_and_add_topic_continent():
-    """检查并添加 topic 表的 continent 字段"""
-    try:
-        engine = _get_async_engine_for_current_loop()
-        async with engine.begin() as conn:
-            from sqlalchemy import text
-
-            # 检查 topic 表是否存在
-            table_exists = await conn.execute(
-                text("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables
-                        WHERE table_schema = 'public'
-                        AND table_name = 'topic'
-                    )
-                """)
-            )
-            if not table_exists.scalar():
-                logger.debug("topic 表不存在，跳过 continent 字段检查")
-                return
-
-            # 检查 continent 字段是否存在
-            column_exists = await conn.execute(
-                text("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.columns
-                        WHERE table_schema = 'public'
-                        AND table_name = 'topic'
-                        AND column_name = 'continent'
-                    )
-                """)
-            )
-
-            if column_exists.scalar():
-                logger.debug("✓ topic.continent 字段已存在")
-                return
-
-            # 添加 continent 字段
-            logger.info("正在为 topic 表添加 continent 字段...")
-            await conn.execute(text("ALTER TABLE topic ADD COLUMN continent VARCHAR(50)"))
-
-            # 创建索引
-            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_topic_continent ON topic(continent)"))
-
-            # 更新现有数据
-            await conn.execute(text("""
-                UPDATE topic SET continent = CASE
-                    WHEN region IN ('华北', '华东', '华南', '华中', '西南', '西北', '东北') THEN 'asia'
-                    WHEN region ILIKE '%日本%' OR region ILIKE '%韩国%' THEN 'asia'
-                    WHEN region ILIKE '%欧洲%' OR region ILIKE '%法国%' OR region ILIKE '%意大利%' OR region ILIKE '%英国%' THEN 'europe'
-                    WHEN region ILIKE '%美国%' OR region ILIKE '%加拿大%' THEN 'north_america'
-                    WHEN region ILIKE '%澳大利亚%' OR region ILIKE '%新西兰%' THEN 'oceania'
-                    ELSE 'asia'
-                END
-                WHERE continent IS NULL
-            """))
-
-            logger.info("✅ topic.continent 字段添加成功")
-
-    except Exception as e:
-        logger.warning(f"⚠️ 检查/添加 topic.continent 字段失败: {e}")
-        # 不阻止应用启动

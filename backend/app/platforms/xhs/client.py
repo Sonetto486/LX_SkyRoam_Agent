@@ -33,15 +33,15 @@ class XiaoHongShuClient(AbstractApiClient):
 
     def __init__(
         self,
-        timeout=60,  # 若开启爬取媒体选项，xhs 的长视频需要更久的超时时间
-        proxy=None,
+        timeout: int = 60,  # 若开启爬取媒体选项，xhs 的长视频需要更久的超时时间
+        proxy: Optional[str] = None,
         *,
         headers: Dict[str, str],
         playwright_page: Page,
         cookie_dict: Dict[str, str],
     ):
-        self.proxy = proxy
-        self.timeout = timeout
+        self.proxy: Optional[str] = proxy
+        self.timeout: int = timeout
         self.headers = headers
         self._host = "https://edith.xiaohongshu.com"
         self._domain = "https://www.xiaohongshu.com"
@@ -84,7 +84,7 @@ class XiaoHongShuClient(AbstractApiClient):
         return self.headers
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
-    async def request(self, method, url, **kwargs) -> Union[str, Any]:
+    async def request(self, method: str, url: str, **kwargs) -> Any:
         """
         封装httpx的公共请求方法，对请求响应做一些处理
         Args:
@@ -97,8 +97,14 @@ class XiaoHongShuClient(AbstractApiClient):
         """
         # return response.text
         return_response = kwargs.pop("return_response", False)
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request(method, url, timeout=self.timeout, **kwargs)
+        
+        # 构建httpx客户端参数
+        client_kwargs = {"timeout": self.timeout, **kwargs}
+        if self.proxy:
+            client_kwargs["proxy"] = self.proxy
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.request(method, url, **client_kwargs)
 
         if response.status_code == 471 or response.status_code == 461:
             # someday someone maybe will bypass captcha
@@ -116,7 +122,7 @@ class XiaoHongShuClient(AbstractApiClient):
         elif data["code"] == self.IP_ERROR_CODE:
             raise IPBlockError(self.IP_ERROR_STR)
         else:
-            raise DataFetchError(data.get("msg", None))
+           raise DataFetchError(data.get("msg", "未知错误"))
 
     async def get(self, uri: str, params=None) -> Dict:
         """
@@ -157,9 +163,13 @@ class XiaoHongShuClient(AbstractApiClient):
         )
 
     async def get_note_media(self, url: str) -> Union[bytes, None]:
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
+        client_kwargs: Dict[str, Any] = {"timeout": self.timeout}
+        if self.proxy:
+            client_kwargs["proxy"] = self.proxy
+        
+        async with httpx.AsyncClient() as client:
             try:
-                response = await client.request("GET", url, timeout=self.timeout)
+                response = await client.request("GET", url, **client_kwargs)
                 response.raise_for_status()
                 if not response.reason_phrase == "OK":
                     utils.logger.error(
@@ -412,6 +422,8 @@ class XiaoHongShuClient(AbstractApiClient):
         result = []
         for comment in comments:
             note_id = comment.get("note_id")
+            if note_id is None:
+             continue
             sub_comments = comment.get("sub_comments")
             if sub_comments and callback:
                 await callback(note_id, sub_comments)
@@ -421,7 +433,9 @@ class XiaoHongShuClient(AbstractApiClient):
                 continue
 
             root_comment_id = comment.get("id")
-            sub_comment_cursor = comment.get("sub_comment_cursor")
+            if root_comment_id is None:
+                continue
+            sub_comment_cursor = comment.get("sub_comment_cursor", "")
 
             while sub_comment_has_more:
                 comments_res = await self.get_note_sub_comments(
@@ -474,7 +488,11 @@ class XiaoHongShuClient(AbstractApiClient):
         html_content = await self.request(
             "GET", self._domain + uri, return_response=True, headers=self.headers
         )
-        return self._extractor.extract_creator_info_from_html(html_content)
+        info = self._extractor.extract_creator_info_from_html(html_content)
+        if info is None:
+            utils.logger.error(f"Failed to extract creator info for user_id={user_id}")
+            return {}
+        return info
 
     async def get_notes_by_creator(
         self,

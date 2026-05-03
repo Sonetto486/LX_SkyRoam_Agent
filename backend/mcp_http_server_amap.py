@@ -13,9 +13,30 @@ from aiohttp import web, ClientSession
 from aiohttp.web import Request, Response
 from dotenv import load_dotenv
 from loguru import logger
+<<<<<<< HEAD
 
 # 加载环境变量
 load_dotenv()
+=======
+import os
+from pathlib import Path
+
+# 获取 backend 目录（.env 文件所在位置）
+backend_dir = Path(__file__).parent
+env_path = backend_dir / '.env'
+
+# 如果 backend 目录没有，尝试项目根目录
+if not env_path.exists():
+    project_root = backend_dir.parent
+    env_path = project_root / '.env'
+
+# 加载 .env 文件
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    logger.info(f"✅ 成功加载环境变量: {env_path}")
+else:
+    logger.warning(f"⚠️ 未找到 .env 文件: {env_path}")
+>>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
 
 class AmapMCPHTTPServer:
     """高德地图 MCP HTTP 服务器"""

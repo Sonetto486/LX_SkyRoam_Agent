@@ -2,7 +2,7 @@
 AI Agent核心服务
 负责数据收集、处理、方案生成
 """
-
+from typing import List, Dict, Any, Optional, cast
 import asyncio
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +66,7 @@ class AgentService:
             raw_data = await self._collect_data(plan, preferences, requirements)
             logger.info("保存原始数据预览并提前展示...")
             await self._save_raw_preview(plan_id, raw_data, plan)
+            
             # 4. 数据清洗和评分
             logger.info("开始数据清洗和评分...")
             processed_data = await self._process_data(raw_data, plan)
@@ -77,11 +78,17 @@ class AgentService:
             # 6. 方案评分和排序
             logger.info("开始方案评分和排序...")
             scored_plans = await self._score_plans(generated_plans, plan, preferences)
+
+            logger.info(f"评分后的方案数量: {len(scored_plans) if scored_plans else 0}")
+
             if not scored_plans:
+                logger.warning("评分后方案为空，尝试使用传统方式生成...")
                 fallback_plans = await self.plan_generator._generate_traditional_plans(processed_data, plan, preferences, raw_data)
                 if fallback_plans:
                     scored_plans = await self._score_plans(fallback_plans, plan, preferences)
+                    logger.info(f"传统方式生成的方案数量: {len(scored_plans) if scored_plans else 0}")
                 else:
+                    logger.error("传统方式生成也失败，无法生成方案")
                     await self._update_plan_status(plan_id, "failed")
                     try:
                         await self.data_collector.close()
@@ -90,15 +97,20 @@ class AgentService:
                     return False
 
             # 7. 保存结果
+            logger.info(f"准备保存 {len(scored_plans)} 个方案到数据库...")
             await self._save_generated_plans(plan_id, scored_plans)
+            logger.info("方案保存完成")
+
             try:
-                if scored_plans:
+                if scored_plans and len(scored_plans) > 0:
                     await self._set_selected_plan_default(plan_id, scored_plans[0])
-            except Exception:
-                pass
-            
+                    logger.info("默认方案设置完成")
+            except Exception as e:
+                logger.warning(f"设置默认方案失败: {e}")
+
             # 8. 更新状态为完成
             await self._update_plan_status(plan_id, "completed")
+            logger.info("状态已更新为 completed")
             
             logger.info(f"旅行方案生成完成，计划ID: {plan_id}")
             try:
@@ -123,7 +135,7 @@ class AgentService:
         
         result = await self.db.execute(select(TravelPlan).where(TravelPlan.id == plan_id))
         return result.scalar_one_or_none()
-    
+
     async def _update_plan_status(self, plan_id: int, status: str):
         """更新计划状态（加行级锁防并发）"""
         from sqlalchemy import select, update
@@ -131,16 +143,24 @@ class AgentService:
         from app.core.database import async_session
 
         async with async_session() as session:
+            # 【修复】强制类型提示，告诉Pyright这是异步Session，解决 awaitable 误判
+            session: AsyncSession 
+            
+            # 执行查询（加锁）
             await session.execute(
                 select(TravelPlan.id)
                 .where(TravelPlan.id == plan_id)
                 .with_for_update()
             )
+            
+            # 执行状态更新（清除了你之前误粘贴的 generated_plans 逻辑）
             await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
                 .values(status=status)
             )
+            
+            # 提交事务
             await session.commit()
             
     
@@ -151,8 +171,7 @@ class AgentService:
         requirements: Optional[Dict[str, Any]] = None,
         interval_seconds: float = 1.0  # 每个任务启动之间的时间间隔
     ) -> Dict[str, Any]:
-        """数据收集阶段：按间隔启动任务，并在每个任务完成后增量保存预览
-        修复：使用任务包装返回(key, result, error)，避免as_completed返回对象与原Task不一致导致映射失败"""
+        """数据收集阶段：按间隔启动任务，并在每个任务完成后增量保存预览"""
         
         logger.info(f"开始收集 {plan.destination} 的各类数据（每个任务间隔 {interval_seconds}s 启动）")
 
@@ -280,9 +299,6 @@ class AgentService:
         
         # 使用LLM增强的方案生成
         try:
-            # logger.warning(f"plan={plan}")
-            # logger.warning(f"preferences={preferences}")
-
             # 首先尝试使用LLM分析数据并生成方案
             if self.openai_client.api_key:
                 return await self.plan_generator.generate_plans(
@@ -336,32 +352,108 @@ class AgentService:
             return obj
 
     async def _save_generated_plans(
-        self, 
-        plan_id: int, 
+        self,
+        plan_id: int,
         plans: List[Dict[str, Any]]
     ):
-        """保存生成的方案"""
-        from sqlalchemy import update
-        from app.models.travel_plan import TravelPlan
+        """保存生成的方案，并同步到 items 表"""
+        from sqlalchemy import update, delete
+        from app.models.travel_plan import TravelPlan, TravelPlanItem
         from app.core.database import async_session
-        
+        from datetime import datetime, timedelta
+
+        logger.info(f"_save_generated_plans 开始，plan_id={plan_id}, plans数量={len(plans) if plans else 0}")
+
+        if not plans or len(plans) == 0:
+            logger.warning("plans 为空，跳过保存")
+            return
+
         serialized_plans = self._serialize_for_json(plans)
-        
+        logger.info(f"序列化后的 plans 大小: {len(str(serialized_plans))} 字符")
+
         async with async_session() as session:
-            await session.execute(
+            session: AsyncSession
+
+            # 1. 保存 JSON 到 generated_plans 字段
+            result = await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
                 .values(generated_plans=serialized_plans)
             )
+            logger.info(f"更新 generated_plans 字段，影响行数: {result.rowcount}")
+
+            # 2. 删除旧的 items 记录
+            delete_result = await session.execute(
+                delete(TravelPlanItem).where(TravelPlanItem.travel_plan_id == plan_id)
+            )
+            logger.info(f"删除旧的 items 记录，删除数量: {delete_result.rowcount}")
+
+            # 3. 获取计划信息以确定日期
+            plan = await self._get_travel_plan(plan_id)
+            if not plan:
+                logger.warning(f"无法获取计划 {plan_id}，提交并返回")
+                await session.commit()
+                return
+
+            start_date = plan.start_date
+            if hasattr(start_date, 'date'):
+                start_date = start_date.date() if callable(getattr(start_date, 'date', None)) else start_date
+
+            # 4. 将生成的方案同步到 items 表
+            first_plan = plans[0]
+            daily_itineraries = first_plan.get('daily_itineraries', [])
+            logger.info(f"每日行程数量: {len(daily_itineraries)}")
+
+            items_added = 0
+            for day_index, day_data in enumerate(daily_itineraries):
+                # 计算当天日期
+                if isinstance(start_date, datetime):
+                    day_date = start_date + timedelta(days=day_index)
+                else:
+                    day_date = datetime.combine(
+                        start_date + timedelta(days=day_index),
+                        datetime.min.time()
+                    )
+
+                attractions = day_data.get('attractions', [])
+                logger.info(f"Day {day_index + 1}: {len(attractions)} 个景点")
+
+                for attr_index, attraction in enumerate(attractions):
+                    # 提取景点信息
+                    name = attraction.get('name', '') if isinstance(attraction, dict) else str(attraction)
+                    if not name:
+                        continue
+
+                    item = TravelPlanItem(
+                        travel_plan_id=plan_id,
+                        title=name,
+                        description=attraction.get('description', '') if isinstance(attraction, dict) else '',
+                        item_type='attraction',
+                        start_time=day_date,
+                        location=attraction.get('location', '') if isinstance(attraction, dict) else '',
+                        address=attraction.get('address', '') if isinstance(attraction, dict) else '',
+                        coordinates=attraction.get('coordinates') if isinstance(attraction, dict) else None,
+                        details=attraction if isinstance(attraction, dict) else {'name': name},
+                        images=attraction.get('images') if isinstance(attraction, dict) else None,
+                    )
+                    session.add(item)
+                    items_added += 1
+
+            logger.info(f"添加了 {items_added} 个 items 记录")
+
             await session.commit()
+            logger.info(f"事务提交完成，plan_id={plan_id}")
             
     
     async def _set_selected_plan_default(self, plan_id: int, plan_data: Dict[str, Any]):
         from sqlalchemy import update
         from app.models.travel_plan import TravelPlan
         from app.core.database import async_session
+        
         serialized = self._serialize_for_json(plan_data)
         async with async_session() as session:
+            # 【修复】消除 Pyright 报警
+            session: AsyncSession
             await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
@@ -376,13 +468,23 @@ class AgentService:
         refinements: Dict[str, Any]
     ) -> bool:
         """细化旅行方案"""
+        from typing import cast
+        
         try:
             # 获取当前方案
             plan = await self._get_travel_plan(plan_id)
-            if not plan or not plan.generated_plans:
+            if not plan:
                 return False
             
-            current_plan = plan.generated_plans[plan_index]
+            # 【核心修复】：显式告诉 Pyright 这是一个 List[Dict]，消除所有波浪线
+            generated_plans = cast(List[Dict[str, Any]], plan.generated_plans)
+            
+            # 现在可以安全地进行布尔判断
+            if not generated_plans:
+                return False
+            
+            # 安全地进行索引操作
+            current_plan = generated_plans[plan_index]
             
             # 应用细化
             refined_plan = await self.plan_generator.refine_plan(
@@ -390,15 +492,17 @@ class AgentService:
             )
             
             # 更新方案
-            plan.generated_plans[plan_index] = refined_plan
-            await self._save_generated_plans(plan_id, plan.generated_plans)
+            generated_plans[plan_index] = refined_plan
+            
+            # 保存时传入已经修正类型推断的 generated_plans
+            await self._save_generated_plans(plan_id, generated_plans)
             
             return True
             
         except Exception as e:
             logger.error(f"细化方案失败: {e}")
             return False
-    
+            
     async def get_plan_recommendations(
         self, 
         plan_id: int
@@ -422,20 +526,27 @@ class AgentService:
         """保存快速预览方案到 generated_plans 以便前端提前展示"""
         from sqlalchemy import update
         from app.models.travel_plan import TravelPlan
+        from app.core.database import async_session
+        
         # 将预览方案放入列表，并做序列化处理
         serialized_preview = self._serialize_for_json([preview_plan])
-        await self.db.execute(
-            update(TravelPlan)
-            .where(TravelPlan.id == plan_id)
-            .values(generated_plans=serialized_preview)
-        )
-        await self.db.commit()
+        
+        async with async_session() as session:
+            # 【修复】消除 Pyright 报警
+            session: AsyncSession
+            await session.execute(
+                update(TravelPlan)
+                .where(TravelPlan.id == plan_id)
+                .values(generated_plans=serialized_preview)
+            )
+            await session.commit()
 
     async def _save_raw_preview(self, plan_id: int, raw_data: Dict[str, Any], plan: TravelPlan):
         """将数据收集阶段的原始数据保存为预览，供前端提前展示"""
         from sqlalchemy import update
         from app.models.travel_plan import TravelPlan
         from app.core.database import async_session
+        
         # 选择展示数量
         MAX_XHS = 8
         MAX_FLIGHTS = 3
@@ -472,11 +583,13 @@ class AgentService:
         }
     
         serialized_preview = self._serialize_for_json([preview])
+        
         async with async_session() as session:
+            # 【修复】显式类型声明，消除 awaitable 报警
+            session: AsyncSession
             await session.execute(
                 update(TravelPlan)
                 .where(TravelPlan.id == plan_id)
                 .values(generated_plans=serialized_preview)
             )
             await session.commit()
-            

@@ -3,12 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import RequireAdmin from '../../components/Auth/RequireAdmin';
 import MainLayout from '../../components/Layout/MainLayout';
 import DiscoverPage from '../../pages/DiscoverPage/DiscoverPage';
-import TopicDetailPage from '../../pages/TopicDetailPage/TopicDetailPage';
-import PlaceDetailPage from '../../pages/PlaceDetailPage/PlaceDetailPage';
-import TopicLibraryPage from '../../pages/TopicLibraryPage/TopicLibraryPage';
 import ItineraryListPage from '../../pages/ItineraryPage/ItineraryListPage';
 import ItineraryWorkspace from '../../pages/ItineraryPage/ItineraryWorkspace';
-import PlansLibraryPage from '../../pages/PlansLibraryPage/PlansLibraryPage';
 import SmartImportPage from '../../pages/ImportPage/SmartImportPage';
 import PlanGeneratorPage from '../../pages/PlanGeneratorPage/PlanGeneratorPage';
 import ProfilePage from '../../pages/ProfilePage/ProfilePage';
@@ -30,14 +26,10 @@ const AppRoutes: React.FC = () => {
       <Route element={<MainLayout />}>
         {/* 发现灵感模块 */}
         <Route path="/discover" element={<DiscoverPage />} />
-        <Route path="/topics-library" element={<TopicLibraryPage />} />
-        <Route path="/topic/:id" element={<TopicDetailPage />} />
-        <Route path="/places/:type/:id" element={<PlaceDetailPage />} />
         
         {/* 我的行程管理模块 */}
         <Route path="/itineraries" element={<ItineraryListPage />} />
         <Route path="/itineraries/:id" element={<ItineraryWorkspace />} />
-        <Route path="/plans-library" element={<PlansLibraryPage />} />
         
         {/* 智能导入模块 */}
         <Route path="/import" element={<SmartImportPage />} />

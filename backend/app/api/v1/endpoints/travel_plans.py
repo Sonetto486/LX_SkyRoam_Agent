@@ -4,9 +4,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any
 from datetime import datetime, date
-from pydantic import BaseModel, Field
 
 from app.core.database import get_async_db
 from app.schemas.travel_plan import (
@@ -15,7 +14,10 @@ from app.schemas.travel_plan import (
     TravelPlanUpdate,
     TravelPlanResponse,
     TravelPlanGenerateRequest,
-    TravelPlanBatchDeleteRequest
+    TravelPlanBatchDeleteRequest,
+    TravelPlanItemCreate,
+    TravelPlanItemUpdate,
+    TravelPlanItemResponse,
 )
 from app.services.travel_plan_service import TravelPlanService
 from app.services.agent_service import AgentService
@@ -49,7 +51,7 @@ async def create_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """创建新的旅行计划(绑定到当前用户)"""
+    """创建新的旅行计划（绑定到当前用户）"""
     service = TravelPlanService(db)
     data = plan_data.dict()
     data["user_id"] = current_user.id
@@ -65,19 +67,19 @@ async def get_travel_plans(
     keyword: Optional[str] = None,
     min_score: Optional[float] = None,
     max_score: Optional[float] = None,
-    created_from: Optional[datetime] = Query(None, description="创建时间(ISO8601,支持Z)"),
-    created_to: Optional[datetime] = Query(None, description="创建时间(ISO8601,支持Z)"),
-    travel_from: Optional[date] = Query(None, description="出行日期(YYYY-MM-DD)"),
-    travel_to: Optional[date] = Query(None, description="出行日期(YYYY-MM-DD)"),
+    created_from: Optional[datetime] = Query(None, description="创建时间起(ISO8601, 支持Z)"),
+    created_to: Optional[datetime] = Query(None, description="创建时间止(ISO8601, 支持Z)"),
+    travel_from: Optional[date] = Query(None, description="出行日期起(YYYY-MM-DD)"),
+    travel_to: Optional[date] = Query(None, description="出行日期止(YYYY-MM-DD)"),
     plan_source: Optional[str] = Query(
         None,
-        description="方案来源过滤: private(仅私有), public(仅公开), 未传表示全部",
+        description="方案来源过滤: private(仅私有)、public(仅公开)、未传表示全部",
         regex="^(private|public)$"
     ),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取旅行计划列表(普通用户仅能查看自己的,管理员可查看所有)"""
+    """获取旅行计划列表（普通用户仅能查看自己的，管理员可查看所有）"""
     service = TravelPlanService(db)
     # 非管理员强制限定为当前用户
     effective_user_id = user_id if is_admin(current_user) else current_user.id
@@ -110,11 +112,11 @@ async def list_public_travel_plans(
     destination: Optional[str] = None,
     keyword: Optional[str] = None,
     min_score: Optional[float] = None,
-    travel_from: Optional[date] = Query(None, description="出行日期(YYYY-MM-DD)"),
-    travel_to: Optional[date] = Query(None, description="出行日期(YYYY-MM-DD)"),
+    travel_from: Optional[date] = Query(None, description="出行日期起(YYYY-MM-DD)"),
+    travel_to: Optional[date] = Query(None, description="出行日期止(YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db),
 ):
-    """公开列表:无需登录,支持目的地,关键词,评分与出行日期检查"""
+    """公开列表：无需登录，支持目的地、关键词、评分与出行日期检索"""
     service = TravelPlanService(db)
     plans, total = await service.get_public_travel_plans_with_total(
         skip=skip,
@@ -137,7 +139,7 @@ async def get_public_travel_plan(
     plan_id: int,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """公开详情:无需登录,仅公开计划可访问"""
+    """公开详情：无需登录，仅公开计划可访问"""
     service = TravelPlanService(db)
     plan = await service.get_public_travel_plan(plan_id)
     if not plan:
@@ -152,7 +154,7 @@ async def publish_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """发布为公开方案(需拥有或管理员权限)"""
+    """发布为公开方案（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -169,7 +171,7 @@ async def unpublish_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """取消公开(需拥有或管理员权限)"""
+    """取消公开（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -187,20 +189,78 @@ async def get_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取单个旅行计划(需拥有或管理员权限)"""
+    """获取单个旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
         raise HTTPException(status_code=403, detail="无权访问该计划")
-    plan_data = TravelPlanResponse.from_orm(plan).dict()
+
+    # 手动构建响应数据，避免懒加载问题
+    plan_data = {
+        'id': plan.id,
+        'title': plan.title,
+        'description': plan.description,
+        'departure': plan.departure,
+        'destination': plan.destination,
+        'start_date': plan.start_date,
+        'end_date': plan.end_date,
+        'duration_days': plan.duration_days,
+        'budget': plan.budget,
+        'transportation': plan.transportation,
+        'preferences': plan.preferences,
+        'requirements': plan.requirements,
+        'user_id': plan.user_id,
+        'status': plan.status,
+        'score': plan.score,
+        'generated_plans': plan.generated_plans,
+        'selected_plan': plan.selected_plan,
+        'created_at': plan.created_at,
+        'updated_at': plan.updated_at,
+        'is_public': plan.is_public,
+        'public_at': plan.public_at,
+        'items': [],
+        # 新增：行程扩展信息
+        'cities': plan.cities,
+        'members': plan.members,
+        'packing_list': plan.packing_list,
+        'travel_mode': plan.travel_mode,
+        'tags': plan.tags,
+    }
+
+    # 处理 items（已通过 selectinload 预加载）
+    if plan.items:
+        for item in plan.items:
+            plan_data['items'].append({
+                'id': item.id,
+                'title': item.title,
+                'description': item.description,
+                'item_type': item.item_type,
+                'start_time': item.start_time,
+                'end_time': item.end_time,
+                'location': item.location,
+                'address': item.address,
+                'coordinates': item.coordinates,
+                'details': item.details,
+                'images': item.images,
+                'travel_plan_id': item.travel_plan_id,
+                'created_at': item.created_at,
+                'updated_at': item.updated_at,
+                # 新增：地点扩展信息
+                'opening_hours': item.opening_hours,
+                'phone': item.phone,
+                'website': item.website,
+                'facilities': item.facilities,
+                'priority': item.priority,
+            })
+
     plan_data = await _enrich_plan_with_attraction_details(plan_data, db)
     return plan_data
 
 
 async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession) -> dict:
-    """为生成的方案补充手动维护的景点详细信息，减少对LLM输出的依赖"""
+    """为生成的方案补充手动维护的景点详细信息，减少对LLM输出的依赖。"""
     try:
         destination = plan_data.get("destination")
         if not destination:
@@ -253,7 +313,7 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
                         merged = [merge_one(a) for a in attractions]
                         day["attractions"] = merged
 
-        # 同步 selected_plan(如果有且与 generated_plans 对应)
+        # 同步 selected_plan（如果有且与 generated_plans 对应）
         selected_plan = plan_data.get("selected_plan")
         if isinstance(selected_plan, dict) and isinstance(generated_plans, list):
             try:
@@ -274,7 +334,7 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
 
         return plan_data
     except Exception as e:
-        logger.warning(f"补充景点详细信息失败(忽略，不阻塞主流程): {e}")
+        logger.warning(f"补充景点详细信息失败（忽略，不阻塞主流程）: {e}")
         return plan_data
 
 
@@ -285,7 +345,7 @@ async def update_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """更新旅行计划(需拥有或管理员权限)"""
+    """更新旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -302,7 +362,7 @@ async def delete_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """删除旅行计划(需拥有或管理员权限)"""
+    """删除旅行计划（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -321,7 +381,7 @@ async def batch_delete_travel_plans(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """批量删除旅行计划(仅管理员)"""
+    """批量删除旅行计划（仅管理员）"""
     if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="仅管理员可批量删除")
     service = TravelPlanService(db)
@@ -336,7 +396,7 @@ async def generate_travel_plans(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """生成旅行方案(需拥有或管理员权限)"""
+    """生成旅行方案（需拥有或管理员）"""
     service = TravelPlanService(db)
     agent_service = AgentService(db)
     plan = await service.get_travel_plan(plan_id)
@@ -346,7 +406,7 @@ async def generate_travel_plans(
         raise HTTPException(status_code=403, detail="无权生成该计划")
     # 防止重复触发生成任务
     if plan.status == "generating":
-        raise HTTPException(status_code=409, detail="该计划正在生成中，请稍后")
+        raise HTTPException(status_code=409, detail="该计划正在生成中，请稍候")
     # 先更新状态为生成中并加锁，避免并发竞争
     await agent_service._update_plan_status(plan_id, "generating")
     async_result = celery_generate_travel_plans_task.delay(
@@ -362,6 +422,49 @@ async def generate_travel_plans(
     }
 
 
+@router.post("/{plan_id}/generate-sync")
+async def generate_travel_plans_sync(
+    plan_id: int,
+    request: TravelPlanGenerateRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """同步生成旅行方案（不需要 Celery Worker，直接在请求中执行）"""
+    service = TravelPlanService(db)
+    agent_service = AgentService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权生成该计划")
+    # 防止重复触发生成任务
+    if plan.status == "generating":
+        raise HTTPException(status_code=409, detail="该计划正在生成中，请稍候")
+
+    try:
+        # 直接执行生成，不使用 Celery
+        success = await agent_service.generate_travel_plans(
+            plan_id, request.preferences, request.requirements
+        )
+
+        if success:
+            # 获取更新后的计划
+            updated_plan = await service.get_travel_plan(plan_id)
+            return {
+                "message": "旅行方案生成成功",
+                "plan_id": plan_id,
+                "status": "completed",
+                "generated_plans": updated_plan.generated_plans if updated_plan else None,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="生成失败，请稍后重试")
+    except Exception as e:
+        logger.error(f"同步生成失败: {e}")
+        # 更新状态为失败
+        await agent_service._update_plan_status(plan_id, "failed")
+        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
+
+
 @router.post("/{plan_id}/refine")
 async def refine_travel_plan_async(
     plan_id: int,
@@ -369,7 +472,7 @@ async def refine_travel_plan_async(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """细化旅行方案(Celery异步,需拥有或管理员权限)"""
+    """细化旅行方案（Celery异步，需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -390,7 +493,7 @@ async def refine_travel_plan_async(
 
 @router.get("/tasks/status/{task_id}")
 async def get_task_status(task_id: str, current_user: User = Depends(get_current_user)):
-    """查询Celery任务状态(需登录)"""
+    """查询Celery任务状态（需登录）"""
     try:
         task_result = AsyncResult(task_id)
         state = task_result.state
@@ -415,7 +518,7 @@ async def get_task_status(task_id: str, current_user: User = Depends(get_current
 
 @router.delete("/tasks/cancel/{task_id}")
 async def cancel_task(task_id: str, current_user: User = Depends(get_current_user)):
-    """取消Celery任务(需登录)"""
+    """取消Celery任务（需登录）"""
     try:
         task_result = AsyncResult(task_id)
         task_result.revoke(terminate=True)
@@ -430,7 +533,7 @@ async def get_generation_status(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取方案生成状态(需拥有或管理员权限)"""
+    """获取方案生成状态（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -451,7 +554,7 @@ async def stream_generation_status(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """SSE流式返回方案生成状态(需拥有或管理员权限)"""
+    """SSE流式返回方案生成状态（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -522,7 +625,7 @@ async def select_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """选择最终旅行方案(需拥有或管理员权限)"""
+    """选择最终旅行方案（需拥有或管理员）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -545,7 +648,7 @@ async def export_travel_plan_async(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """导出旅行计划(Celery异步,需拥有或管理员权限)"""
+    """导出旅行计划（Celery异步，需拥有或管理员）"""
     allowed = {"json", "html", "pdf"}
     if format not in allowed:
         raise HTTPException(status_code=400, detail=f"不支持的导出格式: {format}")
@@ -577,7 +680,7 @@ async def rate_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """对旅行计划进行评分(任何登录用户可评分)"""
+    """对旅行计划进行评分（任何登录用户可评分）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -594,7 +697,7 @@ async def list_plan_ratings(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取旅行计划的评分列表(登录用户可查看)"""
+    """获取旅行计划的评分列表（登录用户可查看）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -608,7 +711,7 @@ async def get_plan_rating_summary(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取评分汇总(平均分,数量)"""
+    """获取评分汇总（平均分、数量）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -622,7 +725,7 @@ async def get_my_plan_rating(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """获取当前用户对该计划的评分(用于前端回填)"""
+    """获取当前用户对该计划的评分（用于前端回填）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
@@ -637,12 +740,12 @@ async def get_text_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """获取纯文本旅行方案(LLM直接生成,不依赖爬取数据)
+    """获取纯文本旅行方案（LLM直接生成，不依赖爬取数据）
     
-    注意:此方案基于LLM知识库生成,可能有滞后性,但主要景点信息通常是准确的。
+    注意：此方案基于LLM知识库生成，可能有滞后性，但主要景点信息通常是准确的。
     适用于快速概览目的地玩法。
     
-    结果会缓存到Redis 1小时。
+    结果会缓存到 Redis 1 小时。
     """
     try:
         # 尝试从缓存获取
@@ -653,7 +756,7 @@ async def get_text_plan(
             return cached_result
         
         service = TravelPlanService(db)
-        # 尝试获取计划(私有或公开)
+        # 尝试获取计划（私有或公开）
         plan = None
         is_public = False
         
@@ -674,7 +777,7 @@ async def get_text_plan(
         if not plan:
             raise HTTPException(status_code=404, detail="旅行计划不存在或无权限访问")
         
-        # 获取用户偏好(如果有)
+        # 获取用户偏好（如果有）
         preferences = {}
         if hasattr(plan, 'preferences') and plan.preferences:
             try:
@@ -702,7 +805,7 @@ async def get_text_plan(
             "note": "此方案基于LLM知识库生成，可能有滞后性，但主要景点信息通常是准确的。"
         }
         
-        # 缓存结果1小时 = 3600秒
+        # 缓存结果（1小时 = 3600秒）
         await set_cache(cache_key, result, ttl=3600)
         logger.info(f"纯文本方案已缓存: plan_id={plan_id}")
         
@@ -779,7 +882,7 @@ async def export_travel_plan(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """导出旅行计划(需拥有或管理员权限)"""
+    """导出旅行计划（需拥有或管理员）"""
     allowed = {"json", "html", "pdf"}
     if format not in allowed:
         raise HTTPException(status_code=400, detail=f"不支持的导出格式: {format}")
@@ -805,454 +908,105 @@ async def export_travel_plan_post(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """导出旅行计划(POST,同步返回,与GET一致)"""
+    """导出旅行计划（POST，同步返回，与GET一致）"""
     return await export_travel_plan(plan_id=plan_id, format=format, db=db, current_user=current_user)
 
-# =============== 快速生成相关端点(简化版) ===============
-from app.schemas.travel_plan import QuickGenerateRequest, QuickGenerateResponse
-from typing import Dict, Any, List
 
-@router.post("/quick-generate", response_model=QuickGenerateResponse)
-async def quick_generate_travel_plan(
-    request: QuickGenerateRequest,
+# =============== 行程项目相关端点 ===============
+@router.get("/{plan_id}/items", response_model=List[TravelPlanItemResponse])
+async def get_plan_items(
+    plan_id: int,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """一键生成旅行计划(使用LLM快速生成,不保存到数据库)"""
-    try:
-        from datetime import datetime, timedelta
-        import uuid
-        
-        # 解析日期
-        start_date = datetime.strptime(request.start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(request.end_date, "%Y-%m-%d")
-        days = (end_date - start_date).days + 1
-        
-        # 生成计划ID(临时)
-        plan_id = str(uuid.uuid4())
-        
-        # 构建偏好
-        preferences = request.preferences or {}
-        preferences.update({
-            "travelers": request.people,
-            "budget": request.budget,
-            "departure": request.departure
-        })
-        
-        # 使用PlanGenerator生成文本计划
-        generator = PlanGenerator()
-        
-        # 创建临时计划对象
-        class TempPlan:
-            def __init__(self, destination, duration_days, preferences):
-                self.destination = destination
-                self.duration_days = duration_days
-                self.preferences = preferences
-        
-        temp_plan = TempPlan(request.destination, days, preferences)
-        
-        # 生成文本计划作为基础
-        text_plan = await generator.generate_text_plan(
-            plan=temp_plan,
-            preferences=preferences,
-            max_chars=3000
-        )
-        
-        # 将文本计划解析为结构化行程
-        daily_itineraries = await _parse_text_to_itineraries(text_plan, request.destination, days, start_date)
-        
-        # 为每个景点添加坐标
-        daily_itineraries = await _add_coordinates_to_itineraries(daily_itineraries, db)
-        
-        # 添加路线信息
-        daily_itineraries = await _add_routes_to_itineraries(daily_itineraries)
-        
-        response = QuickGenerateResponse(
-            plan_id=plan_id,
-            title=f"{request.destination} {days}天旅行计划",
-            destination=request.destination,
-            days=days,
-            people=request.people,
-            budget=request.budget,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            daily_itineraries=daily_itineraries,
-            generated_at=datetime.utcnow().isoformat()
-        )
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"一键生成旅行计划失败: {e}")
-        raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
-
-async def _parse_text_to_itineraries(text_plan: str, destination: str, days: int, start_date: datetime) -> List[Dict[str, Any]]:
-    """将文本计划解析为结构化行程"""
-    try:
-        import re
-        from datetime import datetime, timedelta
-        
-        itineraries = []
-        
-        # 使用正则表达式提取文本中的天数和活动
-        # 匹配格式 "Day 1:", "第一天:", "D1:" 等
-        day_patterns = [
-            r'(?:第(\d+)天|Day\s*(\d+)|D(\d+)|day\s*(\d+))[:\s]*',
-            r'(\d+)月(\d+)日[:\s]*'  # 日期格式
-        ]
-        
-        # 按行分割文本
-        lines = text_plan.split('\n')
-        current_day = 0
-        current_activities = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # 检查是否是新的天数
-            day_match = None
-            for pattern in day_patterns:
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    # 保存前一天的内容
-                    if current_activities and current_day > 0:
-                        itinerary = _create_day_itinerary(current_day, start_date, destination, current_activities)
-                        itineraries.append(itinerary)
-                    
-                    # 获取天数
-                    day_num = 0
-                    for group in match.groups():
-                        if group and group.isdigit():
-                            day_num = int(group)
-                            break
-                    
-                    current_day = day_num
-                    current_activities = []
-                    break
-            
-            # 如果是活动行，解析活动
-            if current_day > 0 and not day_match:
-                activity = _parse_activity_line(line)
-                if activity:
-                    current_activities.append(activity)
-        
-        # 最后一天
-        if current_activities and current_day > 0:
-            itinerary = _create_day_itinerary(current_day, start_date, destination, current_activities)
-            itineraries.append(itinerary)
-        
-        # 如果没有解析出任何行程，生成默认行程
-        if not itineraries:
-            for day in range(1, days + 1):
-                itinerary = _create_default_day_itinerary(day, start_date, destination)
-                itineraries.append(itinerary)
-        
-        # 按天数排序
-        itineraries.sort(key=lambda x: x['day'])
-        
-        return itineraries
-        
-    except Exception as e:
-        logger.error(f"解析文本计划失败: {e}")
-        # 返回默认行程
-        itineraries = []
-        for day in range(1, days + 1):
-            itinerary = _create_default_day_itinerary(day, start_date, destination)
-            itineraries.append(itinerary)
-        return itineraries
-
-def _parse_activity_line(line: str) -> Optional[Dict[str, Any]]:
-    """解析活动行"""
-    try:
-        # 匹配时间格式: "09:00-12:00", "上午9点", "9:00" 等
-        time_patterns = [
-            r'(\d{1,2}:\d{2})\s*[-~]\s*(\d{1,2}:\d{2})',  # 09:00-12:00
-            r'(\d{1,2}:\d{2})',  # 09:00
-            r'(上午|下午|晚上)\s*(\d{1,2})\s*点(?:\s*-\s*(\d{1,2})\s*点)?',  # 上午9点
-        ]
-        
-        time_match = None
-        time_str = ""
-        for pattern in time_patterns:
-            match = re.search(pattern, line)
-            if match:
-                if len(match.groups()) >= 2 and match.group(2):
-                    # 时间范围
-                    start_time = match.group(1)
-                    end_time = match.group(2)
-                    time_str = f"{start_time}-{end_time}"
-                else:
-                    # 单一时间点
-                    time_str = match.group(1)
-                time_match = match
-                break
-        
-        # 移除时间部分，获取活动名称
-        activity_text = line
-        if time_match:
-            activity_text = line[:time_match.start()].strip() + " " + line[time_match.end():].strip()
-        
-        activity_text = activity_text.strip()
-        
-        if not activity_text:
-            return None
-            
-        # 简单的活动对象
-        return {
-            "name": activity_text[:20],  # 活动名称
-            "time": time_str or "全天",
-            "activity": "参观",
-            "location": activity_text,
-            "description": activity_text,
-            "estimated_cost": 0.0
-        }
-        
-    except Exception as e:
-        logger.warning(f"解析活动行失败: {line}, 错误: {e}")
-        return None
-
-def _create_day_itinerary(day: int, start_date: datetime, destination: str, activities: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """创建一天的行程"""
-    current_date = start_date + timedelta(days=day-1)
-    
-    # 如果没有活动，添加默认活动
-    if not activities:
-        activities = [
-            {
-                "name": f"{destination}自由活动",
-                "time": "09:00-18:00",
-                "activity": "自由活动",
-                "location": f"{destination}市区",
-                "description": f"在{destination}自由探索",
-                "estimated_cost": 0.0
-            }
-        ]
-    
-    return {
-        "day": day,
-        "date": current_date.strftime("%Y-%m-%d"),
-        "theme": f"第{day}天 - {destination}探索",
-        "activities": activities,
-        "routes": [],  # 稍后填充
-        "meals": [
-            {
-                "type": "早餐",
-                "time": "08:00",
-                "location": f"{destination}酒店",
-                "suggestion": "酒店自助早餐"
-            },
-            {
-                "type": "午餐", 
-                "time": "12:30",
-                "location": f"{destination}市区",
-                "suggestion": "品尝当地特色美食"
-            },
-            {
-                "type": "晚餐",
-                "time": "18:30", 
-                "location": f"{destination}市区",
-                "suggestion": "特色餐厅"
-            }
-        ]
-    }
-
-def _create_default_day_itinerary(day: int, start_date: datetime, destination: str) -> Dict[str, Any]:
-    """创建默认的一天行程"""
-    current_date = start_date + timedelta(days=day-1)
-    
-    return {
-        "day": day,
-        "date": current_date.strftime("%Y-%m-%d"),
-        "theme": f"第{day}天 - {destination}探索",
-        "activities": [
-            {
-                "name": f"{destination}主要景点",
-                "time": "09:00-12:00",
-                "activity": "参观",
-                "location": f"{destination}核心景区",
-                "description": f"参观{destination}最著名的景点",
-                "estimated_cost": 50.0
-            },
-            {
-                "name": f"{destination}文化体验", 
-                "time": "14:00-17:00",
-                "activity": "体验",
-                "location": f"{destination}文化区",
-                "description": f"体验{destination}的当地文化",
-                "estimated_cost": 30.0
-            }
-        ],
-        "routes": [],
-        "meals": [
-            {
-                "type": "早餐",
-                "time": "08:00",
-                "location": f"{destination}酒店",
-                "suggestion": "酒店自助早餐"
-            },
-            {
-                "type": "午餐", 
-                "time": "12:30",
-                "location": f"{destination}市区",
-                "suggestion": "当地特色美食"
-            },
-            {
-                "type": "晚餐",
-                "time": "18:30", 
-                "location": f"{destination}市区",
-                "suggestion": "特色餐厅"
-            }
-        ]
-    }
-
-async def _add_coordinates_to_itineraries(itineraries: List[Dict[str, Any]], db: AsyncSession) -> List[Dict[str, Any]]:
-    """为行程中的景点添加经纬度坐标"""
-    # 简单实现：返回原数据，实际项目中可调用地理编码API
-    # 这里暂时不做坐标补充，避免依赖外部服务
-    return itineraries
-
-async def _add_routes_to_itineraries(itineraries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """为行程添加路线规划信息"""
-    # 简单实现：返回原数据，实际项目中可调用路线规划API
-    return itineraries
-
-
-# =============== 行程项目(Item)相关端点 ===============
-from app.schemas.travel_plan import TravelPlanItemResponse, TravelPlanItemCreate, TravelPlanItemUpdate
-
-
-class ReorderItemsRequest(BaseModel):
-    """重排序请求"""
-    item_ids: List[int] = Field(..., description="按新顺序排列的项目ID列表")
+    """获取行程的所有项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+    return await service.get_items(plan_id)
 
 
 @router.post("/{plan_id}/items", response_model=TravelPlanItemResponse)
-async def add_travel_plan_item(
+async def create_plan_item(
     plan_id: int,
     item_data: TravelPlanItemCreate,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """添加行程项目(需拥有或管理员权限)"""
+    """创建行程项目"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权添加行程项目")
-
-    item = await service.add_item(plan_id, item_data.model_dump())
-    if not item:
-        raise HTTPException(status_code=500, detail="添加行程项目失败")
-    return TravelPlanItemResponse.from_orm(item)
-
-
-@router.get("/{plan_id}/items", response_model=List[TravelPlanItemResponse])
-async def get_travel_plan_items(
-    plan_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-):
-    """获取行程的所有项目(需拥有或管理员权限)"""
-    service = TravelPlanService(db)
-    plan = await service.get_travel_plan(plan_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="旅行计划不存在")
-    if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权查看行程项目")
-
-    items = await service.get_items_by_plan(plan_id)
-    return [TravelPlanItemResponse.from_orm(item) for item in items]
-
-
-@router.get("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
-async def get_travel_plan_item(
-    plan_id: int,
-    item_id: int,
-    db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-):
-    """获取单个行程项目(需拥有或管理员权限)"""
-    service = TravelPlanService(db)
-    plan = await service.get_travel_plan(plan_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="旅行计划不存在")
-    if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权查看行程项目")
-
-    item = await service.get_item(item_id)
-    if not item or item.travel_plan_id != plan_id:
-        raise HTTPException(status_code=404, detail="行程项目不存在")
-    return TravelPlanItemResponse.from_orm(item)
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    return await service.create_item(plan_id, item_data)
 
 
 @router.put("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
-async def update_travel_plan_item(
+async def update_plan_item(
     plan_id: int,
     item_id: int,
     item_data: TravelPlanItemUpdate,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """更新行程项目(需拥有或管理员权限)"""
+    """更新行程项目"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权更新行程项目")
-
-    item = await service.get_item(item_id)
-    if not item or item.travel_plan_id != plan_id:
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    item = await service.update_item(plan_id, item_id, item_data)
+    if not item:
         raise HTTPException(status_code=404, detail="行程项目不存在")
-
-    updated_item = await service.update_item(item_id, item_data.model_dump(exclude_unset=True))
-    return TravelPlanItemResponse.from_orm(updated_item)
+    return item
 
 
 @router.delete("/{plan_id}/items/{item_id}")
-async def delete_travel_plan_item(
+async def delete_plan_item(
     plan_id: int,
     item_id: int,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """删除行程项目(需拥有或管理员权限)"""
+    """删除行程项目"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权删除行程项目")
-
-    item = await service.get_item(item_id)
-    if not item or item.travel_plan_id != plan_id:
-        raise HTTPException(status_code=404, detail="行程项目不存在")
-
-    success = await service.delete_item(item_id)
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+    success = await service.delete_item(plan_id, item_id)
     if not success:
-        raise HTTPException(status_code=500, detail="删除行程项目失败")
+        raise HTTPException(status_code=404, detail="行程项目不存在")
     return {"message": "行程项目已删除"}
 
 
 @router.put("/{plan_id}/items/reorder")
-async def reorder_travel_plan_items(
+async def reorder_plan_items(
     plan_id: int,
-    request_data: ReorderItemsRequest,
+    request_data: dict,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """重排序行程项目(需拥有或管理员权限)"""
+    """重排序行程项目"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权重排序行程项目")
+        raise HTTPException(status_code=403, detail="无权修改该计划")
 
-    success = await service.reorder_items(plan_id, request_data.item_ids)
+    item_ids = request_data.get("item_ids", [])
+    if not isinstance(item_ids, list):
+        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
+
+    success = await service.reorder_items(plan_id, item_ids)
     if not success:
-        raise HTTPException(status_code=400, detail="重排序失败，请检查项目ID是否正确")
-    return {"message": "行程项目已重新排序"}
+        raise HTTPException(status_code=400, detail="重排序失败")
+    return {"message": "排序已更新"}
