@@ -1,9 +1,8 @@
 import { message } from 'antd';
 // 简单的JWT Token存储与携带工具
-export const TOKEN_KEY = 'auth_token';
+import { API_BASE_URL } from '../config/api';
 
-// 🔥 新增：后端基础地址（固定8000端口，解决404核心）
-const API_BASE_URL = 'http://127.0.0.1:8001/api/v1';
+export const TOKEN_KEY = 'auth_token';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

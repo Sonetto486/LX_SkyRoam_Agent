@@ -123,6 +123,7 @@ services:
     container_name: skyroam-frontend
     environment:
       REACT_APP_API_URL: http://localhost:8001
+      REACT_APP_AMAP_KEY: 3c860a8217597619941f033146dde8ec
       HOST: 0.0.0.0
       PORT: 3000
     ports:

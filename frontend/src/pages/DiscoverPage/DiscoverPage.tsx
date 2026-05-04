@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { Input, Select, Card, Button, Space, Row, Col, Tag, Typography } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Input, Select, Card, Button, Space, Row, Col, Tag, Typography, message, Spin, Empty } from 'antd';
 import { SearchOutlined, StarOutlined, EnvironmentOutlined, CalendarOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { authFetch } from '../../utils/auth';
+import { API_BASE_URL } from '../../config/api';
 import './DiscoverPage.css';
 
 const { Option } = Select;
@@ -15,7 +18,7 @@ interface TopicCard {
 }
 
 interface ItineraryCard {
-  id: number;
+  id: number | string;
   title: string;
   image: string;
   destination: string;
@@ -25,79 +28,87 @@ interface ItineraryCard {
 }
 
 const DiscoverPage: React.FC = () => {
+  const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState('');
   const [region, setRegion] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [itineraries, setItineraries] = useState<ItineraryCard[]>([]);
+  const [topicCards, setTopicCards] = useState<TopicCard[]>([]);
 
-  // 模拟数据
-  const topicCards: TopicCard[] = [
-    {
-      id: 1,
-      title: '东京樱花季',
-      image: 'https://picsum.photos/seed/tokyo1/800/600',
-      tags: ['春季', '赏花', '摄影'],
-      description: '东京最佳樱花观赏地点和时间推荐'
-    },
-    {
-      id: 2,
-      title: '京都古寺巡礼',
-      image: 'https://picsum.photos/seed/kyoto/800/600',
-      tags: ['文化', '历史', '建筑'],
-      description: '探索京都最著名的寺庙和神社'
-    },
-    {
-      id: 3,
-      title: '北海道美食之旅',
-      image: 'https://picsum.photos/seed/hokkaido/800/600',
-      tags: ['美食', '冬季', '温泉'],
-      description: '品尝北海道特色美食和温泉体验'
-    },
-    {
-      id: 4,
-      title: '大阪环球影城',
-      image: 'https://picsum.photos/seed/usj/800/600',
-      tags: ['主题公园', '娱乐', '亲子'],
-      description: '环球影城游玩攻略和快速通行证使用技巧'
-    }
-  ];
+  // 拉取真实的公共旅行计划
+  useEffect(() => {
+    fetchPublicItineraries();
+    fetchTopics();
+  }, []);
 
-  const itineraryCards: ItineraryCard[] = [
-    {
-      id: 1,
-      title: '东京5日精华游',
-      image: 'https://picsum.photos/seed/tokyo5/800/600',
-      destination: '东京, 日本',
-      days: 5,
-      activities: 15,
-      rating: 4.8
-    },
-    {
-      id: 2,
-      title: '关西7日文化之旅',
-      image: 'https://picsum.photos/seed/kansai/800/600',
-      destination: '大阪, 京都, 奈良',
-      days: 7,
-      activities: 20,
-      rating: 4.9
-    },
-    {
-      id: 3,
-      title: '北海道冬季仙境',
-      image: 'https://picsum.photos/seed/hokkaido2/800/600',
-      destination: '札幌, 小樽, 函馆',
-      days: 6,
-      activities: 18,
-      rating: 4.7
-    },
-    {
-      id: 4,
-      title: '冲绳海岛度假',
-      image: 'https://picsum.photos/seed/okinawa/800/600',
-      destination: '冲绳, 日本',
-      days: 4,
-      activities: 12,
-      rating: 4.6
+  const fetchTopics = async () => {
+    try {
+      setTopicsLoading(true);
+      const res = await authFetch(`/topics?keyword=${encodeURIComponent(searchValue)}&continent=${encodeURIComponent(region === 'all' ? '' : region)}`);
+      const data = await res.json();
+      const sourceData = Array.isArray(data) ? data : data.topics || data.items || [];
+      const mappedTopics = sourceData.map((topic: any) => ({
+        id: topic.id,
+        title: topic.title || topic.name || '未命名专题',
+        image: topic.image || topic.cover_url || topic.cover_image_url || 'https://picsum.photos/seed/' + topic.id + '/800/600',
+        tags: topic.tags || [topic.continent || '未分类'],
+        description: topic.description || topic.intro || ''
+      }));
+      setTopicCards(mappedTopics);
+    } catch (error) {
+      console.error('获取专题失败:', error);
+      message.error({ content: '获取专题失败', key: 'fetchTopicsError' });
+    } finally {
+      setTopicsLoading(false);
     }
-  ];
+  };
+
+  const handleSearch = () => {
+    fetchTopics();
+    fetchPublicItineraries();
+  };
+
+  const fetchPublicItineraries = async () => {
+    try {
+      setLoading(true);
+      const response = await authFetch(`/travel-plans/public?keyword=${encodeURIComponent(searchValue)}`);
+      const data = await response.json();
+      if (data && data.plans) {
+        const mappedItineraries = data.plans.map((plan: any) => ({
+          id: plan.id,
+          title: plan.title || '未命名行程',
+          image: 'https://picsum.photos/seed/' + plan.id + '/800/600', // 暂用随机图
+          destination: plan.destination || '未知目的地',
+          days: plan.duration_days || 1,
+          activities: plan.items ? plan.items.length : 15,
+          rating: plan.score || 4.8
+        }));
+        setItineraries(mappedItineraries);
+      }
+    } catch (error) {
+      console.error('获取推荐行程失败:', error);
+      message.error({ content: '获取推荐行程失败，请刷新重试', key: 'fetchPlansError' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleItineraryClick = (id: number | string) => {
+    navigate(`/plans/${id}`);
+  };
+
+  const handleTopicClick = (id: number | string) => {
+    navigate(`/topics/${id}`);
+  };
+
+  const handleViewAllTopics = () => {
+    navigate('/topics');
+  };
+
+  const handleViewAllItineraries = () => {
+    navigate('/public-plans');
+  };
 
   return (
     <div className="discover-page">
@@ -133,7 +144,7 @@ const DiscoverPage: React.FC = () => {
             <Option value="north-america" style={{ color: '#000' }}>北美洲</Option>
             <Option value="oceania" style={{ color: '#000' }}>大洋洲</Option>
           </Select>
-          <Button type="primary" style={{ marginLeft: 16 }}>
+          <Button type="primary" style={{ marginLeft: 16 }} onClick={handleSearch}>
             搜索
           </Button>
         </div>
@@ -143,8 +154,9 @@ const DiscoverPage: React.FC = () => {
       <div className="section">
         <div className="section-header">
           <Title level={3}>精选专题</Title>
-          <Button type="link">查看全部</Button>
+          <Button type="link" onClick={handleViewAllTopics}>查看全部</Button>
         </div>
+        <Spin spinning={topicsLoading}>
         <Row gutter={[16, 16]}>
           {topicCards.map((topic) => (
             <Col xs={24} sm={12} md={8} lg={6} key={topic.id}>
@@ -160,7 +172,7 @@ const DiscoverPage: React.FC = () => {
                   </div>
                   <Title level={4}>{topic.title}</Title>
                   <p className="topic-description">{topic.description}</p>
-                  <Button type="primary" size="small">
+                  <Button type="primary" size="small" onClick={() => handleTopicClick(topic.id)}>
                     查看详情
                   </Button>
                 </div>
@@ -168,47 +180,54 @@ const DiscoverPage: React.FC = () => {
             </Col>
           ))}
         </Row>
+        </Spin>
       </div>
 
       {/* 推荐行程 */}
       <div className="section">
         <div className="section-header">
           <Title level={3}>推荐行程</Title>
-          <Button type="link">查看全部</Button>
+          <Button type="link" onClick={handleViewAllItineraries}>查看全部</Button>
         </div>
-        <Row gutter={[16, 16]}>
-          {itineraryCards.map((itinerary) => (
-            <Col xs={24} sm={12} md={8} lg={6} key={itinerary.id}>
-              <Card className="itinerary-card">
-                <div className="itinerary-image">
-                  <img src={itinerary.image} alt={itinerary.title} />
-                </div>
-                <div className="itinerary-content">
-                  <Title level={4}>{itinerary.title}</Title>
-                  <div className="itinerary-meta">
-                    <Space>
-                      <Space>
-                        <EnvironmentOutlined />
-                        <span>{itinerary.destination}</span>
-                      </Space>
-                      <Space>
-                        <CalendarOutlined />
-                        <span>{itinerary.days}天</span>
-                      </Space>
-                      <Space>
-                        <StarOutlined />
-                        <span>{itinerary.rating}</span>
-                      </Space>
-                    </Space>
+        {loading ? (
+           <div style={{ textAlign: 'center', padding: '50px 0' }}><Spin size="large" /></div>
+        ) : itineraries.length > 0 ? (
+          <Row gutter={[16, 16]}>
+            {itineraries.map((itinerary) => (
+              <Col xs={24} sm={12} md={8} lg={6} key={itinerary.id}>
+                <Card className="itinerary-card">
+                  <div className="itinerary-image">
+                    <img src={itinerary.image} alt={itinerary.title} />
                   </div>
-                  <Button type="primary" size="small" style={{ marginTop: 16 }}>
-                    查看行程
-                  </Button>
-                </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                  <div className="itinerary-content">
+                    <Title level={4}>{itinerary.title}</Title>
+                    <div className="itinerary-meta">
+                      <Space>
+                        <Space>
+                          <EnvironmentOutlined />
+                          <span>{itinerary.destination}</span>
+                        </Space>
+                        <Space>
+                          <CalendarOutlined />
+                          <span>{itinerary.days}天</span>
+                        </Space>
+                        <Space>
+                          <StarOutlined />
+                          <span>{itinerary.rating}</span>
+                        </Space>
+                      </Space>
+                    </div>
+                    <Button type="primary" size="small" style={{ marginTop: 16 }} onClick={() => handleItineraryClick(itinerary.id)}>
+                      查看行程
+                    </Button>
+                  </div>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        ) : (
+          <Empty description="暂无推荐行程" />
+        )}
       </div>
     </div>
   );
