@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL 数据库（仅内网）
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:pg15
     container_name: skyroam-postgres
     environment:
       POSTGRES_DB: skyroam
