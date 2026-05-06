@@ -462,53 +462,62 @@ const getDayActivities = (): DayActivity[] => {
     }
   };
 
-  // 获取天气数据（15日）
+  // 获取天气数据（智能判断日期）
   const fetchWeatherData = async () => {
     if (!plan) return;
+
+    // 确保至少显示7天，或者行程天数（取较大值）
+    const days = Math.max(7, plan.duration_days);
+
     try {
-      const amapKey = process.env.REACT_APP_AMAP_KEY || process.env.REACT_APP_AMAP_WEB_KEY;
-      if (!amapKey) {
+      // 调用后端天气API，传递旅行日期
+      const res = await fetch(buildApiUrl(`/weather?city=${encodeURIComponent(plan.destination)}&days=${days}&travel_date=${encodeURIComponent(plan.start_date)}`));
+
+      if (!res.ok) {
         // 使用模拟数据
-        const mockData = [];
-        const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
-        for (let i = 0; i < 15; i++) {
-          const date = new Date();
-          date.setDate(date.getDate() + i);
-          mockData.push({
-            date: date.toISOString().split('T')[0],
-            dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
-            dayTemp: String(20 + Math.floor(Math.random() * 10)),
-            nightTemp: String(15 + Math.floor(Math.random() * 5)),
-          });
-        }
-        setWeatherData(mockData);
+        setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
         return;
       }
 
-      const cityRes = await fetch(
-        `https://restapi.amap.com/v3/config/district?keywords=${encodeURIComponent(plan.destination)}&key=${amapKey}&subdistrict=0`
-      );
-      const cityData = await cityRes.json();
+      const data = await res.json();
 
-      if (cityData.districts && cityData.districts.length > 0) {
-        const adcode = cityData.districts[0].adcode;
-        const weatherRes = await fetch(
-          `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${amapKey}&extensions=all`
-        );
-        const weatherJson = await weatherRes.json();
-
-        if (weatherJson.status === '1' && weatherJson.forecasts && weatherJson.forecasts[0]) {
-          setWeatherData(weatherJson.forecasts[0].casts.slice(0, 15).map((cast: any) => ({
-            date: cast.date,
-            dayWeather: cast.dayweather,
-            dayTemp: cast.daytemp,
-            nightTemp: cast.nighttemp,
-          })));
-        }
+      if (data.forecast && data.forecast.length > 0) {
+        setWeatherData(data.forecast.map((cast: any) => ({
+          date: cast.date,
+          dayWeather: cast.dayweather,
+          dayTemp: cast.daytemp,
+          nightTemp: cast.nighttemp,
+          dateMode: data.date_mode,
+          dateReason: data.date_reason,
+        })));
+      } else {
+        // 无数据时使用模拟数据
+        setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
       }
     } catch (err) {
       console.error('获取天气失败:', err);
+      // 失败时使用模拟数据
+      setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
     }
+  };
+
+  // 生成从指定日期开始的模拟天气数据
+  const generateMockWeatherFromStart = (startDate: string, count: number) => {
+    const mockData = [];
+    const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
+    const start = new Date(startDate);
+
+    for (let i = 0; i < count; i++) {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      mockData.push({
+        date: date.toISOString().split('T')[0],
+        dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
+        dayTemp: String(20 + Math.floor(Math.random() * 10)),
+        nightTemp: String(15 + Math.floor(Math.random() * 5)),
+      });
+    }
+    return mockData;
   };
 
   // 打开天气弹窗
@@ -724,7 +733,7 @@ const getDayActivities = (): DayActivity[] => {
           <WeatherCard
             city={plan.destination}
             startDate={plan.start_date}
-            days={Math.min(plan.duration_days, 5)}
+            days={Math.max(7, plan.duration_days)}
           />
         </div>
 
@@ -1053,9 +1062,9 @@ const getDayActivities = (): DayActivity[] => {
         )}
       </Modal>
 
-      {/* 天气预览弹窗（15日） */}
+      {/* 天气预览弹窗 */}
       <Modal
-        title={`${plan?.destination || ''} 天气预报（近15日）`}
+        title={`${plan?.destination || ''} 天气预报`}
         open={weatherModalVisible}
         onCancel={() => setWeatherModalVisible(false)}
         footer={null}
@@ -1063,17 +1072,31 @@ const getDayActivities = (): DayActivity[] => {
       >
         <div className="weather-preview-content">
           {weatherData.length > 0 ? (
-            <div className="weather-grid">
-              {weatherData.map((weather, index) => (
-                <Card key={index} className="weather-preview-item" size="small">
-                  <div className="weather-date">{weather.date.slice(5)}</div>
-                  <div className="weather-temp">
-                    {weather.dayTemp}°/{weather.nightTemp}°
+            <>
+              <div style={{ marginBottom: 12, color: '#666' }}>
+                行程日期：{plan?.start_date?.slice(0, 10)} 至 {plan?.end_date?.slice(0, 10)}（共 {plan?.duration_days} 天）
+                {weatherData[0]?.dateReason && (
+                  <div style={{ marginTop: 4, fontSize: 12 }}>
+                    {weatherData[0]?.dateMode === 'travel_date' ? (
+                      <span style={{ color: '#52c41a' }}>✓ 显示行程期间天气</span>
+                    ) : (
+                      <span style={{ color: '#1890ff' }}>显示近期天气：{weatherData[0]?.dateReason}</span>
+                    )}
                   </div>
-                  <div className="weather-condition">{weather.dayWeather}</div>
-                </Card>
-              ))}
-            </div>
+                )}
+              </div>
+              <div className="weather-grid">
+                {weatherData.map((weather, index) => (
+                  <Card key={index} className="weather-preview-item" size="small">
+                    <div className="weather-date">{weather.date.slice(5)}</div>
+                    <div className="weather-temp">
+                      {weather.dayTemp}°/{weather.nightTemp}°
+                    </div>
+                    <div className="weather-condition">{weather.dayWeather}</div>
+                  </Card>
+                ))}
+              </div>
+            </>
           ) : (
             <Empty description="暂无天气数据" />
           )}

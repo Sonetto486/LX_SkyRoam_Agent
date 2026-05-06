@@ -170,66 +170,82 @@ const ItineraryListPage: React.FC = () => {
     return '未设置';
   };
 
-  // 获取天气预览
-  const fetchWeatherPreview = async (destination: string, days: number = 15) => {
+  // 获取天气预览（智能判断日期）
+  const fetchWeatherPreview = async (destination: string, startDate: string, days: number = 7) => {
+    // 确保至少显示7天
+    const minDays = Math.max(7, days);
+
     try {
-      const amapKey = process.env.REACT_APP_AMAP_KEY || process.env.REACT_APP_AMAP_WEB_KEY;
-      if (!amapKey) {
+      // 调用后端天气API，传递旅行日期
+      const res = await fetch(buildApiUrl(`/weather?city=${encodeURIComponent(destination)}&days=${minDays}&travel_date=${encodeURIComponent(startDate)}`));
+
+      if (!res.ok) {
         // 使用模拟数据
-        const mockData = [];
-        const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
-        for (let i = 0; i < Math.min(days, 15); i++) {
-          const date = new Date();
-          date.setDate(date.getDate() + i);
-          mockData.push({
-            date: date.toISOString().split('T')[0],
-            dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
-            dayTemp: String(20 + Math.floor(Math.random() * 10)),
-            nightTemp: String(15 + Math.floor(Math.random() * 5)),
-          });
-        }
-        return mockData;
+        return {
+          data: generateMockWeatherFromStart(startDate, minDays),
+          dateMode: 'current',
+          dateReason: 'API调用失败'
+        };
       }
 
-      // 获取城市adcode
-      const cityRes = await fetch(
-        `https://restapi.amap.com/v3/config/district?keywords=${encodeURIComponent(destination)}&key=${amapKey}&subdistrict=0`
-      );
-      const cityData = await cityRes.json();
+      const result = await res.json();
 
-      if (!cityData.districts || cityData.districts.length === 0) {
-        return [];
+      if (result.forecast && result.forecast.length > 0) {
+        return {
+          data: result.forecast.map((cast: any) => ({
+            date: cast.date,
+            dayWeather: cast.dayweather,
+            dayTemp: cast.daytemp,
+            nightTemp: cast.nighttemp,
+          })),
+          dateMode: result.date_mode || 'current',
+          dateReason: result.date_reason || ''
+        };
       }
 
-      const adcode = cityData.districts[0].adcode;
-
-      // 获取天气预报
-      const weatherRes = await fetch(
-        `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${amapKey}&extensions=all`
-      );
-      const weatherJson = await weatherRes.json();
-
-      if (weatherJson.status === '1' && weatherJson.forecasts && weatherJson.forecasts[0]) {
-        return weatherJson.forecasts[0].casts.slice(0, days).map((cast: any) => ({
-          date: cast.date,
-          dayWeather: cast.dayweather,
-          dayTemp: cast.daytemp,
-          nightTemp: cast.nighttemp,
-        }));
-      }
-      return [];
+      return {
+        data: generateMockWeatherFromStart(startDate, minDays),
+        dateMode: 'current',
+        dateReason: '无数据'
+      };
     } catch (err) {
       console.error('获取天气失败:', err);
-      return [];
+      return {
+        data: generateMockWeatherFromStart(startDate, minDays),
+        dateMode: 'current',
+        dateReason: '请求失败'
+      };
     }
+  };
+
+  // 生成从指定日期开始的模拟天气数据
+  const generateMockWeatherFromStart = (startDate: string, count: number) => {
+    const mockData = [];
+    const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
+    const start = new Date(startDate);
+
+    for (let i = 0; i < count; i++) {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      mockData.push({
+        date: date.toISOString().split('T')[0],
+        dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
+        dayTemp: String(20 + Math.floor(Math.random() * 10)),
+        nightTemp: String(15 + Math.floor(Math.random() * 5)),
+      });
+    }
+    return mockData;
   };
 
   // 打开天气预览弹窗
   const openWeatherModal = async (itinerary: TravelPlan) => {
     setSelectedItinerary(itinerary);
     setWeatherModalVisible(true);
-    const data = await fetchWeatherPreview(itinerary.destination, 15);
-    setWeatherData(data);
+    const result = await fetchWeatherPreview(itinerary.destination, itinerary.start_date, itinerary.duration_days);
+    setWeatherData(result.data);
+    // 保存日期模式信息
+    (window as any).__weatherMode = result.dateMode;
+    (window as any).__weatherReason = result.dateReason;
   };
 
   // 打开编辑弹窗
@@ -481,7 +497,7 @@ const ItineraryListPage: React.FC = () => {
 
       {/* 天气预览弹窗 */}
       <Modal
-        title={`${selectedItinerary?.destination || ''} 天气预报（近15日）`}
+        title={`${selectedItinerary?.destination || ''} 天气预报`}
         open={weatherModalVisible}
         onCancel={() => setWeatherModalVisible(false)}
         footer={null}
@@ -489,6 +505,20 @@ const ItineraryListPage: React.FC = () => {
         className="weather-preview-modal"
       >
         <div className="weather-preview-content">
+          {selectedItinerary && (
+            <div style={{ marginBottom: 12, color: '#666' }}>
+              行程日期：{selectedItinerary.start_date?.slice(0, 10)} 至 {selectedItinerary.end_date?.slice(0, 10)}（共 {selectedItinerary.duration_days} 天）
+              {(window as any).__weatherReason && (
+                <div style={{ marginTop: 4, fontSize: 12 }}>
+                  {(window as any).__weatherMode === 'travel_date' ? (
+                    <span style={{ color: '#52c41a' }}>✓ 显示行程期间天气</span>
+                  ) : (
+                    <span style={{ color: '#1890ff' }}>显示近期天气：{(window as any).__weatherReason}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {weatherData.length > 0 ? (
             <Row gutter={[8, 8]}>
               {weatherData.map((weather, index) => (
