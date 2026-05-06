@@ -2,6 +2,16 @@
   padding: 24px;
 }
 
+/* Steps 步骤圈间距调整 - 让两个圈挨近并靠左 */
+.plan-generator-page .ant-steps {
+  max-width: 320px;
+  margin-bottom: 24px;
+}
+
+.plan-generator-page .ant-steps-item {
+  flex: none !important;
+}
+
 .page-header {
   margin-bottom: 32px;
   text-align: center;
