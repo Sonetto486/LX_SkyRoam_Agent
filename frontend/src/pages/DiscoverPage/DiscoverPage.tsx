@@ -72,23 +72,24 @@ const DiscoverPage: React.FC = () => {
   const fetchPublicItineraries = async () => {
     try {
       setLoading(true);
-      const response = await authFetch(`/travel-plans/public?keyword=${encodeURIComponent(searchValue)}`);
+      const limit = 8;
+      const response = await authFetch(`/notes?limit=${limit}&is_random=true&keyword=${encodeURIComponent(searchValue)}`);
       const data = await response.json();
-      if (data && data.plans) {
-        const mappedItineraries = data.plans.map((plan: any) => ({
-          id: plan.id,
-          title: plan.title || '未命名行程',
-          image: 'https://picsum.photos/seed/' + plan.id + '/800/600', // 暂用随机图
-          destination: plan.destination || '未知目的地',
-          days: plan.duration_days || 1,
-          activities: plan.items ? plan.items.length : 15,
-          rating: plan.score || 4.8
+      if (data && data.items) {
+        const mappedNotes = data.items.map((note: any) => ({
+          id: note.id,
+          title: note.title || '未命名攻略',
+          image: note.image_url || 'https://picsum.photos/seed/' + note.id + '/800/600',
+          destination: note.destination || '未知目的地',
+          days: 1, // mock days equivalent
+          activities: 15, // mock activities count
+          rating: 4.8 // mock rating
         }));
-        setItineraries(mappedItineraries);
+        setItineraries(mappedNotes); // Still setting it to itineraries state but rendering Notes data
       }
     } catch (error) {
-      console.error('获取推荐行程失败:', error);
-      message.error({ content: '获取推荐行程失败，请刷新重试', key: 'fetchPlansError' });
+      console.error('获取旅行灵感失败:', error);
+      message.error({ content: '获取推荐攻略失败，请刷新重试', key: 'fetchPlansError' });
     } finally {
       setLoading(false);
     }
@@ -183,10 +184,10 @@ const DiscoverPage: React.FC = () => {
         </Spin>
       </div>
 
-      {/* 推荐行程 */}
+      {/* 旅行灵感 */}
       <div className="section">
         <div className="section-header">
-          <Title level={3}>推荐行程</Title>
+          <Title level={3}>旅行灵感</Title>
           <Button type="link" onClick={handleViewAllItineraries}>查看全部</Button>
         </div>
         {loading ? (
@@ -226,7 +227,7 @@ const DiscoverPage: React.FC = () => {
             ))}
           </Row>
         ) : (
-          <Empty description="暂无推荐行程" />
+          <Empty description="暂无旅行灵感" />
         )}
       </div>
     </div>

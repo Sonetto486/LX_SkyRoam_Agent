@@ -23,10 +23,10 @@ DB_CONFIG = {
 }
 
 # 向量大模型 API 配置 (Ofox API 等提供 OpenAI 兼容格式接口的平台)
-EMBEDDING_API_BASE = "https://api.ofox.ai/v1"
-EMBEDDING_API_KEY = "your-api-key"
-# 根据你的实际供应商修改模型名称，比如："bge-m3", "text-embedding-3-small" 等
-EMBEDDING_MODEL = "bge-m3"  
+EMBEDDING_API_BASE = "https://api.siliconflow.cn/v1"  # 硅基流动，如果是请用这个地址，否则换回原地址
+EMBEDDING_API_KEY = "sk-akxmmyreibwsszkfvxsfnmnifgbaoxswrghligcjnygvgayo"
+# 使用 0.6B 模型，其输出维度为 1024，完美匹配我们刚刚在 PG 中建立的 vector(1024) 字段
+EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"  
 
 # 适配 numpy 类型到 PostgreSQL
 def add_adapters():
