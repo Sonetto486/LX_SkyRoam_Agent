@@ -22,12 +22,9 @@ from asyncio import Queue, QueueEmpty
 # 必须在所有其他导入之前设置事件循环策略 - 使用ProactorEventLoop解决Playwright问题
 if sys.platform == "win32":
     # 尝试使用ProactorEventLoop，这对Playwright更友好
-    try:
+    
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    except AttributeError:
-        # 如果不支持ProactorEventLoop，回退到SelectorEventLoop
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
+   
 # 添加项目路径
 current_dir = Path(__file__).parent
 sys.path.append(str(current_dir))
@@ -214,7 +211,7 @@ class XHSAPIServer:
                     self.login_crawler = XiaoHongShuLoginCrawler()
                 
                 # 在后台任务中执行登录
-                background_tasks.add_task(self._perform_login, request.timeout)
+                background_tasks.add_task(self._perform_login, request.timeout or 300)
                 
                 return {
                     "status": "started",
@@ -364,7 +361,7 @@ class XHSAPIServer:
                 raise HTTPException(status_code=resp.status_code, detail="源站返回非200")
             content_type = resp.headers.get("content-type", "image/jpeg")
             if not content_type.startswith("image/"):
-                raise HTTPException(status码=400, detail="非图片内容")
+                raise HTTPException(status_code=400, detail="非图片内容")
             from fastapi.responses import StreamingResponse as _SR
             return _SR(resp.aiter_bytes(), media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
 
