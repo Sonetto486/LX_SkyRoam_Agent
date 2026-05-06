@@ -157,12 +157,68 @@ const SmartImportPage: React.FC = () => {
     fetchImportData({ linkInput }, setLinkLoading);
   };
 
+  // 图片上传处理：调用新的OCR接口
+  // 图片上传处理：调用新的OCR接口
+const handleImageUpload = async () => {
+  if (fileList.length === 0) {
+    message.error('请先选择图片');
+    return;
+  }
+
+  // ✅ 修复1：正确获取 Ant Design Upload 的真实文件对象
+  const file = fileList[0].originFileObj;
+  if (!file) {
+    message.error('无效的图片文件，请重新选择');
+    return;
+  }
+
+  setImportLoading(true);
+  try {
+    const formData = new FormData();
+    // ✅ 固定：后端接收的字段名是 file，必须严格匹配
+    formData.append('file', file);
+
+    // ✅ 修复2：上传文件 绝对不能加 Content-Type 请求头！
+    const response = await authFetch('/image-import/upload', {
+      method: 'POST',
+      body: formData,
+      // 重点：删除所有 headers，尤其是 application/json
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || '图片解析失败');
+    }
+
+    const data = await response.json();
+
+    if (data.success) {
+      message.success('✅ 图片解析成功！');
+      setGeneratedPlan(data.data);
+      initializeCheckedLocations(data.data.preferences?.parsed_locations || []);
+    } else {
+      message.error(data.message || '图片解析失败，请重试');
+    }
+  } catch (error: any) {
+    console.error('图片上传失败:', error);
+    message.error(error.message || '图片上传失败，请检查后端服务');
+  } finally {
+    setImportLoading(false);
+  }
+};
+  // 统一的提交处理：优先使用图片上传，其他方式fallback
   const handleSubmit = () => {
-    if (!textInput && !linkInput && fileList.length === 0) {
+    // 优先处理图片上传
+    if (fileList.length > 0) {
+      handleImageUpload();
+      return;
+    }
+
+    if (!textInput && !linkInput) {
       message.error('请至少输入一种导入方式');
       return;
     }
-    fetchImportData({ textInput, linkInput, fileList }, setImportLoading);
+    fetchImportData({ textInput, linkInput }, setImportLoading);
   };
 
   // 初始化勾选状态 (默认全部按照后端的 selected 状态)
@@ -332,9 +388,25 @@ const handleCreateNewItinerary = async () => {
             </div>
           </Card>
           <Card title="截图上传" size="small" type="inner">
-            <Upload multiple fileList={fileList} onChange={handleFileChange} maxCount={5}>
+            <Upload
+              multiple
+              fileList={fileList}
+              onChange={handleFileChange}
+              maxCount={5}
+              beforeUpload={() => false}
+              customRequest={() => {}}
+            >
               <Button icon={<UploadOutlined />}>选择图片</Button>
             </Upload>
+            <Button
+              type="primary"
+              onClick={handleImageUpload}
+              loading={importLoading}
+              style={{ marginTop: 12, width: '100%' }}
+              disabled={fileList.length === 0}
+            >
+              {importLoading ? '识别中...' : '📷 OCR识别图片'}
+            </Button>
           </Card>
         </div>
 

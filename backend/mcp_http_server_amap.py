@@ -158,6 +158,7 @@ class AmapMCPHTTPServer:
     
     async def handle_mcp_request(self, request: Request) -> Response:
         """处理 MCP 请求"""
+        data = None  # 初始化 data 变量，避免未绑定问题
         try:
             data = await request.json()
             jsonrpc = data.get('jsonrpc')
@@ -202,13 +203,8 @@ class AmapMCPHTTPServer:
             
         except Exception as e:
             logger.error(f'MCP 请求处理失败: {e}')
-            # 安全获取request_id，避免data变量未绑定的问题
-            request_id = None
-            try:
-                if 'data' in locals() and data:
-                    request_id = data.get('id')
-            except:
-                pass
+            # 安全获取 request_id
+            request_id = data.get('id') if data else None
             return web.json_response({
                 'jsonrpc': '2.0',
                 'id': request_id,
