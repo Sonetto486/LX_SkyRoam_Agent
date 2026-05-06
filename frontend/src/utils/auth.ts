@@ -20,13 +20,13 @@ export function clearToken() {
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = getToken();
   const headers = new Headers(init.headers || {});
-  if (token) {
+   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
-  }
-  // 默认JSON头
-  if (!headers.has('Content-Type') && init.body) {
+   }
+// 🔥 关键修复：FormData 类型不设置 Content-Type
+   if (!headers.has('Content-Type') && init.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
-  }
+   }
 
   // 🔥 核心修复：自动拼接后端URL，请求永远不会发错端口
   let fullUrl: string;

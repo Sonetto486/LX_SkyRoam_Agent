@@ -13,11 +13,6 @@ from aiohttp import web, ClientSession
 from aiohttp.web import Request, Response
 from dotenv import load_dotenv
 from loguru import logger
-<<<<<<< HEAD
-
-# 加载环境变量
-load_dotenv()
-=======
 import os
 from pathlib import Path
 
@@ -36,7 +31,6 @@ if env_path.exists():
     logger.info(f"✅ 成功加载环境变量: {env_path}")
 else:
     logger.warning(f"⚠️ 未找到 .env 文件: {env_path}")
->>>>>>> 5e260910bbdbacdbe30a13afdb81cf501f4a96b9
 
 class AmapMCPHTTPServer:
     """高德地图 MCP HTTP 服务器"""
@@ -164,6 +158,7 @@ class AmapMCPHTTPServer:
     
     async def handle_mcp_request(self, request: Request) -> Response:
         """处理 MCP 请求"""
+        data = None  # 初始化 data 变量，避免未绑定问题
         try:
             data = await request.json()
             jsonrpc = data.get('jsonrpc')
@@ -208,13 +203,8 @@ class AmapMCPHTTPServer:
             
         except Exception as e:
             logger.error(f'MCP 请求处理失败: {e}')
-            # 安全获取request_id，避免data变量未绑定的问题
-            request_id = None
-            try:
-                if 'data' in locals() and data:
-                    request_id = data.get('id')
-            except:
-                pass
+            # 安全获取 request_id
+            request_id = data.get('id') if data else None
             return web.json_response({
                 'jsonrpc': '2.0',
                 'id': request_id,

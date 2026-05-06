@@ -118,6 +118,8 @@ class Settings(BaseSettings):
 
     # MCP服务API密钥（通过环境变量传递给MCP服务）
     BAIDU_MAPS_API_KEY: str = os.getenv("BAIDU_MAPS_API_KEY", "")  # 百度地图API密钥
+    BAIDU_OCR_API_KEY: str = os.getenv("BAIDU_OCR_API_KEY", "48rcXBk8CFGMKnKC8rYeb6ZD")  # 百度OCR API密钥
+    BAIDU_OCR_SECRET_KEY: str = os.getenv("BAIDU_OCR_SECRET_KEY", "7AHZQ1UI1WlX5Ija6WlFmZjd2JBpCC9c")  # 百度OCR Secret Key
     AMAP_API_KEY: str = os.getenv("AMAP_API_KEY", "")  # 高德地图API密钥
     TIANDITU_API_KEY: str = os.getenv("TIANDITU_API_KEY", "")  # 天地图API密钥
     TIANDITU_API_BASE: str = os.getenv("TIANDITU_API_BASE", "https://api.tianditu.gov.cn")  # 天地图API基础URL
