@@ -121,6 +121,17 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
   }, [markers, mapLoaded, viewMode, currentDay]);
 
+  // 更新地图中心点
+  useEffect(() => {
+    if (mapLoaded && mapInstanceRef.current && center) {
+      try {
+        mapInstanceRef.current.setCenter([center.lng, center.lat]);
+      } catch (e) {
+        console.error('Failed to set map center:', e);
+      }
+    }
+  }, [center.lng, center.lat, mapLoaded]);
+
   useEffect(() => {
     isMountedRef.current = true;
 
@@ -183,7 +194,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       markersRef.current = [];
       polylineRef.current = [];
     };
-  }, [center.lng, center.lat, zoom]);
+  }, [zoom]);
 
   // 监听标记变化
   useEffect(() => {
