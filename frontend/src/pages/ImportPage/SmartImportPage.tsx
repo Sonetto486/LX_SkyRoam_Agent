@@ -9,7 +9,7 @@ const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 
-// 定义后端返回的地点数据结构
+// ✅ 更新地点数据结构，增加亮点、经纬度、花费
 interface ParsedLocation {
   id: number;
   name: string;
@@ -18,8 +18,12 @@ interface ParsedLocation {
   day: string;
   excerpt: string;
   selected: boolean;
-  image_url?: string; // 地点图片URL
-  images?: string[]; // 地点图片URL列表
+  image_url?: string;
+  images?: string[];
+  highlight?: string;      // 亮点/推荐理由
+  lat?: number;            // 纬度
+  lng?: number;            // 经度
+  cost?: number;           // 预估人均花费（元）
 }
 
 // localStorage keys
@@ -32,14 +36,11 @@ const SmartImportPage: React.FC = () => {
   const [linkInput, setLinkInput] = useState('');
   const [fileList, setFileList] = useState<any[]>([]);
   
-  // 加载状态
   const [importLoading, setImportLoading] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
   
-  // 数据存储
   const [generatedPlan, setGeneratedPlan] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('locations');
-  // 使用地点 ID 作为 key，管理勾选状态
   const [checkedLocations, setCheckedLocations] = useState<{[id: number]: boolean}>({});
 
   // 从 localStorage 加载保存的数据
@@ -51,7 +52,6 @@ const SmartImportPage: React.FC = () => {
       if (savedPlan) {
         const plan = JSON.parse(savedPlan);
         setGeneratedPlan(plan);
-        // 初始化勾选状态
         if (plan.preferences?.parsed_locations) {
           const initialChecked: {[id: number]: boolean} = {};
           plan.preferences.parsed_locations.forEach((loc: ParsedLocation) => {
@@ -74,7 +74,6 @@ const SmartImportPage: React.FC = () => {
     }
   }, []);
 
-  // 保存数据到 localStorage
   useEffect(() => {
     if (generatedPlan) {
       try {
@@ -85,7 +84,6 @@ const SmartImportPage: React.FC = () => {
     }
   }, [generatedPlan]);
 
-  // 保存勾选状态到 localStorage
   useEffect(() => {
     if (Object.keys(checkedLocations).length > 0) {
       try {
@@ -96,7 +94,6 @@ const SmartImportPage: React.FC = () => {
     }
   }, [checkedLocations]);
 
-  // 清除所有保存的数据
   const clearSavedData = () => {
     localStorage.removeItem(STORAGE_KEY_PLAN);
     localStorage.removeItem(STORAGE_KEY_CHECKED);
@@ -105,23 +102,19 @@ const SmartImportPage: React.FC = () => {
     message.success('已清除所有保存的数据');
   };
 
-  // 提取原始地点列表方便后续计算
   const parsedLocations: ParsedLocation[] = useMemo(() => {
     return generatedPlan?.preferences?.parsed_locations || [];
   }, [generatedPlan]);
 
-  // 动态计算总数和天数
   const totalLocations = parsedLocations.length;
   const uniqueDays = useMemo(() => new Set(parsedLocations.map(l => l.day)).size, [parsedLocations]);
   const selectedCount = Object.values(checkedLocations).filter(Boolean).length;
   const allChecked = totalLocations > 0 && selectedCount === totalLocations;
 
-  // 输入事件
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => setTextInput(e.target.value);
   const handleLinkChange = (e: React.ChangeEvent<HTMLInputElement>) => setLinkInput(e.target.value);
   const handleFileChange = (info: any) => setFileList(info.fileList);
 
-  // 统一的请求逻辑封装
   const fetchImportData = async (payload: any, setLoading: (state: boolean) => void) => {
     setLoading(true);
     try {
@@ -157,58 +150,51 @@ const SmartImportPage: React.FC = () => {
     fetchImportData({ linkInput }, setLinkLoading);
   };
 
-  // 图片上传处理：调用新的OCR接口
-  // 图片上传处理：调用新的OCR接口
-const handleImageUpload = async () => {
-  if (fileList.length === 0) {
-    message.error('请先选择图片');
-    return;
-  }
-
-  // ✅ 修复1：正确获取 Ant Design Upload 的真实文件对象
-  const file = fileList[0].originFileObj;
-  if (!file) {
-    message.error('无效的图片文件，请重新选择');
-    return;
-  }
-
-  setImportLoading(true);
-  try {
-    const formData = new FormData();
-    // ✅ 固定：后端接收的字段名是 file，必须严格匹配
-    formData.append('file', file);
-
-    // ✅ 修复2：上传文件 绝对不能加 Content-Type 请求头！
-    const response = await authFetch('/image-import/upload', {
-      method: 'POST',
-      body: formData,
-      // 重点：删除所有 headers，尤其是 application/json
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail || '图片解析失败');
+  const handleImageUpload = async () => {
+    if (fileList.length === 0) {
+      message.error('请先选择图片');
+      return;
     }
 
-    const data = await response.json();
-
-    if (data.success) {
-      message.success('✅ 图片解析成功！');
-      setGeneratedPlan(data.data);
-      initializeCheckedLocations(data.data.preferences?.parsed_locations || []);
-    } else {
-      message.error(data.message || '图片解析失败，请重试');
+    const file = fileList[0].originFileObj;
+    if (!file) {
+      message.error('无效的图片文件，请重新选择');
+      return;
     }
-  } catch (error: any) {
-    console.error('图片上传失败:', error);
-    message.error(error.message || '图片上传失败，请检查后端服务');
-  } finally {
-    setImportLoading(false);
-  }
-};
-  // 统一的提交处理：优先使用图片上传，其他方式fallback
+
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await authFetch('/image-import/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || '图片解析失败');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        message.success('✅ 图片解析成功！');
+        setGeneratedPlan(data.data);
+        initializeCheckedLocations(data.data.preferences?.parsed_locations || []);
+      } else {
+        message.error(data.message || '图片解析失败，请重试');
+      }
+    } catch (error: any) {
+      console.error('图片上传失败:', error);
+      message.error(error.message || '图片上传失败，请检查后端服务');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleSubmit = () => {
-    // 优先处理图片上传
     if (fileList.length > 0) {
       handleImageUpload();
       return;
@@ -221,7 +207,6 @@ const handleImageUpload = async () => {
     fetchImportData({ textInput, linkInput }, setImportLoading);
   };
 
-  // 初始化勾选状态 (默认全部按照后端的 selected 状态)
   const initializeCheckedLocations = (locations: ParsedLocation[]) => {
     const initialChecked: {[id: number]: boolean} = {};
     locations.forEach(loc => {
@@ -230,12 +215,10 @@ const handleImageUpload = async () => {
     setCheckedLocations(initialChecked);
   };
 
-  // 处理单个地点的勾选
   const handleLocationCheck = (id: number, checked: boolean) => {
     setCheckedLocations(prev => ({ ...prev, [id]: checked }));
   };
 
-  // 全选/取消全选
   const handleAllCheck = (checked: boolean) => {
     const newChecked: {[id: number]: boolean} = {};
     parsedLocations.forEach(loc => {
@@ -244,7 +227,6 @@ const handleImageUpload = async () => {
     setCheckedLocations(newChecked);
   };
 
-  // 获取当前所有选中的完整地点对象
   const getSelectedLocationObjects = () => {
     return parsedLocations.filter(loc => checkedLocations[loc.id]);
   };
@@ -258,73 +240,63 @@ const handleImageUpload = async () => {
     }
   };
 
-  // 最终创建行程的提交操作
- // 最终创建行程的提交操作
-// ✅ 正确版本：和后端接口完全匹配，路径/方法/逻辑全部修复
-const handleCreateNewItinerary = async () => {
-  const finalSelectedLocations = getSelectedLocationObjects();
-   console.log("勾选的地点列表：", finalSelectedLocations);
-  if (finalSelectedLocations.length === 0) {
-    message.warning('您必须至少选择一个地点才能生成行程');
-    return;
-  }
-  
-  // 获取目的地信息（从第一个地点提取）
-  const firstLocation = finalSelectedLocations[0];
-  const destination = firstLocation.address || '未知目的地';
-  
-  // 生成行程标题
-  const dayCount = uniqueDays;
-  const title = `${destination} ${dayCount}天旅行计划`;
-  
-  // 构建请求数据（和后端接口要求的格式完全一致）
-  const planData = {
-    title,
-    description: `智能导入的${destination}旅行计划，包含${finalSelectedLocations.length}个地点`,
-    destination,
-    departure: '',
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: new Date(Date.now() + dayCount * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    duration_days: dayCount,
-    preferences: {
-      parsed_locations: finalSelectedLocations,
-    },
-  };
+  const handleCreateNewItinerary = async () => {
+    const finalSelectedLocations = getSelectedLocationObjects();
+    console.log("勾选的地点列表：", finalSelectedLocations);
+    if (finalSelectedLocations.length === 0) {
+      message.warning('您必须至少选择一个地点才能生成行程');
+      return;
+    }
+    
+    const firstLocation = finalSelectedLocations[0];
+    const destination = firstLocation.address || '未知目的地';
+    const dayCount = uniqueDays;
+    const title = `${destination} ${dayCount}天旅行计划`;
+    
+    const planData = {
+      title,
+      description: `智能导入的${destination}旅行计划，包含${finalSelectedLocations.length}个地点`,
+      destination,
+      departure: '',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date(Date.now() + dayCount * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      duration_days: dayCount,
+      preferences: {
+        parsed_locations: finalSelectedLocations,
+      },
+    };
     console.log("发送给后端的行程数据：", planData);
 
-  try {
-    // ✅ 修复1：用 authFetch 相对路径，自动匹配后端端口和接口
-    const response = await authFetch('/travel-plans/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(planData),
-    });
-    
-    if (!response.ok) throw new Error('创建行程失败');
-    const data = await response.json();
-    
-    message.success(`✅ 成功创建新行程！行程ID: ${data.id}`);
-    
-    // 创建成功后自动清除本地保存的数据
-    localStorage.removeItem(STORAGE_KEY_PLAN);
-    localStorage.removeItem(STORAGE_KEY_CHECKED);
-    
-    // ✅ 修复2：跳转到正确的路由 /itineraries/ID
-    setTimeout(() => {
-      window.location.href = `/itineraries/${data.id}`;
-    }, 1500);
-    
-  } catch (error) {
-    console.error('创建行程失败:', error);
-    message.error('保存行程失败，请检查后端接口');
-  }
-};
+    try {
+      const response = await authFetch('/travel-plans/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planData),
+      });
+      
+      if (!response.ok) throw new Error('创建行程失败');
+      const data = await response.json();
+      
+      message.success(`✅ 成功创建新行程！行程ID: ${data.id}`);
+      
+      localStorage.removeItem(STORAGE_KEY_PLAN);
+      localStorage.removeItem(STORAGE_KEY_CHECKED);
+      
+      setTimeout(() => {
+        window.location.href = `/itineraries/${data.id}`;
+      }, 1500);
+      
+    } catch (error) {
+      console.error('创建行程失败:', error);
+      message.error('保存行程失败，请检查后端接口');
+    }
+  };
 
-  // 渲染单个地点卡片
+  // ✅ 更新后的地点卡片组件，展示亮点、花费、经纬度
   const LocationCard = ({ location }: { location: ParsedLocation }) => {
     const isChecked = checkedLocations[location.id] || false;
-    // 优先使用后端提供的图片，否则使用默认的生成图片
-    const imageUrl = location.image_url || `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(`${location.name} 旅游景点`)}&image_size=square`;
+    const imageUrl = location.image_url 
+      || `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(`${location.name} 旅游景点`)}&image_size=square`;
     
     const typeColorMap: {[key: string]: string} = {
       '景点': 'blue', '餐饮': 'orange', '酒店': 'green', '交通': 'cyan'
@@ -336,27 +308,49 @@ const handleCreateNewItinerary = async () => {
         style={{ 
           border: isChecked ? '1px solid #1890ff' : '1px solid #e8e8e8', 
           borderRadius: 8, overflow: 'hidden', 
-          opacity: isChecked ? 1 : 0.6, // 未选中时稍微变淡
+          opacity: isChecked ? 1 : 0.6,
           transition: 'all 0.3s'
         }}
         cover={<img src={imageUrl} alt={location.name} style={{ height: 160, objectFit: 'cover' }} />}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, paddingRight: 8 }}>
-            <h4 style={{ margin: 0, color: '#262626', marginBottom: 8, fontSize: '16px' }}>{location.name}</h4>
+            <h4 style={{ margin: 0, color: '#262626', marginBottom: 8, fontSize: '16px' }}>
+              {location.name}
+            </h4>
             
-            {/* 突出展示原文引用 */}
+            {/* 亮点标签 */}
+            {location.highlight && (
+              <Tag color="volcano" style={{ marginBottom: 8 }}>
+                ✨ {location.highlight}
+              </Tag>
+            )}
+            
+            {/* 原文引用 */}
             <div style={{ background: '#f5f5f5', padding: '6px 8px', borderRadius: 4, marginBottom: 8 }}>
               <Text italic type="secondary" style={{ fontSize: 12 }}>
                 “{location.excerpt}”
               </Text>
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* 类型与地址 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Tag color={typeColorMap[location.type] || 'default'}>{location.type}</Tag>
               <Text type="secondary" ellipsis style={{ fontSize: 12, maxWidth: '150px' }} title={location.address}>
                 {location.address}
               </Text>
+            </div>
+
+            {/* 花费与经纬度 */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+              {location.cost != null && location.cost > 0 && (
+                <Tag color="green">💰 人均 ¥{location.cost}</Tag>
+              )}
+              {location.lat != null && location.lng != null && (
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  📍 {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+                </Text>
+              )}
             </div>
           </div>
           <Checkbox 
@@ -371,13 +365,11 @@ const handleCreateNewItinerary = async () => {
 
   return (
     <div className="smart-import-page" style={{ minHeight: '100vh', background: '#f0f2f5', padding: '24px', paddingBottom: '100px' }}>
-      {/* 1. 导入操作区 */}
       <Card style={{ marginBottom: 24, borderRadius: 12 }}>
         <Title level={3} style={{ marginBottom: 8 }}>智能导入</Title>
         <Paragraph type="secondary" style={{ marginBottom: 24 }}>粘贴攻略/链接 → 自动提取地点 → 勾选确认 → 一键生成详细行程</Paragraph>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24, marginBottom: 24 }}>
-          {/* 输入框省略，与原版保持一致... */}
           <Card title="文本输入" size="small" type="inner">
             <TextArea placeholder="粘贴旅行计划文本或描述" value={textInput} onChange={handleTextChange} rows={4} />
           </Card>
@@ -417,7 +409,6 @@ const handleCreateNewItinerary = async () => {
         </div>
       </Card>
 
-      {/* 2. 解析结果与确认区 */}
       {generatedPlan && (
         <Card style={{ borderRadius: 12, position: 'relative' }}>
           <div style={{ marginBottom: 24 }}>
@@ -426,9 +417,7 @@ const handleCreateNewItinerary = async () => {
           </div>
 
           <Tabs activeKey={activeTab} onChange={setActiveTab} size="large">
-            {/* Tab 1: 地点平铺视图 */}
             <TabPane tab={`📍 地点（${totalLocations}个）`} key="locations">
-              {/* 批量操作 */}
               <div style={{ display: 'flex', gap: 12, marginBottom: 20, background: '#fafafa', padding: 12, borderRadius: 8 }}>
                 <Checkbox checked={allChecked} indeterminate={selectedCount > 0 && selectedCount < totalLocations} onChange={(e) => handleAllCheck(e.target.checked)}>
                   全选 ({selectedCount}/{totalLocations})
@@ -449,7 +438,6 @@ const handleCreateNewItinerary = async () => {
               </div>
             </TabPane>
             
-            {/* Tab 2: 按天分组视图 */}
             <TabPane tab={`📅 行程（${uniqueDays}天）`} key="itinerary">
               <div style={{ display: 'flex', gap: 12, marginBottom: 20, background: '#fafafa', padding: 12, borderRadius: 8 }}>
                  <Checkbox checked={allChecked} indeterminate={selectedCount > 0 && selectedCount < totalLocations} onChange={(e) => handleAllCheck(e.target.checked)}>
@@ -478,7 +466,6 @@ const handleCreateNewItinerary = async () => {
             </TabPane>
           </Tabs>
 
-          {/* 3. 底部悬浮操作栏 (Sticky Bar) */}
           <div style={{
             position: 'fixed', bottom: 0, left: 0, right: 0, 
             background: '#fff', padding: '16px 40px',

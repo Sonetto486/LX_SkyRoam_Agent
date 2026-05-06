@@ -37,6 +37,8 @@ class ParsedLocation(BaseModel):
     selected: bool = Field(default=True, description="默认勾选状态")
     image_url: Optional[str] = Field(default=None, description="地点图片URL")
     images: List[str] = Field(default_factory=list, description="地点图片URL列表")
+    lat: Optional[float] = Field(default=None, description="纬度")
+    lng: Optional[float] = Field(default=None, description="经度")
 
 class ScheduleItem(BaseModel):
     time: str = Field(default="全天")
@@ -87,77 +89,67 @@ async def _call_llm_with_retry(prompt: str, system_prompt: str) -> str:
     )
 
 async def _extract_travel_from_text(text: str) -> ExtractedTravelData:
-    """从文本中提取旅游行程信息"""
+    """
+    全球普适主线版：只保留主要游玩/消费点，将关联地标合并入描述。
+    """
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
-        # 角色
-        你是专业的旅行信息提取与标准化工程师。
+        # 角色与任务
+        你是一位极其严谨的全球旅行数据结构化专家。你的任务是从杂乱的游记、手帐或 OCR 文本中，精准提炼出【高价值主线行程】，并严格按 JSON 格式输出。
 
-        # 任务
-        从用户提供的旅游文本中100%精准提取信息。
-        如果原文很短（如只有简单的行程罗列），请直接提取其中的地点并合理拆分天数。
+        # 核心指令：【绝对的 POI 层级控制】
+        为了防止地图 API 搜索崩溃，你必须严格遵循以下“主次分类与降级合并”规则：
 
-        # 核心铁律（违反直接失败）
-        - 严格输出纯JSON，不要包含```json等markdown标签，不加任何解释。
-        - 所有的数字字段必须是纯数字，绝对禁止带有单位（如km、元等）。
-        - 无对应信息时，字符串填"未知"或"无"，数字填0。
+        1. 【甄别主线目的地 (Main POI)】：
+           - 只有具有独立名称的明确景区、知名地标、大型商圈或明确作为主目的地的酒店/餐厅，才能被提取为独立的 `place`（如：红山森林动物园、故宫博物院、环球影城）。
+           - 提取的名称必须是标准全称，方便地图 API 精准检索。
 
-        # 必须严格遵循以下JSON输出结构，必须包含所有字段：
+        2. 【强制降级与合并附属地点 (Sub-POI Merging) - 核心红线】：
+           - **绝对禁止**将方位词（如：北门、南门、出口）、通用建筑设施（如：检票处、城墙、观景台、索道、某条路）或泛指地点作为独立景点提取！
+           - **绝对禁止**将主线行程中的“顺路行为”（如：去景点的路上吃个小吃、在景区里买个文创、出景区后顺着城墙走走）拆分为独立目的地！
+           - 所有被判定为“附属地点”或“顺路行为”的信息，必须作为游玩攻略、周边贴士，**全部合并写入与之最相关的主线目的地的 `desc` (描述) 字段中**。
+           - 示例判断：原文“北门有很多鸭血粉丝店，吃完从北门进红山动物园”。主目的地是【南京红山森林动物园】，“北门吃鸭血粉丝”作为细节写入动物园的 desc。
+
+        3. 【全球地理校准与纠错】：
+           - 结合上下文自动推断准确的目的地城市（Destination）。
+           - 自动修正由于用户口语化或 OCR 识别导致的错别字（如“鸡呜寺” -> “鸡鸣寺”）。
+
+        # 输出格式要求 (Strict JSON)
         {{
-            "destination": "核心目的地，如黄山",
-            "transportation": "大交通方式",
-            "duration_days": 4,
-            "budget": 1000,
-            "start_date": "{today}",
-            "end_date": "YYYY-MM-DD",
-            "notes": ["注意事项"],
+            "_thinking": "简述思考过程：1. 识别出的主 POI 有哪些。2. 哪些泛地点或顺路地点被触发了降级合并机制。3. 修正了哪些地理名称错别字。",
+            "destination": "标准化的目的地城市名称（如：南京、东京、巴黎）",
             "daily_schedule": [
                 {{
                     "day_num": 1,
                     "schedule_items": [
                         {{
-                            "time": "全天",
-                            "place": "地点名称",
-                            "transport": "交通方式",
-                            "distance": 0,
-                            "duration": 1,
-                            "ticket_cost": 0,
-                            "food_cost": 0,
-                            "desc": "行程描述"
+                            "place": "修正后的主目的地标准全称（必须能用于地图精准搜索）",
+                            "desc": "包含怎么进、吃什么、游玩细节，以及所有被降级合并过来的周边地标/路线信息（越丰富、越具体越好）"
                         }}
                     ]
                 }}
             ],
-            "cost_breakdown": {{
-                "flights": 0, "hotels": 0, "food": 0, "transport_tickets": 0, "others": 0
-            }},
             "parsed_locations": [
                 {{
-                    "id": 1,
-                    "name": "提取出的具体地点",
-                    "type": "必须是 景点/餐饮/酒店/交通 之一",
-                    "address": "地址或未知",
-                    "day": "Day 1",
-                    "excerpt": "原文中对该地的描述或原话",
-                    "selected": true
+                    "name": "主目的地名称（与 schedule_items 中的 place 保持一致）",
+                    "type": "景点 / 餐饮 / 酒店 / 交通",
+                    "excerpt": "从原文中提取一句最能代表该地点的原汁原味的评价（要求一字不改）",
+                    "highlight": "基于原文为你总结的核心亮点（15字以内）"
                 }}
             ]
         }}
-
-        # 针对 parsed_locations 的特别提取说明
-        - 原文中提到的每一个具体地点（如：屯溪、碧山村、某某餐厅等），都必须单独作为一个对象放入 parsed_locations 数组中！
-        - id: 从1开始递增的整数
-        - day: 格式必须严格为 "Day 1", "Day 2", "Day 3" 这种格式
-        - excerpt: 必须填入原文原话
-        - selected: 必须全部固定为 true
 
         待处理文本：
         {text}
         """
 
-        raw_content = await _call_llm_with_retry(prompt, "你是一个纯JSON输出机器，绝对不输出markdown代码块或废话。")
+     
+
+        raw_content = await _call_llm_with_retry(prompt, "你是一个行程提炼专家，只保留核心主线，合并次要信息。")
         
+     
+        # 极其严格的 JSON 截取逻辑
         json_str = raw_content.strip()
         match = re.search(r'\{[\s\S]*\}', json_str)
         if match:
@@ -165,17 +157,18 @@ async def _extract_travel_from_text(text: str) -> ExtractedTravelData:
 
         try:
             json_data = json.loads(json_str)
-            validated_data = ExtractedTravelData(**json_data)
-            logger.info(f"✅ AI提取成功：找到了 {len(validated_data.parsed_locations)} 个地点。")
-            return validated_data
+            if "_thinking" in json_data:
+                logger.info(f"🧠 AI 解析思维链: {json_data['_thinking']}")
+                del json_data["_thinking"]
+            
+            return ExtractedTravelData(**json_data)
         except Exception as e:
-            logger.error(f"❌ 数据解析失败: {e}\n【AI原始输出】: {json_str}")
+            logger.error(f"❌ 普适性解析失败: {e}\n输出内容: {json_str}")
             return ExtractedTravelData()
 
     except Exception as e:
-        logger.error(f"❌ AI调用异常: {e}")
+        logger.error(f"❌ AI 调用异常: {e}")
         return ExtractedTravelData()
-
 # ==========================================
 # API端点
 # ==========================================

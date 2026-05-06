@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Spin, Empty, Card } from 'antd';
-import { CloudOutlined, SunOutlined, CloudFilled, ThunderboltOutlined, CloudSyncOutlined } from '@ant-design/icons';
+import { Spin, Empty, Card, Tooltip } from 'antd';
+import { CloudOutlined, SunOutlined, CloudFilled, ThunderboltOutlined, CloudSyncOutlined, InfoCircleOutlined, CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { buildApiUrl } from '../../config/api';
 import './WeatherCard.css';
 
 interface WeatherData {
@@ -29,10 +30,11 @@ const getWeatherIcon = (weather: string) => {
   return <CloudOutlined style={{ color: '#8c8c8c', fontSize: 24 }} />;
 };
 
-const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) => {
+const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 7 }) => {
   const [loading, setLoading] = useState(true);
   const [weatherData, setWeatherData] = useState<WeatherData[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [dateMode, setDateMode] = useState<'travel_date' | 'current'>('current');
+  const [dateReason, setDateReason] = useState<string>('');
 
   useEffect(() => {
     const fetchWeather = async () => {
@@ -42,40 +44,30 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) 
       }
 
       setLoading(true);
-      setError(null);
+
+      // 确保至少显示7天天气
+      const minDays = Math.max(7, days);
 
       try {
-        // 高德天气API
-        const amapKey = process.env.REACT_APP_AMAP_KEY || process.env.REACT_APP_AMAP_WEB_KEY;
+        // 调用后端天气API，传递旅行日期
+        const res = await fetch(buildApiUrl(`/weather?city=${encodeURIComponent(city)}&days=${minDays}&travel_date=${encodeURIComponent(startDate)}`));
 
-        if (!amapKey) {
-          // 没有配置API Key，使用模拟数据
-          setWeatherData(generateMockWeather(startDate, days));
-          setLoading(false);
-          return;
+        if (!res.ok) {
+          throw new Error('获取天气失败');
         }
 
-        // 先获取城市adcode
-        const cityRes = await fetch(
-          `https://restapi.amap.com/v3/config/district?keywords=${encodeURIComponent(city)}&key=${amapKey}&subdistrict=0`
-        );
-        const cityData = await cityRes.json();
+        const data = await res.json();
 
-        if (!cityData.districts || cityData.districts.length === 0) {
-          throw new Error('未找到城市');
+        // 保存日期模式信息
+        if (data.date_mode) {
+          setDateMode(data.date_mode);
+        }
+        if (data.date_reason) {
+          setDateReason(data.date_reason);
         }
 
-        const adcode = cityData.districts[0].adcode;
-
-        // 获取天气预报
-        const weatherRes = await fetch(
-          `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${amapKey}&extensions=all`
-        );
-        const weatherJson = await weatherRes.json();
-
-        if (weatherJson.status === '1' && weatherJson.forecasts && weatherJson.forecasts[0]) {
-          const forecasts = weatherJson.forecasts[0].casts.slice(0, days);
-          setWeatherData(forecasts.map((cast: any) => ({
+        if (data.forecast && data.forecast.length > 0) {
+          setWeatherData(data.forecast.map((cast: any) => ({
             date: cast.date,
             dayWeather: cast.dayweather,
             nightWeather: cast.nightweather,
@@ -85,12 +77,13 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) 
             windPower: cast.daypower,
           })));
         } else {
-          throw new Error('获取天气失败');
+          // 无数据时使用模拟数据
+          setWeatherData(generateMockWeather(startDate, minDays));
         }
       } catch (err: any) {
         console.warn('天气API调用失败，使用模拟数据:', err);
         // 失败时使用模拟数据
-        setWeatherData(generateMockWeather(startDate, days));
+        setWeatherData(generateMockWeather(startDate, minDays));
       } finally {
         setLoading(false);
       }
@@ -99,7 +92,7 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) 
     fetchWeather();
   }, [city, startDate, days]);
 
-  // 生成模拟天气数据
+  // 生成模拟天气数据（从startDate开始）
   const generateMockWeather = (start: string, count: number): WeatherData[] => {
     const result: WeatherData[] = [];
     const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
@@ -131,6 +124,24 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) 
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
+  // 获取标题
+  const getTitle = () => {
+    const modeIcon = dateMode === 'travel_date'
+      ? <CalendarOutlined style={{ color: '#52c41a' }} />
+      : <ClockCircleOutlined style={{ color: '#1890ff' }} />;
+
+    return (
+      <span>
+        天气预报（{weatherData.length}天）
+        <Tooltip title={dateReason || '点击查看详情'}>
+          <span style={{ marginLeft: 8, cursor: 'pointer' }}>
+            {modeIcon}
+          </span>
+        </Tooltip>
+      </span>
+    );
+  };
+
   if (loading) {
     return (
       <Card className="weather-card-container" title="天气预报">
@@ -150,7 +161,30 @@ const WeatherCard: React.FC<WeatherCardProps> = ({ city, startDate, days = 5 }) 
   }
 
   return (
-    <Card className="weather-card-container" title="天气预报">
+    <Card className="weather-card-container" title={getTitle()}>
+      {/* 显示日期模式提示 */}
+      {dateReason && (
+        <div className="weather-mode-hint" style={{
+          marginBottom: 8,
+          fontSize: 12,
+          color: '#8c8c8c',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }}>
+          {dateMode === 'travel_date' ? (
+            <>
+              <CalendarOutlined />
+              <span>显示行程期间天气</span>
+            </>
+          ) : (
+            <>
+              <ClockCircleOutlined />
+              <span>显示近期天气（{dateReason}）</span>
+            </>
+          )}
+        </div>
+      )}
       <div className="weather-cards">
         {weatherData.map((weather, index) => (
           <div key={index} className="weather-item">

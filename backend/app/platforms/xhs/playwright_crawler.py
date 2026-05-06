@@ -2,7 +2,9 @@
 基于Playwright的小红书真实数据爬虫
 支持登录和获取真实笔记数据
 """
-
+import sys, asyncio
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 import asyncio
 import json
 import time

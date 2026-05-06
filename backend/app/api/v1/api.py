@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, locations, smart_import, topics, image_import
+from app.api.v1.endpoints import travel_plans, destinations, users, agents, openai, map, data_collection, auth, proxy, attraction_details, locations, smart_import, topics, weather
 
 api_router = APIRouter()
 
@@ -83,7 +83,7 @@ api_router.include_router(
 )
 
 api_router.include_router(
-    image_import.router,
-    prefix="/image-import",
-    tags=["image-import"]
+    weather.router,
+    prefix="/weather",
+    tags=["weather"]
 )
