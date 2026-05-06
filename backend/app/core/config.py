@@ -6,27 +6,46 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import List, Optional
 import os
+import json
 
 
 class Settings(BaseSettings):
     """应用配置"""
-    
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="allow"
     )
-    
+
     # 基础配置
     APP_NAME: str = os.getenv("APP_NAME", "LX SkyRoam Agent")
     VERSION: str = os.getenv("VERSION", "1.0.0")
     DEBUG: bool = os.getenv("DEBUG", False)
-    
+
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = os.getenv("PORT", 8000)
-    ALLOWED_HOSTS: List[str] = os.getenv("ALLOWED_HOSTS", "*").split(",") if isinstance(os.getenv("ALLOWED_HOSTS", "*"), str) else ["*"]
+    PORT: int = int(os.getenv("PORT", "8000"))
+    ALLOWED_HOSTS: List[str] = ["*"]
+
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v):
+        """解析 ALLOWED_HOSTS，支持多种格式"""
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            # 尝试 JSON 解析
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            # 逗号分隔格式
+            return [host.strip() for host in v.split(",")]
+        return ["*"]
     
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/skyroam")

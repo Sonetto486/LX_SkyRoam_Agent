@@ -931,7 +931,7 @@ const PlanGeneratorPage: React.FC = () => {
 
           {/* Step 2: 行程设置 */}
           <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
-            <Form.Item label="途经城市">
+            <Form.Item label="途经城市（可选）">
               <div className="cities-input">
                 <Select
                   placeholder="输入城市名称"
