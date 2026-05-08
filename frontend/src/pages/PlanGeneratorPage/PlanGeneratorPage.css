@@ -1,5 +1,8 @@
 .plan-generator-page {
   padding: 24px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* Steps 步骤圈间距调整 - 让两个圈挨近并靠左 */
@@ -12,6 +15,18 @@
   flex: none !important;
 }
 
+.plan-generator-page .ant-steps-item-title {
+  color: var(--text) !important;
+}
+
+.plan-generator-page .ant-steps-item-description {
+  color: var(--text-soft) !important;
+}
+
+.plan-generator-page .ant-steps-item-process .ant-steps-item-title {
+  color: var(--accent-b) !important;
+}
+
 .page-header {
   margin-bottom: 32px;
   text-align: center;
@@ -21,30 +36,38 @@
   font-size: 28px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #ffffff;
+  color: var(--text-strong);
 }
 
 .page-header p {
   font-size: 16px;
-  color: #666;
+  color: var(--text-soft);
   margin: 0;
 }
 
 .generator-form-card {
   margin-bottom: 32px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px var(--shadow-color);
   border-radius: 8px;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.generator-form-card .ant-card-body {
+  color: var(--text) !important;
 }
 
 .generated-plan-card {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px var(--shadow-color);
   border-radius: 8px;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .plan-summary {
   margin-bottom: 24px;
   padding: 16px;
-  background-color: #1890ff;
+  background-color: var(--accent-b);
   border-radius: 8px;
   color: #ffffff;
 }
@@ -61,60 +84,70 @@
 
 .map-section {
   height: 500px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background-color: #f5f5f5;
+  background-color: var(--overlay);
 }
 
 .day-section {
   margin-bottom: 32px;
 }
 
-.day-section h3 {
+.day-section h3,
+.day-section-title {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 16px;
-  color: #1890ff;
-  border-bottom: 2px solid #1890ff;
+  color: var(--accent-b);
+  border-bottom: 2px solid var(--accent-b);
   padding-bottom: 8px;
 }
 
 .activity-card {
   margin-bottom: 12px;
-  border-left: 4px solid #1890ff;
-  background-color: #ffffff;
+  border-left: 4px solid var(--accent-b);
+  background-color: var(--bg-soft);
+  border-color: var(--border) !important;
+}
+
+.activity-card .ant-card-body {
+  background: transparent !important;
 }
 
 .activity-time {
   font-size: 14px;
   font-weight: 600;
-  color: #1890ff;
+  color: var(--accent-b);
   margin-bottom: 8px;
 }
 
-.activity-content h4 {
+.activity-content h4,
+.activity-title {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 4px;
-  color: #1890ff;
+  color: var(--text-strong) !important;
+  margin: 0;
 }
 
 .activity-location {
   font-size: 14px;
-  color: #52c41a;
+  color: var(--accent-c);
   margin-bottom: 8px;
+  margin: 0;
 }
 
 .activity-description {
   font-size: 14px;
-  color: #faad14;
+  color: var(--text-soft);
   line-height: 1.5;
+  margin: 8px 0;
 }
 
 /* 行程安排分隔线文字颜色 */
 .ant-divider-inner-text {
-  color: #1890ff !important;
+  color: var(--accent-b) !important;
 }
 
 .plan-actions {
@@ -162,47 +195,70 @@
   font-weight: 500;
 }
 
-/* 输入框样式统一 - 移除焦点后的白色高亮 */
+.ant-form-item-label > label {
+  color: var(--text) !important;
+}
+
+/* 输入框样式统一 */
 .plan-generator-page .ant-input-affix-wrapper,
 .plan-generator-page .ant-input-affix-wrapper-focused,
 .plan-generator-page .ant-input,
 .plan-generator-page .ant-input:focus,
 .plan-generator-page .ant-input-focused {
-  background-color: transparent !important;
-  background: transparent !important;
+  background-color: var(--overlay) !important;
+  background: var(--overlay) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
 }
 
-/* Select 前缀图标颜色 - 统一为灰色 */
+.plan-generator-page .ant-input::placeholder {
+  color: var(--text-soft) !important;
+}
+
+/* Select 样式 */
+.plan-generator-page .ant-select-selector {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.plan-generator-page .ant-select-selection-placeholder {
+  color: var(--text-soft) !important;
+}
+
+/* Select 前缀图标颜色 */
 .plan-generator-page .ant-select-prefix {
-  color: rgba(0, 0, 0, 0.25) !important;
+  color: var(--text-soft) !important;
 }
 
 /* Input 前缀图标颜色 */
 .plan-generator-page .ant-input-prefix {
-  color: rgba(0, 0, 0, 0.25);
+  color: var(--text-soft);
 }
 
 .ant-btn-primary {
-  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+  background: linear-gradient(135deg, var(--accent-b) 0%, var(--accent-a) 100%);
   border: none;
   font-weight: 600;
 }
 
 .ant-btn-primary:hover {
-  background: linear-gradient(135deg, #40a9ff 0%, #69c0ff 100%);
+  filter: brightness(1.1);
 }
 
 /* 卡片悬停效果 */
 .activity-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px var(--shadow-color);
   transition: all 0.3s ease;
 }
 
 /* 生成进度卡片 */
 .generation-progress-card {
   margin-bottom: 32px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px var(--shadow-color);
   border-radius: 8px;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 /* 出行方式选择器 */
@@ -217,21 +273,22 @@
   flex-direction: column;
   align-items: center;
   padding: 16px 24px;
-  border: 2px solid #e8e8e8;
+  border: 2px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
   min-width: 80px;
+  background: var(--bg-soft);
 }
 
 .mode-option:hover {
-  border-color: #1890ff;
-  background-color: #f0f7ff;
+  border-color: var(--accent-b);
+  background-color: var(--overlay);
 }
 
 .mode-option.selected {
-  border-color: #1890ff;
-  background-color: #e6f7ff;
+  border-color: var(--accent-b);
+  background-color: var(--overlay);
 }
 
 .mode-icon {
@@ -241,7 +298,7 @@
 
 .mode-label {
   font-size: 14px;
-  color: #333;
+  color: var(--text-strong);
 }
 
 /* 标签选择器 */
@@ -266,14 +323,22 @@
 /* 行程概览卡片 */
 .summary-card {
   padding: 20px;
-  background-color: #f5f5f5;
+  background-color: var(--overlay);
   border-radius: 8px;
 }
 
 .summary-card h3 {
   font-size: 18px;
   margin-bottom: 16px;
-  color: #1890ff;
+  color: var(--accent-b);
+}
+
+.summary-card div {
+  color: var(--text);
+}
+
+.summary-card strong {
+  color: var(--text-strong);
 }
 
 /* 生成区域 */
@@ -284,7 +349,7 @@
 /* 步骤导航 */
 .step-navigation {
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-soft);
 }
 
 /* 预览弹窗样式 */
@@ -299,17 +364,99 @@
 .plan-preview-content .plan-summary {
   margin-bottom: 16px;
   padding: 12px 16px;
-  background-color: #e6f7ff;
+  background-color: var(--overlay);
   border-radius: 8px;
-  color: #1890ff;
+  color: var(--accent-b);
 }
 
 .plan-preview-content .plan-summary span {
-  color: #333;
+  color: var(--text);
 }
 
 .preview-actions {
   margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-soft);
+  text-align: center;
+}
+
+/* 预览加载状态 */
+.plan-preview-loading {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-soft);
+}
+
+/* 无行程提示 */
+.no-itinerary {
+  text-align: center;
+  color: var(--text-soft);
+  padding: 40px 0;
+}
+
+/* 模态框标题样式 */
+.modal-title-loading,
+.modal-title-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+}
+
+.loading-icon {
+  color: var(--accent-b);
+}
+
+.success-icon {
+  color: var(--accent-c);
+}
+
+/* 模态框内容 */
+.modal-footer-center {
+  text-align: center;
+}
+
+.generating-modal-content {
+  text-align: center;
+  padding: 30px 0;
+}
+
+.generation-status {
+  margin-top: 16px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.generation-hint {
+  color: var(--text-soft);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* Alert 样式 */
+.plan-generator-page .ant-alert {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+}
+
+.plan-generator-page .ant-alert-message {
+  color: var(--text-strong) !important;
+}
+
+.plan-generator-page .ant-alert-description {
+  color: var(--text) !important;
+}
+
+/* DatePicker 样式 */
+.plan-generator-page .ant-picker {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+}
+
+.plan-generator-page .ant-picker-input > input {
+  color: var(--text) !important;
+}
+
+.plan-generator-page .ant-picker-suffix {
+  color: var(--text-soft) !important;
 }

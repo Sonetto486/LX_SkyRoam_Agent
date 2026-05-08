@@ -6,6 +6,7 @@
 .weather-card-container .ant-card-head-title {
   font-size: 16px;
   font-weight: 600;
+  color: var(--text-strong);
 }
 
 /* 加载状态 */
@@ -28,7 +29,8 @@
 .weather-item {
   flex: 0 0 80px;
   padding: 12px 8px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+  background: var(--overlay);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
   text-align: center;
   transition: all 0.3s ease;
@@ -36,13 +38,14 @@
 
 .weather-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px var(--shadow-color);
+  border-color: var(--accent-a);
 }
 
 /* 天气日期 */
 .weather-date {
   font-size: 12px;
-  color: #666;
+  color: var(--text-soft);
   margin-bottom: 8px;
   font-weight: 500;
 }
@@ -60,14 +63,14 @@
 .weather-temp {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-strong);
   margin-bottom: 4px;
 }
 
 /* 天气状况 */
 .weather-condition {
   font-size: 12px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 /* 响应式 */

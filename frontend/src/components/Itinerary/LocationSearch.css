@@ -1,19 +1,28 @@
 .location-search {
   padding: 16px;
-  background: #fff;
+  background: var(--bg-soft);
   border-radius: 8px;
+  color: var(--text);
 }
 
 .search-tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-soft);
   padding-bottom: 12px;
 }
 
 .search-tabs .ant-btn {
   border-radius: 20px;
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.search-tabs .ant-btn:hover {
+  border-color: var(--accent-b) !important;
+  color: var(--accent-b) !important;
 }
 
 .search-results,
@@ -33,25 +42,32 @@
 .location-card {
   width: 100%;
   margin-bottom: 8px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
   transition: all 0.3s;
+  background: var(--bg-soft) !important;
 }
 
 .location-card:hover {
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+  border-color: var(--accent-b);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.location-card .ant-card-body {
+  background: transparent !important;
+  color: var(--text) !important;
 }
 
 .location-title {
   display: flex;
   align-items: center;
   font-weight: 500;
+  color: var(--text-strong);
 }
 
 .location-info {
   font-size: 12px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 .location-info .info-item {
@@ -62,7 +78,7 @@
 }
 
 .location-info .info-item .anticon {
-  color: #999;
+  color: var(--text-soft);
 }
 
 .location-info .rating {
@@ -70,16 +86,16 @@
 }
 
 .location-info .cost {
-  color: #52c41a;
+  color: var(--accent-c);
 }
 
 .location-info .distance {
-  color: #1890ff;
+  color: var(--accent-b);
 }
 
 .favorite-icon {
   font-size: 18px;
-  color: #d9d9d9;
+  color: var(--border);
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -93,6 +109,27 @@
   color: #faad14;
 }
 
+/* 输入框样式 */
+.location-search .ant-input {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.location-search .ant-input::placeholder {
+  color: var(--text-soft) !important;
+}
+
+.location-search .ant-input-affix-wrapper {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+}
+
+.location-search .ant-input-affix-wrapper input {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
 /* 滚动条样式 */
 .search-results::-webkit-scrollbar,
 .favorites-list::-webkit-scrollbar {
@@ -101,11 +138,11 @@
 
 .search-results::-webkit-scrollbar-thumb,
 .favorites-list::-webkit-scrollbar-thumb {
-  background: #d9d9d9;
+  background: var(--border);
   border-radius: 3px;
 }
 
 .search-results::-webkit-scrollbar-thumb:hover,
 .favorites-list::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+  background: var(--text-soft);
 }

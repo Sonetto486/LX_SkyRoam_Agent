@@ -493,7 +493,7 @@ const PlanGeneratorPage: React.FC = () => {
   const renderPlanPreview = () => {
     if (!generatedPlan) {
       return (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+        <div className="plan-preview-loading">
           <LoadingOutlined style={{ fontSize: 32, marginBottom: 16 }} />
           <p>加载中...</p>
         </div>
@@ -522,27 +522,27 @@ const PlanGeneratorPage: React.FC = () => {
               {dailyItineraries.length > 0 ? (
                 dailyItineraries.map((day: any, dayIndex: number) => (
                   <div key={dayIndex} className="day-section">
-                    <h3 style={{ color: '#1890ff', borderBottom: '2px solid #1890ff', paddingBottom: 8 }}>
+                    <h3 className="day-section-title">
                       Day {day.day || dayIndex + 1} - {day.date || `第${dayIndex + 1}天`}
                     </h3>
                     {day.attractions?.map((attraction: any, idx: number) => (
                       <Card key={idx} className="activity-card" size="small" style={{ marginBottom: 8 }}>
                         <div className="activity-content">
-                          <h4 style={{ margin: 0, color: '#333' }}>{attraction.name}</h4>
-                          {attraction.description && <p style={{ margin: '8px 0', color: '#666' }}>{attraction.description}</p>}
-                          {attraction.address && <p style={{ margin: 0, color: '#52c41a', fontSize: 12 }}><EnvironmentOutlined /> {attraction.address}</p>}
+                          <h4 className="activity-title">{attraction.name}</h4>
+                          {attraction.description && <p className="activity-description">{attraction.description}</p>}
+                          {attraction.address && <p className="activity-location"><EnvironmentOutlined /> {attraction.address}</p>}
                         </div>
                       </Card>
                     ))}
                   </div>
                 ))
               ) : (
-                <div style={{ textAlign: 'center', color: '#999', padding: '40px 0' }}>暂无行程详情</div>
+                <div className="no-itinerary">暂无行程详情</div>
               )}
             </div>
           </Col>
           <Col span={10}>
-            <div className="map-section" style={{ height: 400, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+            <div className="map-section" style={{ height: 400 }}>
               <MapComponent markers={[]} center={mapCenter} zoom={11} />
             </div>
           </Col>
@@ -550,7 +550,7 @@ const PlanGeneratorPage: React.FC = () => {
 
         <Divider>操作选项</Divider>
 
-        <div style={{ textAlign: 'center' }}>
+        <div className="preview-actions">
           <Space size="large">
             <Button type="primary" icon={<CheckOutlined />} onClick={handleAccept} size="large">接受并保存</Button>
             <Button icon={<ReloadOutlined />} onClick={handleRegenerate} loading={loading} size="large">重新生成</Button>
@@ -692,11 +692,11 @@ const PlanGeneratorPage: React.FC = () => {
 
       {/* 生成中的模态框 */}
       <Modal
-        title={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LoadingOutlined style={{ color: '#1890ff' }} /><span>正在生成旅行计划...</span></div>}
+        title={<div className="modal-title-loading"><LoadingOutlined className="loading-icon" /><span>正在生成旅行计划...</span></div>}
         open={showGeneratingModal}
         onCancel={handleAbortGeneration}
         footer={
-          <div style={{ textAlign: 'center' }}>
+          <div className="modal-footer-center">
             <Popconfirm title="确定要中止生成吗？" onConfirm={handleAbortGeneration} okText="确定中止" cancelText="取消">
               <Button danger icon={<StopOutlined />} size="large">中止生成</Button>
             </Popconfirm>
@@ -707,17 +707,17 @@ const PlanGeneratorPage: React.FC = () => {
         maskClosable={false}
         closable={false}
       >
-        <div style={{ textAlign: 'center', padding: '30px 0' }}>
+        <div className="generating-modal-content">
           <Spin size="large" style={{ marginBottom: 24 }} />
           <Progress percent={Math.round(generationProgress)} status="active" strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }} />
-          <p style={{ marginTop: 16, color: '#666', fontSize: 16 }}>{generationStatus || '处理中...'}</p>
-          <p style={{ color: '#999', fontSize: 12, marginTop: 8 }}>预计需要 2-5 分钟，请耐心等待</p>
+          <p className="generation-status">{generationStatus || '处理中...'}</p>
+          <p className="generation-hint">预计需要 2-5 分钟，请耐心等待</p>
         </div>
       </Modal>
 
       {/* 预览弹窗 */}
       <Modal
-        title={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckOutlined style={{ color: '#52c41a' }} /><span>行程预览 - {generatedPlan?.title || '加载中...'}</span></div>}
+        title={<div className="modal-title-success"><CheckOutlined className="success-icon" /><span>行程预览 - {generatedPlan?.title || '加载中...'}</span></div>}
         open={showPreview && generatedPlan !== null}
         onCancel={() => setShowPreview(false)}
         footer={null}
