@@ -128,7 +128,8 @@ const PlanGeneratorPage: React.FC = () => {
   };
 
   const waitForGeneration = async (id: number): Promise<boolean> => {
-    const maxAttempts = 300;
+    // 增加到 600 次尝试（10 分钟），因为 LLM 生成可能需要较长时间
+    const maxAttempts = 600;
     let attempts = 0;
 
     while (attempts < maxAttempts) {
