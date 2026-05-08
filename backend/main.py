@@ -13,6 +13,8 @@ import sys
 import subprocess
 import multiprocessing
 import threading
+import signal
+import atexit
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +35,7 @@ from app.core.rate_limit import RateLimitMiddleware
 # 全局变量存储 Celery Worker 进程
 _celery_worker_process = None
 _celery_log_file = None
+_is_shutting_down = False
 
 
 def _stream_celery_logs(pipe, log_prefix):
@@ -255,6 +258,13 @@ def start_celery_worker():
         logs_dir.mkdir(parents=True, exist_ok=True)
         _celery_log_file = logs_dir / "celery_worker.log"
 
+        # 生成唯一的节点名称，避免重复名称警告
+        import uuid
+        import socket
+        unique_id = str(uuid.uuid4())[:8]
+        hostname = socket.gethostname()
+        node_name = f"skyroam-{unique_id}@{hostname}"
+
         # 启动 Celery Worker
         # Windows 使用 solo 池，其他系统使用默认池
         import platform
@@ -269,11 +279,14 @@ def start_celery_worker():
             "-A", "app.core.celery",
             "worker",
             "--loglevel=info",
+            "-n", node_name,  # 使用唯一的节点名称
             pool_arg
         ]
 
         # 过滤空参数
         cmd = [c for c in cmd if c]
+
+        logger.info(f"启动 Celery Worker，节点名称: {node_name}")
 
         # 创建新进程启动 Celery Worker
         # 不使用 CREATE_NEW_CONSOLE，而是捕获输出并转发到主日志
@@ -309,24 +322,81 @@ def start_celery_worker():
 
 def stop_celery_worker():
     """停止 Celery Worker 子进程"""
-    global _celery_worker_process
+    global _celery_worker_process, _is_shutting_down
+
+    # 防止重复调用
+    if _is_shutting_down:
+        return
+
+    _is_shutting_down = True
+
     if _celery_worker_process:
         try:
-            _celery_worker_process.terminate()
-            _celery_worker_process.wait(timeout=5)
-            logger.info("Celery Worker 已停止")
-        except Exception:
+            logger.info("🛑 正在停止 Celery Worker...")
+
+            # 检查进程是否还在运行
+            if _celery_worker_process.poll() is None:
+                # 先尝试优雅终止 (SIGTERM)
+                _celery_worker_process.terminate()
+
+                # 等待进程结束，最多等待10秒
+                try:
+                    _celery_worker_process.wait(timeout=10)
+                    logger.info("✅ Celery Worker 已优雅停止")
+                except subprocess.TimeoutExpired:
+                    # 如果超时，强制终止
+                    logger.warning("⚠️ Celery Worker 未在超时时间内停止，强制终止...")
+                    _celery_worker_process.kill()
+                    _celery_worker_process.wait(timeout=5)
+                    logger.warning("✅ Celery Worker 已强制终止")
+
+        except Exception as e:
+            logger.error(f"停止 Celery Worker 时发生错误: {e}")
+            # 最后尝试强制终止
             try:
-                _celery_worker_process.kill()
-                logger.warning("Celery Worker 强制终止")
+                if _celery_worker_process.poll() is None:
+                    _celery_worker_process.kill()
             except Exception:
                 pass
-        _celery_worker_process = None
+        finally:
+            _celery_worker_process = None
+    else:
+        logger.info("没有运行中的 Celery Worker")
+
+
+def cleanup_handler(signum=None, frame=None):
+    """信号处理函数，确保 Celery Worker 被正确停止"""
+    logger.info(f"收到终止信号 ({signum})，正在清理...")
+    stop_celery_worker()
+    # 退出程序
+    if signum is not None:
+        sys.exit(0)
+
+
+def register_cleanup_handlers():
+    """注册清理处理器"""
+    # 注册 atexit 处理器（Python 正常退出时调用）
+    atexit.register(stop_celery_worker)
+
+    # 注册信号处理器
+    # SIGINT: Ctrl+C
+    # SIGTERM: kill 命令
+    # Windows 上也支持这些信号
+    signal.signal(signal.SIGINT, cleanup_handler)
+    signal.signal(signal.SIGTERM, cleanup_handler)
+
+    # Windows 特有的信号
+    if sys.platform == "win32":
+        # SIGBREAK: Ctrl+Break
+        signal.signal(signal.SIGBREAK, cleanup_handler)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # 注册清理处理器，确保进程退出时停止 Celery Worker
+    register_cleanup_handlers()
+
     # 启动时初始化
     logger = setup_logging()
     logger.info("🚀 启动 LX SkyRoam Agent...")

@@ -10,6 +10,7 @@ import psycopg2
 import psycopg2.extras
 import requests
 import os
+from pgvector.psycopg2 import register_vector
 
 from app.core.config import settings
 
@@ -103,11 +104,17 @@ class RAGRetriever:
 
             # 连接数据库
             conn = psycopg2.connect(**self.db_config)
-            cursor = conn.cursor(psycopg2.extras.RealDictCursor)
 
-            # 构建SQL查询
+            # 注册 pgvector 适配器
+            register_vector(conn)
+
+            # 使用普通 cursor（RealDictCursor 与 register_vector 不兼容）
+            cursor = conn.cursor()
+
+            # 构建SQL查询 - 使用参数化查询
             # 使用pgvector的余弦相似度运算符 <=>
             # 注意：余弦距离 = 1 - 余弦相似度，所以距离越小越相似
+            # 重要：必须使用 ::vector 类型转换
             sql = """
                 SELECT
                     c.id,
@@ -147,21 +154,34 @@ class RAGRetriever:
             # 转换结果格式
             formatted_results = []
             for row in results:
-                similarity = 1 - row['distance']  # 转换距离为相似度
+                # 普通 cursor 返回元组，需要按索引访问
+                # (id, note_id, chunk_type, chunk_text, distance, destination,
+                #  transport_info, accommodation_info, must_visit_spots,
+                #  food_recommendations, practical_tips, travel_feelings)
+                distance_value = row[4]
+
+                # 处理 distance 可能是字符串或其他类型的情况
+                try:
+                    distance_float = float(distance_value)
+                    similarity = 1 - distance_float  # 转换距离为相似度
+                except (TypeError, ValueError):
+                    logger.warning(f"无法转换 distance 值: {distance_value}")
+                    continue
+
                 if similarity >= self.similarity_threshold:
                     formatted_results.append({
-                        'id': row['id'],
-                        'note_id': row['note_id'],
-                        'chunk_type': row['chunk_type'],
-                        'chunk_text': row['chunk_text'],
+                        'id': row[0],
+                        'note_id': row[1],
+                        'chunk_type': row[2],
+                        'chunk_text': row[3],
                         'similarity': round(similarity, 4),
-                        'destination': row['destination'],
-                        'transport_info': row['transport_info'],
-                        'accommodation_info': row['accommodation_info'],
-                        'must_visit_spots': row['must_visit_spots'],
-                        'food_recommendations': row['food_recommendations'],
-                        'practical_tips': row['practical_tips'],
-                        'travel_feelings': row['travel_feelings']
+                        'destination': row[5],
+                        'transport_info': row[6],
+                        'accommodation_info': row[7],
+                        'must_visit_spots': row[8],
+                        'food_recommendations': row[9],
+                        'practical_tips': row[10],
+                        'travel_feelings': row[11]
                     })
 
             cursor.close()
