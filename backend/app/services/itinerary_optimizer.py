@@ -145,7 +145,7 @@ class ItineraryOptimizer:
 
     async def balance_schedule(self, plan: TravelPlan) -> Dict[str, Any]:
         """
-        均衡每日行程
+        均衡每日行程 - 优化版本，让景点分布更均匀
 
         Args:
             plan: 旅行计划对象
@@ -168,68 +168,124 @@ class ItineraryOptimizer:
 
         # 计算理想每天景点数
         ideal_per_day = total_items / total_days
-        threshold_high = math.ceil(ideal_per_day + 1)
-        threshold_low = max(1, math.floor(ideal_per_day - 1))
+
+        # 更严格的阈值：确保景点分布更均匀
+        # 上限：理想值向上取整（不超过理想值+1）
+        threshold_high = math.ceil(ideal_per_day)
+        # 下限：理想值向下取整（至少为1）
+        threshold_low = max(1, math.floor(ideal_per_day))
 
         logger.info(f"行程均衡: 总景点={total_items}, 总天数={total_days}, 理想每天={ideal_per_day:.1f}, 上限={threshold_high}, 下限={threshold_low}")
 
         moved_count = 0
+        max_iterations = total_items * 2  # 防止无限循环
+        iteration = 0
 
-        # 识别过载天和空闲天
-        overloaded = []
-        underloaded = []
+        # 迭代均衡，直到分布合理或达到最大迭代次数
+        while iteration < max_iterations:
+            iteration += 1
 
-        for date, items in sorted(items_by_date.items()):
-            item_count = len(items)
-            if item_count > threshold_high:
-                overloaded.append((date, items))
-                logger.info(f"过载天: {date}, 景点数={item_count}")
-            elif item_count < threshold_low:
-                underloaded.append((date, items))
-                logger.info(f"空闲天: {date}, 景点数={item_count}")
+            # 重新计算每天的景点数
+            date_counts = {date: len(items) for date, items in items_by_date.items()}
 
-        if not overloaded or not underloaded:
-            logger.info("行程已均衡，无需调整")
-            return {"items_moved": 0, "days_balanced": True, "message": "行程已均衡"}
+            # 找出景点数最多的天和最少的天
+            max_count = max(date_counts.values())
+            min_count = min(date_counts.values())
 
-        # 执行均衡操作
-        for over_date, over_items in overloaded:
-            # 按优先级排序，优先移动 optional 和 backup
-            movable_items = sorted(over_items, key=lambda x: self._priority_score(x))
+            # 如果分布已经足够均匀（最多和最少相差不超过1），则停止
+            if max_count - min_count <= 1:
+                logger.info("行程已均衡，分布均匀")
+                break
 
-            while len(over_items) > threshold_high and underloaded:
-                # 找到最合适的空闲天
-                target_date, target_items = self._find_best_target_date(
-                    over_date, underloaded, movable_items[0]
-                )
+            # 找出过载天（景点数 > threshold_high）
+            overloaded_dates = [
+                (date, items_by_date[date])
+                for date in sorted(items_by_date.keys())
+                if len(items_by_date[date]) > threshold_high
+            ]
 
-                if target_date:
-                    item_to_move = movable_items.pop(0)
-                    over_items.remove(item_to_move)
+            # 找出空闲天（景点数 < threshold_low）
+            underloaded_dates = [
+                (date, items_by_date[date])
+                for date in sorted(items_by_date.keys())
+                if len(items_by_date[date]) < threshold_low
+            ]
 
-                    # 更新项目的日期
-                    await self._move_item_to_date(item_to_move, target_date)
-                    moved_count += 1
+            # 如果没有过载天或空闲天，尝试从最多的天移动到最少的天
+            if not overloaded_dates or not underloaded_dates:
+                # 找出景点最多的天
+                max_date = max(date_counts.items(), key=lambda x: x[1])[0]
+                # 找出景点最少的天
+                min_date = min(date_counts.items(), key=lambda x: x[1])[0]
 
-                    logger.info(f"移动景点: {item_to_move.title} 从 {over_date} 到 {target_date}")
+                # 如果最多和最少相差超过1，则移动
+                if date_counts[max_date] - date_counts[min_date] > 1:
+                    overloaded_dates = [(max_date, items_by_date[max_date])]
+                    underloaded_dates = [(min_date, items_by_date[min_date])]
+                else:
+                    break
 
-                    # 更新空闲天列表
-                    target_items.append(item_to_move)
-                    if len(target_items) >= threshold_low:
-                        underloaded = [(d, items) for d, items in underloaded if d != target_date]
+            # 执行移动
+            moved_this_round = False
 
-                    # 更新过载天列表
-                    if len(over_items) <= threshold_high:
+            for over_date, over_items in overloaded_dates:
+                if not underloaded_dates:
+                    break
+
+                # 按优先级排序，优先移动 optional 和 backup
+                movable_items = sorted(over_items, key=lambda x: self._priority_score(x))
+
+                # 只移动必要的数量（让过载天降到 threshold_high）
+                items_to_move_count = len(over_items) - threshold_high
+
+                for i in range(min(items_to_move_count, len(movable_items))):
+                    if not underloaded_dates:
                         break
+
+                    # 找到最合适的空闲天
+                    target_date, target_items = self._find_best_target_date(
+                        over_date, underloaded_dates, movable_items[i]
+                    )
+
+                    if target_date:
+                        item_to_move = movable_items[i]
+
+                        # 更新项目的日期
+                        await self._move_item_to_date(item_to_move, target_date)
+                        moved_count += 1
+                        moved_this_round = True
+
+                        logger.info(f"移动景点: {item_to_move.title} 从 {over_date} 到 {target_date}")
+
+                        # 更新内存中的分组
+                        items_by_date[over_date].remove(item_to_move)
+                        items_by_date[target_date].append(item_to_move)
+
+                        # 更新空闲天列表
+                        if len(items_by_date[target_date]) >= threshold_low:
+                            underloaded_dates = [
+                                (d, items) for d, items in underloaded_dates
+                                if d != target_date
+                            ]
+
+            # 如果这一轮没有移动任何景点，停止迭代
+            if not moved_this_round:
+                break
 
         if moved_count > 0:
             await self.db.commit()
             logger.info(f"行程均衡完成，共移动 {moved_count} 个景点")
 
+            # 打印最终分布
+            final_distribution = {
+                date: len(items) for date, items in items_by_date.items()
+            }
+            logger.info(f"最终分布: {final_distribution}")
+
         return {
             "items_moved": moved_count,
             "days_balanced": True,
-            "message": f"已移动 {moved_count} 个景点"
+            "message": f"已移动 {moved_count} 个景点，行程分布更均衡"
         }
 
     async def _get_plan(self, plan_id: int) -> Optional[TravelPlan]:
