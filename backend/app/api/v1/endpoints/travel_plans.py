@@ -1035,3 +1035,59 @@ async def delete_plan_item(
     if not success:
         raise HTTPException(status_code=404, detail="行程项目不存在")
     return {"message": "行程项目已删除"}
+
+
+# =============== 行程优化相关端点 ===============
+from pydantic import BaseModel
+from app.services.itinerary_optimizer import ItineraryOptimizer
+
+
+class OptimizeRequest(BaseModel):
+    """优化请求"""
+    fill_coordinates: bool = True  # 是否填充坐标
+    balance_schedule: bool = True  # 是否均衡行程
+
+
+@router.post("/{plan_id}/optimize")
+async def optimize_travel_plan(
+    plan_id: int,
+    request: OptimizeRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """一键优化行程（填充坐标 + 均衡行程）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权优化该计划")
+
+    optimizer = ItineraryOptimizer(db)
+    result = await optimizer.optimize(
+        plan_id=plan_id,
+        fill_coordinates=request.fill_coordinates,
+        balance_schedule=request.balance_schedule
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "优化失败"))
+
+    # 获取更新后的计划
+    updated_plan = await service.get_travel_plan(plan_id)
+
+    return {
+        "success": True,
+        "message": result.get("message", "优化完成"),
+        "stats": result.get("stats", {}),
+        "updated_items": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "start_time": item.start_time,
+                "coordinates": item.coordinates,
+                "address": item.address,
+            }
+            for item in updated_plan.items
+        ] if updated_plan else []
+    }

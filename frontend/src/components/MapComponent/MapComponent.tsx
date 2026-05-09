@@ -62,7 +62,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
         const amapMarker = new window.AMap.Marker({
           position: [marker.position.lng, marker.position.lat],
           title: marker.name,
-          label: { content: marker.name, direction: 'top' }
+          label: {
+            content: `<div class="map-marker-label">${marker.name}</div>`,
+            direction: 'top'
+          }
         });
         const infoWindow = new window.AMap.InfoWindow({
           content: `

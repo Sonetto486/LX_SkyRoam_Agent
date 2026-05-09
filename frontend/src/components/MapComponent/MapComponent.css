@@ -80,12 +80,34 @@
     max-width: 160px;
     padding: 6px 10px;
   }
-  
+
   .marker-title {
     font-size: 12px;
   }
-  
+
   .marker-address {
     font-size: 10px;
   }
+}
+
+/* 地图标记标签样式 - 确保在暗色模式下也清晰可见 */
+.map-marker-label {
+  background: #fff;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  border: 1px solid #e8e8e8;
+}
+
+/* 暗色模式下的标签样式 */
+[data-theme='dark'] .map-marker-label,
+.dark .map-marker-label {
+  background: #1f1f1f;
+  color: #fff;
+  border: 1px solid #434343;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }

@@ -558,9 +558,31 @@ const getDayActivities = (): DayActivity[] => {
     if (!plan) return;
     message.loading({ content: '正在优化行程...', key: 'optimize' });
     try {
-      // 调用优化API（这里可以后续实现）
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      message.success({ content: '行程已优化', key: 'optimize' });
+      const res = await authFetch(buildApiUrl(`/travel-plans/${plan.id}/optimize`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fill_coordinates: true,
+          balance_schedule: true
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '优化失败');
+      }
+      const data = await res.json();
+      const stats = data.stats || {};
+      const filledCount = stats.coordinates_filled || 0;
+      const movedCount = stats.items_moved || 0;
+
+      message.success({
+        content: `优化完成：填充${filledCount}个景点坐标，移动${movedCount}个景点`,
+        key: 'optimize',
+        duration: 3
+      });
+
+      // 刷新行程数据以显示更新后的地图标记
+      fetchPlan();
     } catch (err: any) {
       message.error({ content: '优化失败：' + (err.message || '未知错误'), key: 'optimize' });
     }
