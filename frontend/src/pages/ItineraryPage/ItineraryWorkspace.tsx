@@ -30,6 +30,7 @@ import MapComponent from '../../components/MapComponent/MapComponent';
 import WeatherCard from '../../components/Itinerary/WeatherCard';
 import ActivityEditModal from '../../components/Itinerary/ActivityEditModal';
 import DateRangeEditor from '../../components/Itinerary/DateRangeEditor';
+import RouteSegment from '../../components/Itinerary/RouteSegment';
 import { buildApiUrl } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 import './ItineraryWorkspace.css';
@@ -137,6 +138,7 @@ const ItineraryWorkspace: React.FC = () => {
   const [weatherModalVisible, setWeatherModalVisible] = useState(false);
   const [weatherData, setWeatherData] = useState<any[]>([]);
   const [overviewModalVisible, setOverviewModalVisible] = useState(false);
+  const [routeSegments, setRouteSegments] = useState<any[]>([]); // 路线段信息
 
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
@@ -588,6 +590,53 @@ const getDayActivities = (): DayActivity[] => {
     }
   };
 
+  // 路线优化
+  const handleRouteOptimize = async () => {
+    if (!plan) return;
+    message.loading({ content: '正在优化路线...', key: 'route-optimize' });
+    try {
+      const res = await authFetch(buildApiUrl(`/travel-plans/${plan.id}/optimize-route`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '路线优化失败');
+      }
+      const data = await res.json();
+
+      // 保存路线段信息（按天分组）
+      if (data.optimized_days && data.optimized_days.length > 0) {
+        setRouteSegments(data.optimized_days);
+      }
+
+      const stats = data.stats || {};
+      const totalDistance = stats.total_distance || 0;
+      const totalDuration = stats.total_duration || 0;
+      const daysOptimized = stats.days_optimized || 0;
+
+      // 检查是否已经最优
+      if (data.already_optimized) {
+        message.info({
+          content: '路线已经是最优，无需优化',
+          key: 'route-optimize',
+          duration: 3
+        });
+      } else {
+        message.success({
+          content: `路线优化完成：优化${daysOptimized}天，总距离${totalDistance.toFixed(1)}公里，约${Math.round(totalDuration / 60)}小时`,
+          key: 'route-optimize',
+          duration: 4
+        });
+      }
+
+      // 刷新行程数据以显示更新后的路线
+      fetchPlan();
+    } catch (err: any) {
+      message.error({ content: '路线优化失败：' + (err.message || '未知错误'), key: 'route-optimize' });
+    }
+  };
+
   // 导出行程
   const handleExport = async (format: string) => {
     if (!plan) return;
@@ -649,8 +698,8 @@ const getDayActivities = (): DayActivity[] => {
   // 获取地图控制菜单
   const getMapControlMenu = () => (
     <Menu>
-      <Menu.Item key="route" icon={<SwapOutlined />} onClick={() => setRouteModalVisible(true)}>
-        路线编辑
+      <Menu.Item key="route" icon={<SwapOutlined />} onClick={handleRouteOptimize}>
+        路线优化
       </Menu.Item>
       <Menu.Item key="optimize" icon={<SyncOutlined />} onClick={handleOptimize}>
         一键优化
@@ -810,61 +859,68 @@ const getDayActivities = (): DayActivity[] => {
               >
                 {/* 活动列表 */}
                 <div className="activities-list">
-                  {day.activities.map((activity) => (
-                    <Card
-                      key={activity.id}
-                      className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
-                      onMouseEnter={() => setHoveredActivity(activity.id)}
-                      onMouseLeave={() => setHoveredActivity(null)}
-                      actions={[
-                        <Tooltip key="edit" title="编辑">
-                          <Button
-                            icon={<EditOutlined />}
-                            size="small"
-                            onClick={() => openActivityModal(activity)}
-                          />
-                        </Tooltip>,
-                        <Tooltip key="move-up" title="上移">
-                          <Button
-                            icon={<UpOutlined />}
-                            size="small"
-                            onClick={() => handleMoveActivity(activity.id, 'up')}
-                          />
-                        </Tooltip>,
-                        <Tooltip key="move-down" title="下移">
-                          <Button
-                            icon={<DownOutlined />}
-                            size="small"
-                            onClick={() => handleMoveActivity(activity.id, 'down')}
-                          />
-                        </Tooltip>,
-                        <Popconfirm
-                          key="delete"
-                          title="确定删除此活动？"
-                          okText="删除"
-                          cancelText="取消"
-                          onConfirm={() => handleDeleteActivity(activity.id)}
+                  {day.activities.map((activity, activityIndex) => {
+                    // 查找当前景点到下一个景点的路线信息
+                    const currentDayOptimized = routeSegments.find((dayData: any) =>
+                      dayData.date === day.date || dayData.ordered_items?.some((item: any) => item.id === activity.id)
+                    );
+                    const segmentInfo = currentDayOptimized?.route_segments?.[activityIndex];
+
+                    return (
+                      <React.Fragment key={activity.id}>
+                        <Card
+                          className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
+                          onMouseEnter={() => setHoveredActivity(activity.id)}
+                          onMouseLeave={() => setHoveredActivity(null)}
+                          actions={[
+                            <Tooltip key="edit" title="编辑">
+                              <Button
+                                icon={<EditOutlined />}
+                                size="small"
+                                onClick={() => openActivityModal(activity)}
+                              />
+                            </Tooltip>,
+                            <Tooltip key="move-up" title="上移">
+                              <Button
+                                icon={<UpOutlined />}
+                                size="small"
+                                onClick={() => handleMoveActivity(activity.id, 'up')}
+                              />
+                            </Tooltip>,
+                            <Tooltip key="move-down" title="下移">
+                              <Button
+                                icon={<DownOutlined />}
+                                size="small"
+                                onClick={() => handleMoveActivity(activity.id, 'down')}
+                              />
+                            </Tooltip>,
+                            <Popconfirm
+                              key="delete"
+                              title="确定删除此活动？"
+                              okText="删除"
+                              cancelText="取消"
+                              onConfirm={() => handleDeleteActivity(activity.id)}
+                            >
+                              <Button danger icon={<DeleteOutlined />} size="small" />
+                            </Popconfirm>
+                          ]}
                         >
-                          <Button danger icon={<DeleteOutlined />} size="small" />
-                        </Popconfirm>
-                      ]}
-                    >
-                      <div className="activity-header">
-                        <Tag color="blue">{activity.item_type || '景点'}</Tag>
-                        <Text strong>{activity.title}</Text>
-                      </div>
-                      {activity.location && (
-                        <div className="activity-location">
-                          <EnvironmentOutlined /> {activity.location}
-                        </div>
-                      )}
-                      {activity.description && (
-                        <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
-                          {activity.description}
-                        </Paragraph>
-                      )}
-                      {activity.images && activity.images.length > 0 && (
-                        <div className="activity-images">
+                          <div className="activity-header">
+                            <Tag color="blue">{activity.item_type || '景点'}</Tag>
+                            <Text strong>{activity.title}</Text>
+                          </div>
+                          {activity.location && (
+                            <div className="activity-location">
+                              <EnvironmentOutlined /> {activity.location}
+                            </div>
+                          )}
+                          {activity.description && (
+                            <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
+                              {activity.description}
+                            </Paragraph>
+                          )}
+                          {activity.images && activity.images.length > 0 && (
+                            <div className="activity-images">
                           <img
                             src={activity.images[0]}
                             alt={activity.title}
@@ -873,9 +929,22 @@ const getDayActivities = (): DayActivity[] => {
                         </div>
                       )}
                     </Card>
-                  ))}
 
-                  {/* 添加活动按钮 */}
+                    {/* 显示路线信息 */}
+                    {segmentInfo && (
+                      <RouteSegment
+                        from={segmentInfo.from}
+                        to={segmentInfo.to}
+                        distance={segmentInfo.distance}
+                        duration={segmentInfo.duration}
+                        mode={segmentInfo.mode}
+                      />
+                    )}
+                  </React.Fragment>
+                    );
+                  })}
+
+                {/* 添加活动按钮 */}
                   <Button
                     type="dashed"
                     block
@@ -907,6 +976,9 @@ const getDayActivities = (): DayActivity[] => {
           markers={getMapMarkers()}
           center={getMapCenter()}
           zoom={12}
+          viewMode="day"
+          currentDay={activeDay + 1}
+          routeSegments={routeSegments}
         />
 
         {/* 地图控制按钮 */}

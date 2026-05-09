@@ -1091,3 +1091,30 @@ async def optimize_travel_plan(
             for item in updated_plan.items
         ] if updated_plan else []
     }
+
+
+# =============== 路线优化相关端点 ===============
+from app.services.route_optimizer import RouteOptimizer
+
+
+@router.post("/{plan_id}/optimize-route")
+async def optimize_travel_route(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """路线优化 - 按距离远近规划最优路线"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权优化该计划")
+
+    optimizer = RouteOptimizer(db)
+    result = await optimizer.optimize_route(plan_id)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "路线优化失败"))
+
+    return result
