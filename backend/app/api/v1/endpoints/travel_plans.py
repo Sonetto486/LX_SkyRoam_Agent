@@ -971,6 +971,31 @@ async def create_plan_item(
     return await service.create_item(plan_id, item_data)
 
 
+@router.put("/{plan_id}/items/reorder")
+async def reorder_plan_items(
+    plan_id: int,
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重排序行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+
+    item_ids = request_data.get("item_ids", [])
+    if not isinstance(item_ids, list):
+        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
+
+    success = await service.reorder_items(plan_id, item_ids)
+    if not success:
+        raise HTTPException(status_code=400, detail="重排序失败")
+    return {"message": "排序已更新"}
+
+
 @router.put("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
 async def update_plan_item(
     plan_id: int,
@@ -1010,28 +1035,3 @@ async def delete_plan_item(
     if not success:
         raise HTTPException(status_code=404, detail="行程项目不存在")
     return {"message": "行程项目已删除"}
-
-
-@router.put("/{plan_id}/items/reorder")
-async def reorder_plan_items(
-    plan_id: int,
-    request_data: dict,
-    db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
-):
-    """重排序行程项目"""
-    service = TravelPlanService(db)
-    plan = await service.get_travel_plan(plan_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="旅行计划不存在")
-    if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权修改该计划")
-
-    item_ids = request_data.get("item_ids", [])
-    if not isinstance(item_ids, list):
-        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
-
-    success = await service.reorder_items(plan_id, item_ids)
-    if not success:
-        raise HTTPException(status_code=400, detail="重排序失败")
-    return {"message": "排序已更新"}

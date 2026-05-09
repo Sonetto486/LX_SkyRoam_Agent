@@ -327,7 +327,10 @@ const getDayActivities = (): DayActivity[] => {
       }
       dayMap.get(date)!.push(item);
     });
-    return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+    // 按日期排序，确保天数顺序正确
+    return Array.from(dayMap.entries())
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .map(([date, activities]) => ({ date, activities }));
   }
 
   // 如果有 selected_plan，从中提取每日行程
