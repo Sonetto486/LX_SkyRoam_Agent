@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from app.core.database import get_async_db
 from app.schemas.travel_plan import (
@@ -56,6 +56,31 @@ async def create_travel_plan(
     data = plan_data.dict()
     data["user_id"] = current_user.id
     return await service.create_travel_plan(TravelPlanCreate(**data))
+
+
+@router.post("/new", response_model=TravelPlanResponse)
+async def create_new_travel_plan(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """创建新的空白旅行计划（手动创建）"""
+    service = TravelPlanService(db)
+
+    # 创建默认的旅行计划
+    now = datetime.now()
+    tomorrow = now + timedelta(days=1)
+
+    default_plan = TravelPlanCreate(
+        title="未命名行程",
+        destination="待定",
+        start_date=now,
+        end_date=tomorrow,
+        duration_days=1,
+        user_id=current_user.id,
+        preferences={"travelers": 1},
+    )
+
+    return await service.create_travel_plan(default_plan)
 
 
 @router.get("/")

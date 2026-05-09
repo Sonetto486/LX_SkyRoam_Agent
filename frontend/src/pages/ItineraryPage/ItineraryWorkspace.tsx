@@ -141,6 +141,30 @@ const ItineraryWorkspace: React.FC = () => {
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
     if (!id) return;
+
+    // Handle "new" case - create a new empty plan
+    if (id === "new") {
+      setLoading(true);
+      try {
+        const res = await authFetch(buildApiUrl('/travel-plans/new'), {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          throw new Error('创建行程失败');
+        }
+        const data: TravelPlan = await res.json();
+        // Redirect to the new plan's workspace
+        navigate(`/itineraries/${data.id}`, { replace: true });
+        return;
+      } catch (err: any) {
+        message.error('创建行程失败：' + (err.message || '未知错误'));
+        navigate('/itineraries', { replace: true });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await authFetch(buildApiUrl(`/travel-plans/${id}`));
@@ -154,7 +178,7 @@ const ItineraryWorkspace: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     fetchPlan();
@@ -276,8 +300,8 @@ const ItineraryWorkspace: React.FC = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          start_date: startDate,
-          end_date: endDate,
+          start_date: `${startDate}T00:00:00`,
+          end_date: `${endDate}T23:59:59`,
           duration_days: durationDays,
         }),
       });
