@@ -26,13 +26,19 @@ interface RouteSegment {
   path?: Array<{ lng: number; lat: number }>;  // 路径点
 }
 
+interface DayRouteData {
+  date: string;
+  ordered_items?: any[];
+  route_segments?: RouteSegment[];
+}
+
 interface MapComponentProps {
   markers: Marker[];
   center: { lat: number; lng: number };
   zoom: number;
   viewMode?: 'day' | 'full';
   currentDay?: number;
-  routeSegments?: RouteSegment[];
+  routeSegments?: DayRouteData[];
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({
@@ -132,7 +138,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       const isCurrentDay = viewMode === 'full' || dayNum === currentDay;
 
       // 查找当天的路线段信息
-      const dayRouteSegments = routeSegments.find((seg: any) =>
+      const dayRouteSegments = routeSegments.find((seg: DayRouteData) =>
         seg.date === day || seg.ordered_items?.some((item: any) =>
           dayMarkers.some(m => m.id === item.id)
         )

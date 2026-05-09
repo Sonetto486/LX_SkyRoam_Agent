@@ -288,14 +288,6 @@ class RouteOptimizer:
                         "mode_label": self._get_mode_label(mode),
                         "path": path_points  # 添加路径点
                     })
-                        "to": to_attr.title,
-                        "from_id": from_attr.id,
-                        "to_id": to_attr.id,
-                        "distance": actual_distance,
-                        "duration": actual_duration,
-                        "mode": mode,
-                        "mode_label": self._get_mode_label(mode)
-                    })
                 else:
                     # API失败，使用直线距离估算
                     estimated_duration = self._estimate_duration(straight_distance, mode)
@@ -307,7 +299,8 @@ class RouteOptimizer:
                         "distance": round(straight_distance, 2),
                         "duration": estimated_duration,
                         "mode": mode,
-                        "mode_label": self._get_mode_label(mode)
+                        "mode_label": self._get_mode_label(mode),
+                        "path": []  # 没有路径点
                     })
 
             except Exception as e:
@@ -321,7 +314,8 @@ class RouteOptimizer:
                     "distance": round(straight_distance, 2),
                     "duration": estimated_duration,
                     "mode": mode,
-                    "mode_label": self._get_mode_label(mode)
+                    "mode_label": self._get_mode_label(mode),
+                    "path": []  # 没有路径点
                 })
 
         return segments
