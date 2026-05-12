@@ -20,6 +20,7 @@ from app.api.v1.endpoints import (
     notes,
     image_import,
     xiaohongshu,
+    weather,
 )
 
 
@@ -120,4 +121,10 @@ api_router.include_router(
     xiaohongshu.router,
     prefix="/xiaohongshu",
     tags=["xiaohongshu"],
+)
+
+api_router.include_router(
+    weather.router,
+    prefix="/weather",
+    tags=["weather"],
 )

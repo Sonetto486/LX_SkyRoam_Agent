@@ -250,6 +250,7 @@ class AmapMCPClient:
                     "radius": radius,
                     "offset": offset,
                     "page": page
+                    
                 }
             }
             
@@ -319,6 +320,7 @@ class AmapMCPClient:
         self,
         query: str,
         city: str,
+        extensions: str = "all",
         category: str = "景点"
     ) -> List[Dict[str, Any]]:
         """搜索地点"""
@@ -333,10 +335,12 @@ class AmapMCPClient:
                 "id": 1,
                 "method": "place_search",
                 "params": {
+                    "extensions": extensions,
                     "keywords": query,
                     "city": city,
                     "types": self._get_place_type(category),
                     "output": "json"
+                    
                 }
             }
             

@@ -284,7 +284,11 @@ class TravelPlanService:
             .options(selectinload(TravelPlan.items))
             .where(TravelPlan.id == plan_id)
         )
-        return result.scalar_one_or_none()
+        plan = result.scalar_one_or_none()
+        # 确保items按start_time排序
+        if plan and plan.items:
+            plan.items = sorted(plan.items, key=lambda x: (x.start_time is None, x.start_time or ''))
+        return plan
     
     async def update_travel_plan(
         self, 

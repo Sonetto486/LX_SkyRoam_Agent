@@ -5,7 +5,7 @@
 
 /* 搜索区域 */
 .search-section {
-  background: #4b3a64;
+  background: linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%);
   padding: 40px 0;
   margin-bottom: 32px;
   border-radius: 8px;
@@ -33,7 +33,7 @@
 
 .section-header h3 {
   margin: 0;
-  color: #333;
+  color: var(--text-strong);
 }
 
 /* 专题卡片 */
@@ -41,10 +41,12 @@
   overflow: hidden;
   transition: all 0.3s ease;
   border-radius: 8px !important;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .topic-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 24px var(--shadow-color) !important;
   transform: translateY(-4px);
 }
 
@@ -79,7 +81,7 @@
 
 .topic-content h4 {
   margin: 0 0 8px 0;
-  color: #333;
+  color: var(--text-strong);
   font-size: 16px;
   font-weight: 600;
 }
@@ -87,7 +89,7 @@
 .topic-content p,
 .topic-content .topic-description {
   margin: 0 0 16px 0;
-  color: #666;
+  color: var(--text-soft);
   font-size: 14px;
   line-height: 1.4;
   display: -webkit-box;
@@ -102,10 +104,12 @@
   overflow: hidden;
   transition: all 0.3s ease;
   border-radius: 8px !important;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .itinerary-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 24px var(--shadow-color) !important;
   transform: translateY(-4px);
 }
 
@@ -131,7 +135,7 @@
 
 .itinerary-content h4 {
   margin: 0 0 12px 0;
-  color: #333;
+  color: var(--text-strong);
   font-size: 16px;
   font-weight: 600;
 }
@@ -139,7 +143,7 @@
 .itinerary-meta {
   margin-bottom: 16px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 /* 响应式布局 */
@@ -148,26 +152,26 @@
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-container .ant-input {
     width: 100% !important;
   }
-  
+
   .search-container .ant-select {
     width: 100% !important;
     margin-left: 0 !important;
   }
-  
+
   .search-container .ant-btn {
     margin-left: 0 !important;
   }
-  
+
   .section-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
   }
-  
+
   .topic-image,
   .itinerary-image {
     height: 140px;

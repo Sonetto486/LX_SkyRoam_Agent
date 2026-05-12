@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # 基础配置
     APP_NAME: str = os.getenv("APP_NAME", "LX SkyRoam Agent")
     VERSION: str = os.getenv("VERSION", "1.0.0")
-    DEBUG: bool = os.getenv("DEBUG", False)
+    DEBUG: bool = os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
     # 服务器配置
     HOST: str = os.getenv("HOST", "0.0.0.0")
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/skyroam")
-    DATABASE_ECHO: bool = os.getenv("DATABASE_ECHO", False)
+    DATABASE_ECHO: bool = os.getenv("DATABASE_ECHO", "").lower() in ("true", "1", "yes")
     
     # Redis配置
     REDIS_URL: str = os.getenv("REDIS_URL", "")
@@ -95,9 +95,9 @@ class Settings(BaseSettings):
     OPENAI_ESTIMATED_CHARS_PER_TOKEN: float = float(os.getenv("OPENAI_ESTIMATED_CHARS_PER_TOKEN", "2.0"))  # 1 token ≈ 2 字符（中文为主）
     OPENAI_MAX_RECENT_MESSAGES: int = int(os.getenv("OPENAI_MAX_RECENT_MESSAGES", "20"))  # 最多保留最近 N 轮对话
     
-    OPENAI_TEMPERATURE: float = os.getenv("OPENAI_TEMPERATURE", 0.7)
-    OPENAI_TIMEOUT: int = os.getenv("OPENAI_TIMEOUT", 300)  # API超时时间（秒）
-    OPENAI_MAX_RETRIES: int = os.getenv("OPENAI_MAX_RETRIES", 3)  # 最大重试次数
+    OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
+    OPENAI_TIMEOUT: int = int(os.getenv("OPENAI_TIMEOUT", "300"))  # API超时时间（秒）
+    OPENAI_MAX_RETRIES: int = int(os.getenv("OPENAI_MAX_RETRIES", "3"))  # 最大重试次数
     
     # 第三方API配置
     WEATHER_API_KEY: str = os.getenv("WEATHER_API_KEY", "")  # OpenWeatherMap
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # MCP服务配置
     BAIDU_MCP_ENDPOINT: str = os.getenv("BAIDU_MCP_ENDPOINT", "http://localhost:3001")  # 百度地图MCP服务端口
     AMAP_MCP_ENDPOINT: str = os.getenv("AMAP_MCP_ENDPOINT", "http://localhost:3002")  # 高德地图MCP服务
-    MCP_TIMEOUT: int = os.getenv("MCP_TIMEOUT", 30)  # MCP服务超时时间（秒）
+    MCP_TIMEOUT: int = int(os.getenv("MCP_TIMEOUT", "30"))  # MCP服务超时时间（秒）
 
     # MCP服务API密钥（通过环境变量传递给MCP服务）
     BAIDU_MAPS_API_KEY: str = os.getenv("BAIDU_MAPS_API_KEY", "")  # 百度地图API密钥
@@ -152,17 +152,17 @@ class Settings(BaseSettings):
 
     # 爬虫配置
     SCRAPY_USER_AGENT: str = os.getenv("SCRAPY_USER_AGENT", "LX-SkyRoam-Agent/1.0")
-    SCRAPY_DELAY: float = os.getenv("SCRAPY_DELAY", 1.0)
-    SCRAPY_CONCURRENT_REQUESTS: int = os.getenv("SCRAPY_CONCURRENT_REQUESTS", 16)
+    SCRAPY_DELAY: float = float(os.getenv("SCRAPY_DELAY", "1.0"))
+    SCRAPY_CONCURRENT_REQUESTS: int = int(os.getenv("SCRAPY_CONCURRENT_REQUESTS", "16"))
 
     # 安全配置
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 360)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "360"))
 
     # 文件存储
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "uploads")
-    MAX_FILE_SIZE: int = os.getenv("MAX_FILE_SIZE", 10 * 1024 * 1024)  # 10MB
+    MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", str(10 * 1024 * 1024)))  # 10MB
 
     # 日志配置
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -170,16 +170,16 @@ class Settings(BaseSettings):
     LOG_MAX_SIZE: str = os.getenv("LOG_MAX_SIZE", "10 MB")  # 单个日志文件最大大小
     LOG_RETENTION: int = int(os.getenv("LOG_RETENTION", "5"))  # 保留的日志文件数量
     LOG_COMPRESSION: str = os.getenv("LOG_COMPRESSION", "zip")  # 日志压缩格式
-    LOG_TO_CONSOLE: bool = os.getenv("LOG_TO_CONSOLE", True)  # 是否输出到控制台
-    LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", True)  # 是否输出到文件
+    LOG_TO_CONSOLE: bool = os.getenv("LOG_TO_CONSOLE", "").lower() in ("true", "1", "yes")  # 是否输出到控制台
+    LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", "").lower() in ("true", "1", "yes")  # 是否输出到文件
 
     # 缓存配置
-    CACHE_TTL: int = os.getenv("CACHE_TTL", 3600)  # 1小时
-    CACHE_MAX_SIZE: int = os.getenv("CACHE_MAX_SIZE", 1000)
+    CACHE_TTL: int = int(os.getenv("CACHE_TTL", "3600"))  # 1小时
+    CACHE_MAX_SIZE: int = int(os.getenv("CACHE_MAX_SIZE", "1000"))
 
     # 任务配置
-    TASK_TIMEOUT: int = os.getenv("TASK_TIMEOUT", 300)  # 5分钟
-    MAX_CONCURRENT_TASKS: int = os.getenv("MAX_CONCURRENT_TASKS", 10)
+    TASK_TIMEOUT: int = int(os.getenv("TASK_TIMEOUT", "300"))  # 5分钟
+    MAX_CONCURRENT_TASKS: int = int(os.getenv("MAX_CONCURRENT_TASKS", "10"))
 
     # 小红书服务配置
     XHS_API_BASE: str = os.getenv("XHS_API_BASE", "http://127.0.0.1:8002")

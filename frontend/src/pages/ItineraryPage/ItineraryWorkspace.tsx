@@ -30,6 +30,7 @@ import MapComponent from '../../components/MapComponent/MapComponent';
 import WeatherCard from '../../components/Itinerary/WeatherCard';
 import ActivityEditModal from '../../components/Itinerary/ActivityEditModal';
 import DateRangeEditor from '../../components/Itinerary/DateRangeEditor';
+import RouteSegment from '../../components/Itinerary/RouteSegment';
 import { buildApiUrl } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 import './ItineraryWorkspace.css';
@@ -137,10 +138,35 @@ const ItineraryWorkspace: React.FC = () => {
   const [weatherModalVisible, setWeatherModalVisible] = useState(false);
   const [weatherData, setWeatherData] = useState<any[]>([]);
   const [overviewModalVisible, setOverviewModalVisible] = useState(false);
+  const [routeSegments, setRouteSegments] = useState<any[]>([]); // 路线段信息
 
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
     if (!id) return;
+
+    // Handle "new" case - create a new empty plan
+    if (id === "new") {
+      setLoading(true);
+      try {
+        const res = await authFetch(buildApiUrl('/travel-plans/new'), {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          throw new Error('创建行程失败');
+        }
+        const data: TravelPlan = await res.json();
+        // Redirect to the new plan's workspace
+        navigate(`/itineraries/${data.id}`, { replace: true });
+        return;
+      } catch (err: any) {
+        message.error('创建行程失败：' + (err.message || '未知错误'));
+        navigate('/itineraries', { replace: true });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await authFetch(buildApiUrl(`/travel-plans/${id}`));
@@ -154,7 +180,7 @@ const ItineraryWorkspace: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     fetchPlan();
@@ -276,8 +302,8 @@ const ItineraryWorkspace: React.FC = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          start_date: startDate,
-          end_date: endDate,
+          start_date: `${startDate}T00:00:00`,
+          end_date: `${endDate}T23:59:59`,
           duration_days: durationDays,
         }),
       });
@@ -303,7 +329,10 @@ const getDayActivities = (): DayActivity[] => {
       }
       dayMap.get(date)!.push(item);
     });
-    return Array.from(dayMap.entries()).map(([date, activities]) => ({ date, activities }));
+    // 按日期排序，确保天数顺序正确
+    return Array.from(dayMap.entries())
+      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .map(([date, activities]) => ({ date, activities }));
   }
 
   // 如果有 selected_plan，从中提取每日行程
@@ -462,53 +491,62 @@ const getDayActivities = (): DayActivity[] => {
     }
   };
 
-  // 获取天气数据（15日）
+  // 获取天气数据（智能判断日期）
   const fetchWeatherData = async () => {
     if (!plan) return;
+
+    // 确保至少显示7天，或者行程天数（取较大值）
+    const days = Math.max(7, plan.duration_days);
+
     try {
-      const amapKey = process.env.REACT_APP_AMAP_KEY || process.env.REACT_APP_AMAP_WEB_KEY;
-      if (!amapKey) {
+      // 调用后端天气API，传递旅行日期
+      const res = await fetch(buildApiUrl(`/weather?city=${encodeURIComponent(plan.destination)}&days=${days}&travel_date=${encodeURIComponent(plan.start_date)}`));
+
+      if (!res.ok) {
         // 使用模拟数据
-        const mockData = [];
-        const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
-        for (let i = 0; i < 15; i++) {
-          const date = new Date();
-          date.setDate(date.getDate() + i);
-          mockData.push({
-            date: date.toISOString().split('T')[0],
-            dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
-            dayTemp: String(20 + Math.floor(Math.random() * 10)),
-            nightTemp: String(15 + Math.floor(Math.random() * 5)),
-          });
-        }
-        setWeatherData(mockData);
+        setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
         return;
       }
 
-      const cityRes = await fetch(
-        `https://restapi.amap.com/v3/config/district?keywords=${encodeURIComponent(plan.destination)}&key=${amapKey}&subdistrict=0`
-      );
-      const cityData = await cityRes.json();
+      const data = await res.json();
 
-      if (cityData.districts && cityData.districts.length > 0) {
-        const adcode = cityData.districts[0].adcode;
-        const weatherRes = await fetch(
-          `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${amapKey}&extensions=all`
-        );
-        const weatherJson = await weatherRes.json();
-
-        if (weatherJson.status === '1' && weatherJson.forecasts && weatherJson.forecasts[0]) {
-          setWeatherData(weatherJson.forecasts[0].casts.slice(0, 15).map((cast: any) => ({
-            date: cast.date,
-            dayWeather: cast.dayweather,
-            dayTemp: cast.daytemp,
-            nightTemp: cast.nighttemp,
-          })));
-        }
+      if (data.forecast && data.forecast.length > 0) {
+        setWeatherData(data.forecast.map((cast: any) => ({
+          date: cast.date,
+          dayWeather: cast.dayweather,
+          dayTemp: cast.daytemp,
+          nightTemp: cast.nighttemp,
+          dateMode: data.date_mode,
+          dateReason: data.date_reason,
+        })));
+      } else {
+        // 无数据时使用模拟数据
+        setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
       }
     } catch (err) {
       console.error('获取天气失败:', err);
+      // 失败时使用模拟数据
+      setWeatherData(generateMockWeatherFromStart(plan.start_date, days));
     }
+  };
+
+  // 生成从指定日期开始的模拟天气数据
+  const generateMockWeatherFromStart = (startDate: string, count: number) => {
+    const mockData = [];
+    const weathers = ['晴', '多云', '阴', '小雨', '中雨'];
+    const start = new Date(startDate);
+
+    for (let i = 0; i < count; i++) {
+      const date = new Date(start);
+      date.setDate(date.getDate() + i);
+      mockData.push({
+        date: date.toISOString().split('T')[0],
+        dayWeather: weathers[Math.floor(Math.random() * weathers.length)],
+        dayTemp: String(20 + Math.floor(Math.random() * 10)),
+        nightTemp: String(15 + Math.floor(Math.random() * 5)),
+      });
+    }
+    return mockData;
   };
 
   // 打开天气弹窗
@@ -522,11 +560,80 @@ const getDayActivities = (): DayActivity[] => {
     if (!plan) return;
     message.loading({ content: '正在优化行程...', key: 'optimize' });
     try {
-      // 调用优化API（这里可以后续实现）
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      message.success({ content: '行程已优化', key: 'optimize' });
+      const res = await authFetch(buildApiUrl(`/travel-plans/${plan.id}/optimize`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fill_coordinates: true,
+          balance_schedule: true
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '优化失败');
+      }
+      const data = await res.json();
+      const stats = data.stats || {};
+      const filledCount = stats.coordinates_filled || 0;
+      const movedCount = stats.items_moved || 0;
+
+      message.success({
+        content: `优化完成：填充${filledCount}个景点坐标，移动${movedCount}个景点`,
+        key: 'optimize',
+        duration: 3
+      });
+
+      // 刷新行程数据以显示更新后的地图标记
+      fetchPlan();
     } catch (err: any) {
       message.error({ content: '优化失败：' + (err.message || '未知错误'), key: 'optimize' });
+    }
+  };
+
+  // 路线优化
+  const handleRouteOptimize = async () => {
+    if (!plan) return;
+    message.loading({ content: '正在优化路线...', key: 'route-optimize' });
+    try {
+      const res = await authFetch(buildApiUrl(`/travel-plans/${plan.id}/optimize-route`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '路线优化失败');
+      }
+      const data = await res.json();
+
+      // 保存路线段信息（按天分组）
+      if (data.optimized_days && data.optimized_days.length > 0) {
+        setRouteSegments(data.optimized_days);
+      }
+
+      const stats = data.stats || {};
+      const totalDistance = stats.total_distance || 0;
+      const totalDuration = stats.total_duration || 0;
+      const daysOptimized = stats.days_optimized || 0;
+
+      // 检查是否已经最优
+      if (data.already_optimized) {
+        message.info({
+          content: '路线已经是最优，无需优化',
+          key: 'route-optimize',
+          duration: 3
+        });
+      } else {
+        message.success({
+          content: `路线优化完成：优化${daysOptimized}天，总距离${totalDistance.toFixed(1)}公里，约${Math.round(totalDuration / 60)}小时`,
+          key: 'route-optimize',
+          duration: 4
+        });
+      }
+
+      // 刷新行程数据以显示更新后的路线
+      fetchPlan();
+    } catch (err: any) {
+      message.error({ content: '路线优化失败：' + (err.message || '未知错误'), key: 'route-optimize' });
     }
   };
 
@@ -591,8 +698,8 @@ const getDayActivities = (): DayActivity[] => {
   // 获取地图控制菜单
   const getMapControlMenu = () => (
     <Menu>
-      <Menu.Item key="route" icon={<SwapOutlined />} onClick={() => setRouteModalVisible(true)}>
-        路线编辑
+      <Menu.Item key="route" icon={<SwapOutlined />} onClick={handleRouteOptimize}>
+        路线优化
       </Menu.Item>
       <Menu.Item key="optimize" icon={<SyncOutlined />} onClick={handleOptimize}>
         一键优化
@@ -724,7 +831,7 @@ const getDayActivities = (): DayActivity[] => {
           <WeatherCard
             city={plan.destination}
             startDate={plan.start_date}
-            days={Math.min(plan.duration_days, 5)}
+            days={Math.max(7, plan.duration_days)}
           />
         </div>
 
@@ -752,61 +859,68 @@ const getDayActivities = (): DayActivity[] => {
               >
                 {/* 活动列表 */}
                 <div className="activities-list">
-                  {day.activities.map((activity) => (
-                    <Card
-                      key={activity.id}
-                      className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
-                      onMouseEnter={() => setHoveredActivity(activity.id)}
-                      onMouseLeave={() => setHoveredActivity(null)}
-                      actions={[
-                        <Tooltip key="edit" title="编辑">
-                          <Button
-                            icon={<EditOutlined />}
-                            size="small"
-                            onClick={() => openActivityModal(activity)}
-                          />
-                        </Tooltip>,
-                        <Tooltip key="move-up" title="上移">
-                          <Button
-                            icon={<UpOutlined />}
-                            size="small"
-                            onClick={() => handleMoveActivity(activity.id, 'up')}
-                          />
-                        </Tooltip>,
-                        <Tooltip key="move-down" title="下移">
-                          <Button
-                            icon={<DownOutlined />}
-                            size="small"
-                            onClick={() => handleMoveActivity(activity.id, 'down')}
-                          />
-                        </Tooltip>,
-                        <Popconfirm
-                          key="delete"
-                          title="确定删除此活动？"
-                          okText="删除"
-                          cancelText="取消"
-                          onConfirm={() => handleDeleteActivity(activity.id)}
+                  {day.activities.map((activity, activityIndex) => {
+                    // 查找当前景点到下一个景点的路线信息
+                    const currentDayOptimized = routeSegments.find((dayData: any) =>
+                      dayData.date === day.date || dayData.ordered_items?.some((item: any) => item.id === activity.id)
+                    );
+                    const segmentInfo = currentDayOptimized?.route_segments?.[activityIndex];
+
+                    return (
+                      <React.Fragment key={activity.id}>
+                        <Card
+                          className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
+                          onMouseEnter={() => setHoveredActivity(activity.id)}
+                          onMouseLeave={() => setHoveredActivity(null)}
+                          actions={[
+                            <Tooltip key="edit" title="编辑">
+                              <Button
+                                icon={<EditOutlined />}
+                                size="small"
+                                onClick={() => openActivityModal(activity)}
+                              />
+                            </Tooltip>,
+                            <Tooltip key="move-up" title="上移">
+                              <Button
+                                icon={<UpOutlined />}
+                                size="small"
+                                onClick={() => handleMoveActivity(activity.id, 'up')}
+                              />
+                            </Tooltip>,
+                            <Tooltip key="move-down" title="下移">
+                              <Button
+                                icon={<DownOutlined />}
+                                size="small"
+                                onClick={() => handleMoveActivity(activity.id, 'down')}
+                              />
+                            </Tooltip>,
+                            <Popconfirm
+                              key="delete"
+                              title="确定删除此活动？"
+                              okText="删除"
+                              cancelText="取消"
+                              onConfirm={() => handleDeleteActivity(activity.id)}
+                            >
+                              <Button danger icon={<DeleteOutlined />} size="small" />
+                            </Popconfirm>
+                          ]}
                         >
-                          <Button danger icon={<DeleteOutlined />} size="small" />
-                        </Popconfirm>
-                      ]}
-                    >
-                      <div className="activity-header">
-                        <Tag color="blue">{activity.item_type || '景点'}</Tag>
-                        <Text strong>{activity.title}</Text>
-                      </div>
-                      {activity.location && (
-                        <div className="activity-location">
-                          <EnvironmentOutlined /> {activity.location}
-                        </div>
-                      )}
-                      {activity.description && (
-                        <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
-                          {activity.description}
-                        </Paragraph>
-                      )}
-                      {activity.images && activity.images.length > 0 && (
-                        <div className="activity-images">
+                          <div className="activity-header">
+                            <Tag color="blue">{activity.item_type || '景点'}</Tag>
+                            <Text strong>{activity.title}</Text>
+                          </div>
+                          {activity.location && (
+                            <div className="activity-location">
+                              <EnvironmentOutlined /> {activity.location}
+                            </div>
+                          )}
+                          {activity.description && (
+                            <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
+                              {activity.description}
+                            </Paragraph>
+                          )}
+                          {activity.images && activity.images.length > 0 && (
+                            <div className="activity-images">
                           <img
                             src={activity.images[0]}
                             alt={activity.title}
@@ -815,9 +929,22 @@ const getDayActivities = (): DayActivity[] => {
                         </div>
                       )}
                     </Card>
-                  ))}
 
-                  {/* 添加活动按钮 */}
+                    {/* 显示路线信息 */}
+                    {segmentInfo && (
+                      <RouteSegment
+                        from={segmentInfo.from}
+                        to={segmentInfo.to}
+                        distance={segmentInfo.distance}
+                        duration={segmentInfo.duration}
+                        mode={segmentInfo.mode}
+                      />
+                    )}
+                  </React.Fragment>
+                    );
+                  })}
+
+                {/* 添加活动按钮 */}
                   <Button
                     type="dashed"
                     block
@@ -849,6 +976,9 @@ const getDayActivities = (): DayActivity[] => {
           markers={getMapMarkers()}
           center={getMapCenter()}
           zoom={12}
+          viewMode="day"
+          currentDay={activeDay + 1}
+          routeSegments={routeSegments}
         />
 
         {/* 地图控制按钮 */}
@@ -1053,9 +1183,9 @@ const getDayActivities = (): DayActivity[] => {
         )}
       </Modal>
 
-      {/* 天气预览弹窗（15日） */}
+      {/* 天气预览弹窗 */}
       <Modal
-        title={`${plan?.destination || ''} 天气预报（近15日）`}
+        title={`${plan?.destination || ''} 天气预报`}
         open={weatherModalVisible}
         onCancel={() => setWeatherModalVisible(false)}
         footer={null}
@@ -1063,17 +1193,31 @@ const getDayActivities = (): DayActivity[] => {
       >
         <div className="weather-preview-content">
           {weatherData.length > 0 ? (
-            <div className="weather-grid">
-              {weatherData.map((weather, index) => (
-                <Card key={index} className="weather-preview-item" size="small">
-                  <div className="weather-date">{weather.date.slice(5)}</div>
-                  <div className="weather-temp">
-                    {weather.dayTemp}°/{weather.nightTemp}°
+            <>
+              <div style={{ marginBottom: 12, color: '#666' }}>
+                行程日期：{plan?.start_date?.slice(0, 10)} 至 {plan?.end_date?.slice(0, 10)}（共 {plan?.duration_days} 天）
+                {weatherData[0]?.dateReason && (
+                  <div style={{ marginTop: 4, fontSize: 12 }}>
+                    {weatherData[0]?.dateMode === 'travel_date' ? (
+                      <span style={{ color: '#52c41a' }}>✓ 显示行程期间天气</span>
+                    ) : (
+                      <span style={{ color: '#1890ff' }}>显示近期天气：{weatherData[0]?.dateReason}</span>
+                    )}
                   </div>
-                  <div className="weather-condition">{weather.dayWeather}</div>
-                </Card>
-              ))}
-            </div>
+                )}
+              </div>
+              <div className="weather-grid">
+                {weatherData.map((weather, index) => (
+                  <Card key={index} className="weather-preview-item" size="small">
+                    <div className="weather-date">{weather.date.slice(5)}</div>
+                    <div className="weather-temp">
+                      {weather.dayTemp}°/{weather.nightTemp}°
+                    </div>
+                    <div className="weather-condition">{weather.dayWeather}</div>
+                  </Card>
+                ))}
+              </div>
+            </>
           ) : (
             <Empty description="暂无天气数据" />
           )}

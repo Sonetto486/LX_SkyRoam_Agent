@@ -1,42 +1,75 @@
 /* 日期范围编辑器样式 */
 .date-range-editor .ant-modal-body {
   padding: 24px;
+  background: var(--bg-soft);
+}
+
+.date-range-editor .ant-modal-content {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.date-range-editor .ant-modal-header {
+  background: transparent;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.date-range-editor .ant-modal-title {
+  color: var(--text-strong);
+}
+
+.date-range-editor .ant-modal-close-x {
+  color: var(--text);
 }
 
 .date-range-editor .ant-form-item-label > label {
   font-weight: 500;
+  color: var(--text);
 }
 
 .date-range-editor .ant-picker {
   border-radius: 6px;
   width: 100%;
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
 }
 
 .date-range-editor .ant-picker-range {
   border-radius: 6px;
 }
 
+.date-range-editor .ant-picker-input > input {
+  color: var(--text) !important;
+}
+
 .date-range-editor .ant-input-number {
   border-radius: 6px;
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+}
+
+.date-range-editor .ant-input-number input {
+  color: var(--text) !important;
 }
 
 .date-range-editor .ant-input-number-group-addon {
-  background: #fafafa;
+  background: var(--overlay);
   border-radius: 0 6px 6px 0;
+  color: var(--text-soft);
 }
 
 /* 日期选择器图标 */
 .date-range-editor .ant-picker-suffix {
-  color: #1890ff;
+  color: var(--accent-b);
 }
 
 /* 天数显示 */
 .date-range-editor .ant-input-number-disabled {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--overlay);
+  color: var(--text);
 }
 
 .date-range-editor .ant-input-number-disabled input {
-  color: #333;
+  color: var(--text);
   font-weight: 500;
 }

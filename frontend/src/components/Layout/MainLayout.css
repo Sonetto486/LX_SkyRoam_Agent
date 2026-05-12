@@ -1,8 +1,161 @@
 /* MainLayout 样式 */
+
+/* 左侧边栏样式 - 强制覆盖 Ant Design 默认样式 */
+.main-layout-sider,
+.main-layout-sider.ant-layout-sider,
+.ant-layout-sider.main-layout-sider {
+  background: var(--bg-soft) !important;
+  background-color: var(--bg-soft) !important;
+}
+
+.main-layout-sider .ant-layout-sider-children,
+.ant-layout-sider-children {
+  background: var(--bg-soft) !important;
+  background-color: var(--bg-soft) !important;
+}
+
+/* 强制覆盖 Ant Design 内部样式 */
+.ant-layout-sider-dark,
+.ant-layout-sider-light {
+  background: var(--bg-soft) !important;
+  background-color: var(--bg-soft) !important;
+}
+
+.main-layout-sider {
+  box-shadow: 2px 0 8px var(--shadow-color);
+}
+
+.main-layout-sider.ant-layout-sider-collapsed .logo-text {
+  display: none;
+}
+
+.ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-soft) !important;
+}
+
+/* Logo 区域 */
+.logo {
+  padding: 24px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 16px;
+}
+
+.logo-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-b) 0%, var(--accent-a) 100%);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px var(--glow-color);
+}
+
+.logo-text {
+  margin-top: 16px;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* 创建按钮区域 */
+.create-btn-wrapper {
+  padding: 0 16px 16px;
+}
+
+.create-btn {
+  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 600;
+  padding: 12px 16px;
+}
+
+.create-btn:hover {
+  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%) !important;
+}
+
+/* 菜单样式 */
+.main-layout-menu {
+  background: transparent !important;
+  border-right: none !important;
+  flex: 1;
+}
+
+.main-layout-menu .ant-menu-item {
+  margin: 8px 16px !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+}
+
+.main-layout-menu .ant-menu-item:hover {
+  background: var(--overlay) !important;
+  color: var(--accent-a) !important;
+}
+
+.main-layout-menu .ant-menu-item-selected {
+  background: var(--overlay) !important;
+  color: var(--accent-a) !important;
+}
+
+.main-layout-menu .ant-menu-item .anticon {
+  color: inherit;
+}
+
+/* 子菜单样式 */
+.main-layout-menu .ant-menu-submenu-title {
+  margin: 8px 16px !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+}
+
+.main-layout-menu .ant-menu-submenu-title:hover {
+  background: var(--overlay) !important;
+  color: var(--accent-a) !important;
+}
+
+.main-layout-menu .ant-menu-sub {
+  background: transparent !important;
+}
+
+/* 主题切换按钮 */
+.sider-theme-toggle {
+  padding: 16px;
+  border-top: 1px solid var(--border-soft);
+  margin-top: auto;
+}
+
+.sider-theme-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: var(--text) !important;
+  background: var(--overlay) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+  padding: 8px 16px;
+  height: auto;
+}
+
+.sider-theme-btn:hover {
+  background: var(--border-soft) !important;
+  border-color: var(--accent-a) !important;
+  color: var(--accent-a) !important;
+}
+
+/* 内容区布局 */
 .site-layout {
   flex: 1;
   display: flex;
   flex-direction: column;
+  background: var(--bg);
 }
 
 .site-layout .ant-layout-header {
@@ -10,83 +163,30 @@
   padding: 0 24px;
 }
 
-.site-layout .ant-layout-content {
+.site-layout-content {
   flex: 1;
   padding: 24px;
-  margin: 0;
+  margin: 24px;
   min-height: 280px;
-  background: #f0f2f5;
+  background: var(--bg-soft);
   border-radius: 8px;
+  overflow: auto;
 }
 
 /* 响应式布局 */
 @media (max-width: 768px) {
-  .site-layout .ant-layout-content {
+  .site-layout-content {
     padding: 16px;
     margin: 16px;
   }
-}
 
-/* 左侧边栏样式 */
-.ant-layout-sider {
-  background: #0f172a !important;
-}
+  .logo {
+    padding: 16px;
+  }
 
-.ant-layout-sider-children {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-/* Logo 区域 */
-.logo {
-  padding: 24px;
-  text-align: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 16px;
-}
-
-/* 菜单样式 */
-.ant-menu-dark {
-  background: #0f172a !important;
-  border-right: none !important;
-}
-
-.ant-menu-dark .ant-menu-item {
-  margin: 8px 16px !important;
-  border-radius: 8px !important;
-}
-
-.ant-menu-dark .ant-menu-item-selected {
-  background: rgba(102, 126, 234, 0.2) !important;
-  color: #667eea !important;
-}
-
-.ant-menu-dark .ant-menu-item:hover {
-  background: rgba(102, 126, 234, 0.1) !important;
-  color: #667eea !important;
-}
-
-/* 子菜单样式 */
-.ant-menu-dark .ant-menu-submenu-title {
-  margin: 8px 16px !important;
-  border-radius: 8px !important;
-}
-
-.ant-menu-dark .ant-menu-submenu-title:hover {
-  background: rgba(102, 126, 234, 0.1) !important;
-  color: #667eea !important;
-}
-
-/* 按钮样式 */
-.ant-btn-danger {
-  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%) !important;
-  border: none !important;
-  color: #fff !important;
-}
-
-.ant-btn-danger:hover {
-  background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%) !important;
+  .create-btn-wrapper {
+    padding: 0 8px 8px;
+  }
 }
 
 /* 滚动条样式 */
@@ -96,15 +196,32 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--overlay);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--border);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--text-soft);
+}
+
+/* 侧边栏折叠触发器样式 */
+.ant-layout-sider-trigger {
+  background: var(--bg-soft) !important;
+  color: var(--text) !important;
+  border-top: 1px solid var(--border-soft);
+}
+
+.ant-layout-sider-trigger:hover {
+  background: var(--overlay) !important;
+  color: var(--accent-a) !important;
+}
+
+/* 侧边栏底部区域 */
+.ant-layout-sider-children > *:last-child {
+  background: var(--bg-soft) !important;
 }

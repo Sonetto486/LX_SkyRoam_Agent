@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 from loguru import logger
@@ -15,14 +16,38 @@ from app.tools.amap_rest_client import amap_rest_client
 from app.tools.city_resolver import CityResolver
 from app.tools.unified_map_service import UnifiedMapService
 from app.tools.baidu_maps_integration import (
-    map_directions, 
-    map_search_places, 
+    map_directions,
+    map_search_places,
     map_geocode,
     map_weather
 )
 # from app.services.web_scraper import WebScraper  # 已移除爬虫功能
 from app.services.xhs_api_client import XHSAPIClient
 from app.core.redis import get_cache, set_cache, cache_key
+
+
+def clean_address(address: str) -> str:
+    """清理地址中的重复街道名称
+
+    高德地图有时会返回重复的街道名称，如：
+    "北京街道北京街道北京街道北京街道北京街道府前路1号"
+    这个函数会清理这类重复。
+    """
+    if not address:
+        return address
+
+    # 移除重复的街道名称（如"北京街道北京街道"）
+    # 匹配模式：任意字符+街道，重复多次
+    cleaned = re.sub(r'([^，。；街道镇乡]+(?:街道|镇|乡))\1+', r'\1', address)
+
+    # 如果地址以重复的街道名开头，进一步清理
+    # 例如 "北京街道北京街道府前路1号" -> "府前路1号"
+    parts = cleaned.split('街道')
+    if len(parts) > 2:
+        # 只保留最后一个街道之后的内容
+        cleaned = '街道'.join(parts[-2:]) if parts[-2] else parts[-1]
+
+    return cleaned
 
 
 class DataCollector:
@@ -429,7 +454,7 @@ class DataCollector:
                             "description": place.get("description", "热门景点"),
                             "price": "免费",  # 默认值，实际应从place数据中提取
                             "rating": place.get("rating", 4.5),
-                            "address": place.get("address", ""),
+                            "address": clean_address(place.get("address", "")),
                             "coordinates": place.get("coordinates", {}),
                             "opening_hours": "全天开放",
                             "source": place.get("source", "地图API")
@@ -452,7 +477,7 @@ class DataCollector:
                             "description": museum.get("description", "文化景点"),
                             "price": "免费",
                             "rating": museum.get("rating", 4.3),
-                            "address": museum.get("address", ""),
+                            "address": clean_address(museum.get("address", "")),
                             "coordinates": museum.get("coordinates", {}),
                             "opening_hours": "09:00-17:00",
                             "source": museum.get("source", "地图API")

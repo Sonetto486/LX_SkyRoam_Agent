@@ -2541,6 +2541,21 @@ class PlanGenerator:
                 raw_data.get("xiaohongshu_notes", []) if raw_data else [], plan.destination
             )
 
+            # 尝试从RAG向量数据库检索相关攻略
+            rag_context = ""
+            try:
+                from app.services.rag_retriever import get_rag_retriever
+                rag_retriever = get_rag_retriever()
+                rag_context = rag_retriever.build_rag_context(
+                    destination=plan.destination,
+                    duration_days=total_days,
+                    preferences=preferences
+                )
+                if rag_context:
+                    logger.info(f"成功从RAG检索到{plan.destination}的攻略数据")
+            except Exception as e:
+                logger.warning(f"RAG检索失败，将使用传统数据源: {e}")
+
             def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
                 budget_info = (
                     f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
@@ -2562,6 +2577,11 @@ class PlanGenerator:
                     "6. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
                     "7. 不要凭空捏造不存在的地点，优先使用小红书数据中的景点信息。"
                 )
+                # 构建RAG上下文部分
+                rag_section = ""
+                if rag_context:
+                    rag_section = f"【RAG检索 - 真实旅行攻略参考】：\n{rag_context}\n"
+
                 user_prompt = f"""
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
 - 目的地：{plan.destination}
@@ -2572,6 +2592,7 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
+{rag_section}
 【主要数据源 - 小红书真实体验分享】：
 {notes_str}
 
@@ -2583,8 +2604,9 @@ class PlanGenerator:
 
 重要提示：
 1. 必须优先使用小红书数据中的景点和体验，这是主要数据源；
-2. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据；
-3. 确保推荐的景点来自小红书用户的真实分享，保证行程的真实性和可操作性。
+2. RAG检索的攻略数据来自真实旅行者的经验分享，请重点参考；
+3. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据；
+4. 确保推荐的景点来自小红书用户的真实分享，保证行程的真实性和可操作性。
 
 请返回JSON对象，字段与示例一致，estimated_cost根据已知信息估算：{{
   "day": {day},

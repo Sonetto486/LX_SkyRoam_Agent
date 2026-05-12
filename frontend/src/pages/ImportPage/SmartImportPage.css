@@ -1,43 +1,260 @@
-/* 智能导入页面样式 —— 强制所有文字为黑色，最高优先级 */
+/* 智能导入页面样式 */
 .smart-import-page {
-  padding: 0;
-  color: #000 !important; /* 全局文字黑色 */
+  min-height: 100vh;
+  padding: 24px;
+  padding-bottom: 100px;
+  background: var(--bg);
+  color: var(--text);
 }
 
-/* 强制覆盖 Ant Design 所有组件文字颜色 */
-.smart-import-page p,
-.smart-import-page span,
-.smart-import-page div,
-.smart-import-page .ant-typography,
-.smart-import-page .ant-card-head-title,
-.smart-import-page .ant-card-body,
-.smart-import-page .ant-collapse-header,
-.smart-import-page .ant-collapse-content-box,
-.smart-import-page .ant-table-cell,
-.smart-import-page .ant-tag {
-  color: #060313 !important; /* 所有文本强制纯黑 */
+/* 页面容器背景 */
+.smart-import-page .page-container {
+  background: var(--bg);
+}
+
+/* 覆盖 Ant Design 组件文字颜色 */
+.smart-import-page .ant-typography {
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-typography.ant-typography-secondary {
+  color: var(--text-soft) !important;
+}
+
+.smart-import-page .ant-card {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 12px !important;
+}
+
+.smart-import-page .ant-card-head {
+  background: transparent !important;
+  border-bottom-color: var(--border-soft) !important;
+}
+
+.smart-import-page .ant-card-head-title {
+  color: var(--text-strong) !important;
+}
+
+.smart-import-page .ant-card-body {
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-card-inner .ant-card-head-title {
+  color: var(--text-strong) !important;
+}
+
+.smart-import-page .ant-card-type-inner {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
 }
 
 .import-methods {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 24px;
-  margin: 32px 0;
+  margin-bottom: 24px;
 }
 
 .import-card {
-  border-radius: 8px !important;
+  border-radius: 12px !important;
   transition: all 0.3s ease;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .import-card:hover {
-  box-shadow: 0 4px 16px rgba(255, 14, 14, 0.1) !important;
+  box-shadow: 0 4px 16px var(--shadow-color) !important;
+  border-color: var(--accent-a) !important;
 }
 
 .submit-section {
-  margin-top: 40px;
+  margin-top: 24px;
   display: flex;
   justify-content: center;
+}
+
+/* 地点卡片样式 */
+.location-card {
+  border-radius: 8px !important;
+  transition: all 0.3s ease;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  overflow: hidden;
+}
+
+.location-card-checked {
+  border: 1px solid var(--accent-b) !important;
+  opacity: 1;
+}
+
+.location-card:not(.location-card-checked) {
+  opacity: 0.6;
+}
+
+.location-card:hover {
+  box-shadow: 0 4px 16px var(--shadow-color) !important;
+}
+
+.location-card .ant-card-body {
+  background: transparent !important;
+}
+
+.location-name {
+  margin: 0;
+  color: var(--text-strong) !important;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+/* 引用区域 */
+.location-excerpt {
+  background: var(--overlay) !important;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.location-excerpt .ant-typography {
+  color: var(--text-soft) !important;
+}
+
+/* 工具栏区域 */
+.toolbar-section {
+  background: var(--overlay) !important;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+}
+
+.toolbar-section .ant-checkbox-wrapper {
+  color: var(--text) !important;
+}
+
+/* 底部操作栏 */
+.bottom-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg-soft) !important;
+  padding: 16px 40px;
+  box-shadow: 0 -4px 12px var(--shadow-color);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 100;
+}
+
+.bottom-action-bar .selected-count {
+  color: var(--text);
+  margin-right: 24px;
+  font-size: 16px;
+}
+
+.bottom-action-bar .selected-count strong {
+  color: var(--accent-b) !important;
+  font-size: 20px;
+}
+
+/* 标签页样式 */
+.smart-import-page .ant-tabs-tab {
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-b) !important;
+}
+
+.smart-import-page .ant-tabs-ink-bar {
+  background: var(--accent-b) !important;
+}
+
+/* 天数标题 */
+.day-title {
+  border-bottom: 2px solid var(--accent-b) !important;
+  display: inline-block;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  color: var(--text-strong) !important;
+}
+
+/* 输入框样式 */
+.smart-import-page .ant-input {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-input::placeholder {
+  color: var(--text-soft) !important;
+}
+
+.smart-import-page .ant-input-affix-wrapper {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.smart-import-page .ant-input-affix-wrapper input {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-input-affix-wrapper .ant-input-suffix {
+  color: var(--text-soft) !important;
+}
+
+/* TextArea 样式 */
+.smart-import-page .ant-input textarea {
+  background: var(--bg-soft) !important;
+  color: var(--text) !important;
+}
+
+/* 按钮样式 */
+.smart-import-page .ant-btn-default {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-btn-default:hover {
+  border-color: var(--accent-b) !important;
+  color: var(--accent-b) !important;
+}
+
+/* Checkbox 样式 */
+.smart-import-page .ant-checkbox-wrapper {
+  color: var(--text) !important;
+}
+
+.smart-import-page .ant-checkbox-inner {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.smart-import-page .ant-checkbox-checked .ant-checkbox-inner {
+  background: var(--accent-b) !important;
+  border-color: var(--accent-b) !important;
+}
+
+/* Tag 样式 */
+.smart-import-page .ant-tag {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+/* Upload 样式 */
+.smart-import-page .ant-upload {
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.smart-import-page .ant-upload:hover {
+  border-color: var(--accent-b) !important;
 }
 
 /* 响应式布局 */
@@ -45,8 +262,17 @@
   .import-methods {
     grid-template-columns: 1fr;
   }
-  
+
   .import-card {
     width: 100%;
+  }
+
+  .smart-import-page {
+    padding: 16px;
+    padding-bottom: 100px;
+  }
+
+  .bottom-action-bar {
+    padding: 12px 16px;
   }
 }

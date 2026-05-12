@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Button, Dropdown, Space } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  HomeOutlined, 
-  CalendarOutlined, 
-  UserOutlined, 
-  SettingOutlined, 
-  PlusOutlined, 
+import {
+  HomeOutlined,
+  CalendarOutlined,
+  UserOutlined,
+  SettingOutlined,
+  PlusOutlined,
   LogoutOutlined,
   ImportOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  SunOutlined,
+  MoonOutlined
 } from '@ant-design/icons';
 // 临时注释掉 AuthContext 导入，实际项目中需要创建该文件
 // import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import './MainLayout.css';
 
 const { Sider, Content } = Layout;
@@ -21,6 +24,7 @@ const { SubMenu } = Menu;
 const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isDark, toggleTheme } = useTheme();
   // 临时模拟 logout，实际项目中需要使用 useAuth
   const logout = () => {
     console.log('Logout');
@@ -67,80 +71,52 @@ const MainLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       {/* 左侧边栏 */}
-      <Sider 
-        collapsible 
-        collapsed={collapsed} 
+      <Sider
+        collapsible
+        collapsed={collapsed}
         onCollapse={setCollapsed}
-        style={{ 
-          backgroundColor: '#0f172a',
-          boxShadow: '2px 0 8px rgba(0, 0, 0, 0.15)'
-        }}
+        className="main-layout-sider"
       >
         {/* 品牌 Logo */}
-        <div className="logo" style={{ padding: '24px', textAlign: 'center' }}>
-          <div style={{ 
-            width: collapsed ? 48 : 120, 
-            height: 48, 
-            borderRadius: '50%', 
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            margin: '0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)'
-          }}>
-            <img 
-              src="/images/logo.png" 
-              alt="Logo" 
-              style={{ 
-                width: collapsed ? 24 : 32, 
-                height: collapsed ? 24 : 32 
-              }} 
+        <div className="logo">
+          <div className="logo-icon">
+            <img
+              src="/images/logo.png"
+              alt="Logo"
+              style={{
+                width: collapsed ? 24 : 32,
+                height: collapsed ? 24 : 32
+              }}
             />
           </div>
           {!collapsed && (
-            <div style={{ 
-              marginTop: 16, 
-              color: '#fff', 
-              fontSize: 16, 
-              fontWeight: 600 
-            }}>
+            <div className="logo-text">
               洛曦 云旅Agent
             </div>
           )}
         </div>
-        
+
         {/* 核心操作区 */}
-        <div style={{ padding: '0 16px 16px' }}>
+        <div className="create-btn-wrapper">
           <Dropdown menu={createMenu} placement="bottomRight">
-            <Button 
-              type="primary" 
-              danger 
+            <Button
+              type="primary"
+              danger
               ghost
               block
               icon={<PlusOutlined />}
-              style={{ 
-                background: 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)',
-                border: 'none',
-                color: '#fff',
-                fontWeight: 600,
-                padding: '12px 16px'
-              }}
+              className="create-btn"
             >
               {!collapsed && '创建行程'}
             </Button>
           </Dropdown>
         </div>
-        
+
         {/* 导航菜单栏 */}
-        <Menu 
-          theme="dark" 
-          mode="inline" 
-          selectedKeys={[getSelectedKey()]} 
-          style={{ 
-            backgroundColor: '#0f172a',
-            borderRight: 'none'
-          }}
+        <Menu
+          mode="inline"
+          selectedKeys={[getSelectedKey()]}
+          className="main-layout-menu"
         >
           <Menu.Item key="1" icon={<HomeOutlined />} onClick={() => navigate('/discover')}>
             发现
@@ -174,18 +150,24 @@ const MainLayout: React.FC = () => {
             </SubMenu>
           )}
         </Menu>
+
+        {/* 主题切换按钮 */}
+        <div className="sider-theme-toggle">
+          <Button
+            type="text"
+            icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+            onClick={toggleTheme}
+            className="sider-theme-btn"
+            title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+          >
+            {!collapsed && (isDark ? '日间模式' : '夜间模式')}
+          </Button>
+        </div>
       </Sider>
-      
+
       <Layout className="site-layout">
         {/* 主内容区 */}
-        <Content style={{ 
-          margin: '24px',
-          padding: '24px',
-          minHeight: 280,
-          background: '#f0f2f5',
-          borderRadius: 8,
-          overflow: 'auto'
-        }}>
+        <Content className="site-layout-content">
           <Outlet />
         </Content>
       </Layout>

@@ -1,8 +1,8 @@
 .topic-library-page {
   min-height: 100vh;
   padding: 32px 40px 60px;
-  background: #16111d;
-  color: rgba(255, 255, 255, 0.9);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .topic-library-header {
@@ -12,20 +12,29 @@
 .topic-library-back {
   padding-left: 0 !important;
   margin-bottom: 12px;
-  color: rgba(255, 255, 255, 0.8) !important;
+  color: var(--text) !important;
+}
+
+.topic-library-back:hover {
+  color: var(--accent-a) !important;
 }
 
 .topic-library-card {
-  background: #251d32 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 16px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--text);
   height: 100%;
+}
+
+.topic-library-card .ant-card-body {
+  background: transparent !important;
+  color: var(--text) !important;
 }
 
 .topic-library-card h4,
 .topic-library-card .ant-typography {
-  color: #fff !important;
+  color: var(--text-strong) !important;
 }
 
 .topic-library-image {
@@ -46,4 +55,18 @@
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 8px;
+}
+
+.topic-library-tags .ant-tag {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .topic-library-page {
+    padding: 16px;
+    padding-bottom: 60px;
+  }
 }
