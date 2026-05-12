@@ -9,6 +9,7 @@ pydantic[email]==2.5.0
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
+asyncpg==0.30.0
 redis==5.0.1
 
 # Async Tasks
@@ -40,6 +41,7 @@ playwright==1.40.0
 pandas==2.1.4
 numpy==1.26.2
 python-dateutil==2.8.2
+Levenshtein==0.25.1
 
 # Image Processing
 Pillow==10.1.0
@@ -61,7 +63,6 @@ prometheus-client==0.19.0
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2
 
 # Development
 black==23.11.0
@@ -69,15 +70,24 @@ isort==5.12.0
 flake8==6.1.0
 mypy==1.7.1
 
-asyncpg==0.30.0
+# System & Performance
 psutil==7.1.0
 
-# mcp-server-baidu-maps
-
-# 爬虫
+# Retry & Resilience
 tenacity==8.2.2
-typer>=0.12.3
-pyhumps==3.8.0
 
+# CLI Tools
+typer>=0.12.3
+
+# Data Transformation
+pyhumps==3.8.0
 humps
+
+# Database (Additional)
 aiomysql==0.1.1
+
+# MCP Server
+mcp-server-baidu-maps
+
+# Additional dependencies for route optimization and map services
+geographiclib==2.0
