@@ -61,20 +61,77 @@ const ProfilePage: React.FC = () => {
     return 0;
   };
 
-  const fetchTravelStats = async (favoriteCount: number) => {
+  const formatDate = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  };
+
+  const resolveImage = (images: any, fallbackSeed: string) => {
+    if (Array.isArray(images) && images.length > 0) {
+      const first = images[0];
+      if (typeof first === 'string') return first;
+      if (first?.url) return first.url;
+    }
+    return `https://picsum.photos/seed/${fallbackSeed}/400/300`;
+  };
+
+  const buildCollections = (plans: any[]) =>
+    plans.map((plan: any) => ({
+      id: plan.id,
+      name: plan.title || plan.destination || '未命名行程',
+      image: resolveImage(plan?.images, `plan-${plan.id}`),
+      description: plan.description || plan.destination || '暂无简介'
+    }));
+
+  const buildJournalsFromItems = (items: any[], fallbackPrefix: string) =>
+    items.map((item: any, index: number) => ({
+      id: item.id || index + 1,
+      title: item.title || item.location || '行程记录',
+      date: formatDate(item.start_time) || formatDate(item.created_at) || '',
+      content: item.description || item.item_type || '暂无内容',
+      image: resolveImage(item.images, `${fallbackPrefix}-${item.id || index}`)
+    }));
+
+  const fetchTravelPlansData = async (token: string | null) => {
+    const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
+    const response = await axios.get(`${baseURL}/travel-plans`, {
+      params: { skip: 0, limit: 1000 },
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    const plans = response.data?.plans || [];
+    const totalTrips = typeof response.data?.total === 'number' ? response.data.total : plans.length;
+
+    return { plans, totalTrips };
+  };
+
+  // 获取用户数据
+  const fetchUserProfile = async () => {
     try {
+      setLoading(true);
+      // 使用我们在 auth 工具中统一定义的 token key 获取 token
       const token = localStorage.getItem('auth_token');
       const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
 
-      const response = await axios.get(`${baseURL}/travel-plans`, {
-        params: { skip: 0, limit: 1000 },
+      // 调用获取当前用户信息接口
+      const response = await axios.get(`${baseURL}/users/me`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
 
-      const plans = response.data?.plans || [];
-      const totalTrips = typeof response.data?.total === 'number' ? response.data.total : plans.length;
+      const userData = response.data;
+      
+      // 合并后端返回的真实用户数据与行程/记录数据
+      const favoriteCount = Array.isArray(userData.favorite_locations)
+        ? userData.favorite_locations.length
+        : 0;
+
+      const { plans, totalTrips } = await fetchTravelPlansData(token);
 
       const destinationSet = new Set<string>();
       let totalDays = 0;
@@ -95,32 +152,40 @@ const ProfilePage: React.FC = () => {
         days: totalDays,
         favorites: favoriteCount,
       });
-    } catch (error) {
-      console.error('Failed to fetch travel stats', error);
-    }
-  };
 
-  // 获取用户数据
-  const fetchUserProfile = async () => {
-    try {
-      setLoading(true);
-      // 使用我们在 auth 工具中统一定义的 token key 获取 token
-      const token = localStorage.getItem('auth_token');
-      const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001/api/v1';
+      const collections = buildCollections(plans);
 
-      // 调用获取当前用户信息接口
-      const response = await axios.get(`${baseURL}/users/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+      const plansForItems = plans.slice(0, 3);
+      const itemResults = await Promise.allSettled(
+        plansForItems.map((plan: any) =>
+          axios.get(`${baseURL}/travel-plans/${plan.id}/items`, {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          })
+        )
+      );
+
+      const journalItems: any[] = [];
+      itemResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          const items = Array.isArray(result.value.data) ? result.value.data : [];
+          journalItems.push(...items);
+        } else {
+          const fallbackPlan = plansForItems[index];
+          if (fallbackPlan) {
+            journalItems.push({
+              id: fallbackPlan.id,
+              title: fallbackPlan.title || fallbackPlan.destination || '行程记录',
+              start_time: fallbackPlan.start_date,
+              description: fallbackPlan.description,
+              images: []
+            });
+          }
         }
       });
 
-      const userData = response.data;
-      
-      // 合并后端返回的真实用户数据与暂时的Mock展示数据
-      const favoriteCount = Array.isArray(userData.favorite_locations)
-        ? userData.favorite_locations.length
-        : 0;
+      const journals = buildJournalsFromItems(journalItems.slice(0, 6), 'journal');
 
       setUser({
         id: userData.id.toString(),
@@ -131,39 +196,9 @@ const ProfilePage: React.FC = () => {
         bio: userData.photo_mood || userData.preferences || '热爱旅行，喜欢探索世界各地的文化和风景',
         favorite_locations: userData.favorite_locations || [],
         highlighted_locations: userData.highlighted_locations || [],
-        collections: [
-          {
-            id: 1,
-            name: '日本樱花季',
-            image: 'https://picsum.photos/seed/japan1/400/300',
-            description: '2026年3月东京、京都樱花之旅'
-          },
-          {
-            id: 2,
-            name: '欧洲文化之旅',
-            image: 'https://picsum.photos/seed/europe/400/300',
-            description: '2026年6月巴黎、罗马、巴塞罗那'
-          }
-        ],
-        journals: [
-          {
-            id: 1,
-            title: '东京之行',
-            date: '2026-03-15',
-            content: '今天参观了浅草寺和东京晴空塔，天气非常好，拍了很多照片。',
-            image: 'https://picsum.photos/seed/tokyo/400/300'
-          },
-          {
-            id: 2,
-            title: '巴黎印象',
-            date: '2026-06-10',
-            content: '埃菲尔铁塔的夜景真的很美，卢浮宫的艺术珍品令人震撼。',
-            image: 'https://picsum.photos/seed/paris/400/300'
-          }
-        ]
+        collections,
+        journals
       });
-
-      fetchTravelStats(favoriteCount);
     } catch (error) {
       console.error('Failed to fetch user profile', error);
       message.error('获取个人信息失败，请确保已登录');
