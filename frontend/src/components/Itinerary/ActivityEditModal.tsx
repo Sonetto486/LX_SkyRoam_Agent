@@ -32,7 +32,7 @@ const FACILITY_OPTIONS = [
 ];
 
 interface Activity {
-  id?: number;
+  id?: number | string;
   title: string;
   description?: string;
   item_type: string;

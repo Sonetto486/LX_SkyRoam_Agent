@@ -66,6 +66,9 @@ class ItineraryOptimizer:
                 stats["items_moved"] = balance_result.get("items_moved", 0)
                 stats["days_balanced"] = balance_result.get("days_balanced", False)
 
+            # 3. 同步更新 selected_plan 和 generated_plans 中的景点数据
+            await self._sync_plan_json_data(plan)
+
             # 刷新计划数据
             await self.db.refresh(plan)
 
@@ -119,23 +122,42 @@ class ItineraryOptimizer:
                 logger.info(f"从数据库填充坐标: {item.title} -> ({detail.latitude}, {detail.longitude})")
                 continue
 
-            # 2. 使用地图服务地理编码
-            search_query = f"{plan.destination} {item.title}"
-            try:
-                geocode_result = await self.map_service.geocode(search_query, plan.destination)
-                if geocode_result:
-                    item.coordinates = {
-                        'lat': geocode_result['latitude'],
-                        'lng': geocode_result['longitude']
-                    }
-                    if not item.address:
-                        item.address = geocode_result.get('formatted_address', '')
-                    filled_count += 1
-                    logger.info(f"从地图服务填充坐标: {item.title} -> ({geocode_result['latitude']}, {geocode_result['longitude']})")
-                else:
-                    logger.warning(f"无法找到景点坐标: {item.title}")
-            except Exception as e:
-                logger.error(f"地理编码失败: {item.title}, 错误: {e}")
+            # 2. 清理景点名称（移除特殊字符和数字）
+            import re
+            clean_title = re.sub(r'[0-9]+', '', item.title)  # 移除数字
+            clean_title = re.sub(r'\s+', '', clean_title)  # 移除多余空格
+            clean_title = clean_title.strip()
+
+            # 3. 使用地图服务地理编码
+            # 尝试多种搜索策略
+            search_queries = [
+                f"{clean_title}",  # 只搜索景点名称（清理后）
+                f"{plan.destination}{clean_title}",  # 城市+景点名
+                f"{item.title}",  # 原始名称
+            ]
+
+            geocode_result = None
+            for query in search_queries:
+                try:
+                    logger.debug(f"尝试搜索: {query}")
+                    geocode_result = await self.map_service.geocode(query, plan.destination)
+                    if geocode_result:
+                        break
+                except Exception as e:
+                    logger.debug(f"搜索失败: {query}, 错误: {e}")
+                    continue
+
+            if geocode_result:
+                item.coordinates = {
+                    'lat': geocode_result['latitude'],
+                    'lng': geocode_result['longitude']
+                }
+                if not item.address:
+                    item.address = geocode_result.get('formatted_address', '')
+                filled_count += 1
+                logger.info(f"从地图服务填充坐标: {item.title} -> ({geocode_result['latitude']}, {geocode_result['longitude']})")
+            else:
+                logger.warning(f"无法找到景点坐标: {item.title}")
 
         if filled_count > 0:
             await self.db.commit()
@@ -321,6 +343,91 @@ class ItineraryOptimizer:
                     return d
 
         return None
+
+    async def _sync_plan_json_data(self, plan: TravelPlan):
+        """
+        同步更新 selected_plan 和 generated_plans 中的景点数据
+        确保前端显示的数据与数据库中的items保持一致
+        """
+        # 按日期分组所有items
+        items_by_date = {}
+        for item in plan.items:
+            date_str = item.start_time.strftime('%Y-%m-%d') if item.start_time else plan.start_date.strftime('%Y-%m-%d')
+            if date_str not in items_by_date:
+                items_by_date[date_str] = []
+            items_by_date[date_str].append(item)
+
+        # 更新 selected_plan
+        if plan.selected_plan and plan.selected_plan.get('daily_itineraries'):
+            logger.info("同步更新 selected_plan 中的景点数据")
+            for day_itinerary in plan.selected_plan['daily_itineraries']:
+                date_str = day_itinerary.get('date')
+                if date_str and date_str in items_by_date:
+                    # 更新当天的景点列表
+                    day_items = items_by_date[date_str]
+                    attractions = [
+                        item for item in day_items
+                        if item.item_type == 'attraction'
+                    ]
+
+                    # 更新 attractions 数组
+                    day_itinerary['attractions'] = [
+                        {
+                            'name': item.title,
+                            'address': item.address,
+                            'coordinates': item.coordinates,
+                            'type': item.details.get('type') if item.details else None,
+                            'score': item.details.get('score') if item.details else None,
+                            'description': item.description
+                        }
+                        for item in attractions
+                    ]
+
+                    logger.info(f"更新日期 {date_str} 的景点: {len(attractions)} 个")
+
+        # 更新 generated_plans
+        if plan.generated_plans:
+            logger.info("同步更新 generated_plans 中的景点数据")
+            for generated_plan in plan.generated_plans:
+                if generated_plan.get('daily_itineraries'):
+                    for day_itinerary in generated_plan['daily_itineraries']:
+                        date_str = day_itinerary.get('date')
+                        if date_str and date_str in items_by_date:
+                            day_items = items_by_date[date_str]
+                            attractions = [
+                                item for item in day_items
+                                if item.item_type == 'attraction'
+                            ]
+
+                            day_itinerary['attractions'] = [
+                                {
+                                    'name': item.title,
+                                    'address': item.address,
+                                    'coordinates': item.coordinates,
+                                    'type': item.details.get('type') if item.details else None,
+                                    'score': item.details.get('score') if item.details else None,
+                                    'description': item.description
+                                }
+                                for item in attractions
+                            ]
+
+        # 关键修复：重新赋值整个字段以触发SQLAlchemy更新检测
+        # SQLAlchemy只有检测到字段对象本身变化时才会更新数据库
+        # 直接修改字典的嵌套属性不会被检测到
+        if plan.selected_plan:
+            # 创建新的字典对象并重新赋值
+            updated_selected_plan = dict(plan.selected_plan)
+            plan.selected_plan = updated_selected_plan
+            logger.info("已触发 selected_plan 字段更新")
+
+        if plan.generated_plans:
+            # 创建新的列表对象并重新赋值
+            updated_generated_plans = list(plan.generated_plans)
+            plan.generated_plans = updated_generated_plans
+            logger.info("已触发 generated_plans 字段更新")
+
+        await self.db.commit()
+        logger.info("JSON数据同步完成")
 
     async def _group_items_by_date(self, plan: TravelPlan) -> Dict[str, List[TravelPlanItem]]:
         """按日期分组景点项目"""

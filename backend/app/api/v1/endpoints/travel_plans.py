@@ -4,7 +4,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from datetime import datetime, date, timedelta
 
 from app.core.database import get_async_db
@@ -1097,9 +1097,16 @@ async def optimize_travel_plan(
 from app.services.route_optimizer import RouteOptimizer
 
 
+class OptimizeRouteRequest(BaseModel):
+    """路线优化请求"""
+    date: Optional[str] = None  # 指定日期优化（YYYY-MM-DD格式）
+    start_point: Optional[Dict[str, Any]] = None  # 自定义起点（包含name和coordinates）
+
+
 @router.post("/{plan_id}/optimize-route")
 async def optimize_travel_route(
     plan_id: int,
+    request: OptimizeRouteRequest = OptimizeRouteRequest(),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1112,7 +1119,17 @@ async def optimize_travel_route(
         raise HTTPException(status_code=403, detail="无权优化该计划")
 
     optimizer = RouteOptimizer(db)
-    result = await optimizer.optimize_route(plan_id)
+
+    # 如果指定了日期，只优化那一天
+    if request.date:
+        result = await optimizer.optimize_single_day_route(
+            plan_id=plan_id,
+            date_str=request.date,
+            start_point=request.start_point
+        )
+    else:
+        # 否则优化整个行程
+        result = await optimizer.optimize_route(plan_id)
 
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("message", "路线优化失败"))

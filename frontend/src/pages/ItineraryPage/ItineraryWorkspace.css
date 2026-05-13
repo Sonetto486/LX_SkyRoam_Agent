@@ -2,7 +2,7 @@
 
 /* 布局 */
 .workspace-layout {
-  min-height: calc(100vh - 112px);
+  height: calc(100vh - 112px);
   background: var(--bg-soft);
   border-radius: 8px;
   overflow: hidden;
@@ -12,6 +12,7 @@
   background: var(--bg-soft) !important;
   border-right: 1px solid var(--border-soft);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .workspace-content {
@@ -81,6 +82,20 @@
   margin-bottom: 0;
 }
 
+/* 分类标签页样式 */
+.category-tabs .ant-tabs-nav {
+  margin-bottom: 16px;
+  background: transparent;
+}
+
+.category-tabs .ant-tabs-tab {
+  padding: 8px 16px;
+}
+
+.category-tabs .ant-tabs-content {
+  padding-bottom: 80px;
+}
+
 .day-label {
   font-weight: 500;
   color: var(--text);
@@ -104,8 +119,43 @@
 .activities-list {
   padding: 24px;
   padding-top: 16px;
+  padding-bottom: 100px;
 }
 
+/* 增强版活动卡片样式 */
+.enhanced-activity-card {
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.enhanced-activity-card:hover {
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
+  transform: translateY(-2px);
+}
+
+.enhanced-activity-card.hovered {
+  border: 2px solid var(--accent-a) !important;
+  box-shadow: 0 4px 16px var(--glow-color) !important;
+}
+
+.activity-detail-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.activity-expanded-details {
+  padding: 12px 0;
+}
+
+.detail-section {
+  margin-bottom: 12px;
+}
+
+/* 旧版活动卡片样式（保留兼容） */
 .activity-card {
   margin-bottom: 16px;
   transition: all 0.3s ease;
@@ -201,22 +251,25 @@
 /* 响应式布局 */
 @media (max-width: 1200px) {
   .workspace-sider {
-    width: 400px !important;
-    max-width: 400px !important;
+    width: 500px !important;
+    max-width: 500px !important;
   }
 }
 
 @media (max-width: 992px) {
   .workspace-layout {
     flex-direction: column !important;
+    height: auto;
+    min-height: calc(100vh - 112px);
   }
 
   .workspace-sider {
     width: 100% !important;
     max-width: 100% !important;
-    max-height: 60vh;
+    max-height: none;
     border-right: none !important;
     border-bottom: 1px solid var(--border-soft) !important;
+    overflow-y: auto;
   }
 
   .workspace-content {
@@ -252,8 +305,8 @@
     padding: 16px;
   }
 
-  .day-tabs {
-    padding: 0 16px;
+  .category-tabs .ant-tabs-tab {
+    padding: 6px 12px;
   }
 }
 
@@ -283,25 +336,25 @@
 }
 
 /* 标签页滚动条样式 */
-.day-tabs .ant-tabs-content {
+.workspace-sider {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 
-.day-tabs .ant-tabs-content::-webkit-scrollbar {
-  width: 6px;
+.workspace-sider::-webkit-scrollbar {
+  width: 8px;
 }
 
-.day-tabs .ant-tabs-content::-webkit-scrollbar-track {
+.workspace-sider::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.day-tabs .ant-tabs-content::-webkit-scrollbar-thumb {
+.workspace-sider::-webkit-scrollbar-thumb {
   background-color: var(--border);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 
-.day-tabs .ant-tabs-content::-webkit-scrollbar-thumb:hover {
+.workspace-sider::-webkit-scrollbar-thumb:hover {
   background-color: var(--text-soft);
 }
 

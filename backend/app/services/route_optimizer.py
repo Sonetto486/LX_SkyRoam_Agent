@@ -20,6 +20,121 @@ class RouteOptimizer:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def optimize_single_day_route(
+        self,
+        plan_id: int,
+        date_str: str,
+        start_point: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        优化单日路线
+
+        Args:
+            plan_id: 旅行计划ID
+            date_str: 日期字符串 (YYYY-MM-DD格式)
+            start_point: 自定义起点（包含name和coordinates）
+
+        Returns:
+            优化结果
+        """
+        # 获取旅行计划
+        plan = await self._get_plan(plan_id)
+        if not plan:
+            return {
+                "success": False,
+                "message": "旅行计划不存在",
+                "route_segments": []
+            }
+
+        # 获取指定日期的景点
+        items_by_date = await self._group_items_by_date(plan)
+        attractions = items_by_date.get(date_str, [])
+
+        if not attractions:
+            return {
+                "success": False,
+                "message": f"日期 {date_str} 没有景点数据",
+                "route_segments": []
+            }
+
+        if len(attractions) < 2:
+            logger.info(f"日期 {date_str} 只有 {len(attractions)} 个景点，无需优化")
+            return {
+                "success": True,
+                "message": "景点数量不足，无需优化",
+                "route_segments": []
+            }
+
+        logger.info(f"开始优化日期 {date_str} 的路线，共 {len(attractions)} 个景点")
+
+        # 如果提供了自定义起点，创建一个虚拟景点作为起点
+        if start_point and start_point.get("coordinates"):
+            start_attraction = TravelPlanItem(
+                id=-1,  # 临时ID
+                title=start_point.get("name", "起点"),
+                coordinates=start_point["coordinates"],
+                item_type="attraction"
+            )
+            # 将起点添加到景点列表开头
+            all_attractions = [start_attraction] + attractions
+        else:
+            all_attractions = attractions
+
+        # 检查所有景点是否都有坐标
+        valid_attractions = [
+            a for a in all_attractions
+            if a.coordinates and a.coordinates.get('lat') and a.coordinates.get('lng')
+        ]
+
+        if len(valid_attractions) < 2:
+            logger.warning(f"日期 {date_str} 有效坐标景点不足2个")
+            return {
+                "success": False,
+                "message": "有效坐标景点不足",
+                "route_segments": []
+            }
+
+        # 使用最近邻算法排序
+        ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
+
+        # 获取相邻景点间的路线信息
+        route_segments = await self._get_route_segments(ordered_attractions)
+
+        # 如果有自定义起点，移除起点相关的段
+        if start_point and start_point.get("coordinates"):
+            # 移除从起点到第一个景点的段（保留在返回结果中用于显示）
+            # 但不更新数据库中的景点顺序
+            pass
+        else:
+            # 更新数据库中的景点顺序（排除虚拟起点）
+            actual_attractions = [a for a in ordered_attractions if a.id != -1]
+            if actual_attractions:
+                await self._update_attractions_order(actual_attractions, date_str)
+
+        # 新增：同步景点顺序到JSON字段
+        await self._sync_attractions_order_to_json(plan, date_str, ordered_attractions)
+
+        # 计算总距离和时间
+        total_distance = sum(seg.get("distance", 0) for seg in route_segments)
+        total_duration = sum(seg.get("duration", 0) for seg in route_segments)
+
+        return {
+            "success": True,
+            "date": date_str,
+            "message": f"路线优化完成，共 {len(route_segments)} 个路段",
+            "route_segments": route_segments,
+            "total_distance": round(total_distance, 2),
+            "total_duration": round(total_duration, 0),
+            "ordered_items": [
+                {
+                    "id": item.id,
+                    "title": item.title,
+                    "coordinates": item.coordinates
+                }
+                for item in ordered_attractions if item.id != -1
+            ]
+        }
+
     async def optimize_route(self, plan_id: int) -> Dict[str, Any]:
         """
         优化整个行程的所有天路线
@@ -136,12 +251,44 @@ class RouteOptimizer:
         ]
 
         if len(valid_attractions) < 2:
-            logger.warning(f"日期 {date_str} 有效坐标景点不足2个")
-            return {
-                "success": False,
-                "message": "有效坐标景点不足",
-                "date": date_str
-            }
+            logger.warning(f"日期 {date_str} 有效坐标景点不足2个，尝试自动填充坐标")
+
+            # 自动调用一键优化填充坐标
+            from app.services.itinerary_optimizer import ItineraryOptimizer
+            optimizer = ItineraryOptimizer(self.db)
+
+            # 只填充坐标，不均衡行程
+            fill_result = await optimizer.fill_missing_coordinates(plan)
+
+            if fill_result.get("coordinates_filled", 0) > 0:
+                logger.info(f"自动填充了 {fill_result['coordinates_filled']} 个景点坐标")
+
+                # 刷新plan对象，重新获取坐标
+                await self.db.refresh(plan)
+
+                # 重新获取景点列表
+                items_by_date = await self._group_items_by_date(plan)
+                attractions = items_by_date.get(date_str, [])
+
+                # 重新检查坐标
+                valid_attractions = [
+                    a for a in attractions
+                    if a.coordinates and a.coordinates.get('lat') and a.coordinates.get('lng')
+                ]
+
+                if len(valid_attractions) < 2:
+                    logger.error(f"填充坐标后仍然不足2个景点")
+                    return {
+                        "success": False,
+                        "message": "有效坐标景点不足，无法优化",
+                        "date": date_str
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": "无法自动填充景点坐标",
+                    "date": date_str
+                }
 
         # 使用最近邻算法排序
         ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
@@ -257,7 +404,18 @@ class RouteOptimizer:
 
                 # 根据出行方式选择API
                 api_mode = "driving" if mode == "driving" else "transit"
-                routes = await amap_rest_client.get_directions(origin, destination, api_mode)
+
+                # 获取城市名称（从第一个景点的位置推断，或使用默认值）
+                city_name = "三亚"  # 默认城市
+                # 尝试从景点地址中提取城市
+                if from_attr.address:
+                    # 简单的城市提取逻辑
+                    for known_city in ["三亚", "北京", "上海", "广州", "深圳", "成都", "杭州", "西安", "重庆", "武汉"]:
+                        if known_city in from_attr.address:
+                            city_name = known_city
+                            break
+
+                routes = await amap_rest_client.get_directions(origin, destination, api_mode, city_name)
 
                 if routes and len(routes) > 0:
                     # 使用API返回的实际距离和时间
@@ -493,3 +651,80 @@ class RouteOptimizer:
 
         await self.db.commit()
         logger.info(f"行程 {plan.id} 已标记为路线优化完成")
+
+    async def _sync_attractions_order_to_json(
+        self,
+        plan: TravelPlan,
+        date_str: str,
+        ordered_attractions: List[TravelPlanItem]
+    ):
+        """
+        同步景点顺序到JSON字段（selected_plan 和 generated_plans）
+
+        Args:
+            plan: 旅行计划对象
+            date_str: 日期字符串
+            ordered_attractions: 排序后的景点列表
+        """
+        # 过滤掉虚拟起点（id=-1）
+        actual_attractions = [a for a in ordered_attractions if a.id != -1]
+
+        if not actual_attractions:
+            return
+
+        updated = False
+
+        # 更新 selected_plan
+        if plan.selected_plan and plan.selected_plan.get('daily_itineraries'):
+            for day_itinerary in plan.selected_plan['daily_itineraries']:
+                if day_itinerary.get('date') == date_str:
+                    # 按新顺序重建 attractions 数组
+                    day_itinerary['attractions'] = [
+                        {
+                            'name': item.title,
+                            'address': item.address,
+                            'coordinates': item.coordinates,
+                            'type': item.details.get('type') if item.details else None,
+                            'score': item.details.get('score') if item.details else None,
+                            'description': item.description
+                        }
+                        for item in actual_attractions
+                    ]
+                    updated = True
+                    logger.info(f"已同步 selected_plan 中 {date_str} 的景点顺序")
+                    break
+
+            # 触发字段更新
+            if updated:
+                plan.selected_plan = dict(plan.selected_plan)
+                logger.info("已触发 selected_plan 字段更新")
+
+        # 更新 generated_plans
+        if plan.generated_plans:
+            for generated_plan in plan.generated_plans:
+                if generated_plan.get('daily_itineraries'):
+                    for day_itinerary in generated_plan['daily_itineraries']:
+                        if day_itinerary.get('date') == date_str:
+                            day_itinerary['attractions'] = [
+                                {
+                                    'name': item.title,
+                                    'address': item.address,
+                                    'coordinates': item.coordinates,
+                                    'type': item.details.get('type') if item.details else None,
+                                    'score': item.details.get('score') if item.details else None,
+                                    'description': item.description
+                                }
+                                for item in actual_attractions
+                            ]
+                            updated = True
+                            logger.info(f"已同步 generated_plans 中 {date_str} 的景点顺序")
+                            break
+
+            # 触发字段更新
+            if updated:
+                plan.generated_plans = list(plan.generated_plans)
+                logger.info("已触发 generated_plans 字段更新")
+
+        if updated:
+            await self.db.commit()
+            logger.info("景点顺序JSON同步完成")

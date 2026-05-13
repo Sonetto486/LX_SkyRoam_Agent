@@ -330,9 +330,17 @@ class AmapRestClient:
         self,
         origin: str,
         destination: str,
-        mode: str = "transit"
+        mode: str = "transit",
+        city: str = "北京"
     ) -> List[Dict[str, Any]]:
-        """获取路线规划"""
+        """获取路线规划
+
+        Args:
+            origin: 起点坐标（格式：lng,lat）
+            destination: 终点坐标（格式：lng,lat）
+            mode: 交通模式（transit/driving）
+            city: 城市名称（用于公交查询）
+        """
         try:
             if not self.api_key:
                 logger.warning("高德地图API密钥未配置")
@@ -345,7 +353,7 @@ class AmapRestClient:
                     "key": self.api_key,
                     "origin": origin,
                     "destination": destination,
-                    "city": "北京",  # 可根据需要动态设置
+                    "city": city,  # 使用传入的城市参数
                     "output": "json"
                 }
             else:
@@ -355,16 +363,18 @@ class AmapRestClient:
                     "origin": origin,
                     "destination": destination,
                     "output": "json",
+                    "extensions": "all",  # 获取详细信息
                     "strategy": 0  # 推荐策略
                 }
 
+            logger.info(f"调用高德地图路线API: mode={mode}, city={city}")
             response = await self.http_client.get(url, params=params)
             response.raise_for_status()
 
             result = response.json()
 
             if result.get("status") != "1":
-                logger.warning(f"高德地图路线规划失败: {result.get('info', '未知错误')}")
+                logger.warning(f"高德地图路线规划失败: {result.get('info', '未知错误')}, status: {result.get('status')}")
                 return []
 
             return self._parse_directions_response(result, mode)
