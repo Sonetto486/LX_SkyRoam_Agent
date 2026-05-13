@@ -24,7 +24,9 @@ import {
   CopyOutlined,
   EyeOutlined,
   SwapOutlined,
-  SettingOutlined
+  SettingOutlined,
+  HomeOutlined,
+  CoffeeOutlined
 } from '@ant-design/icons';
 import MapComponent from '../../components/MapComponent/MapComponent';
 import WeatherCard from '../../components/Itinerary/WeatherCard';
@@ -325,20 +327,58 @@ const getDayActivities = (): DayActivity[] => {
 
     // 如果有selected_plan，用它来补充住宿、餐饮、交通等丰富信息
     const richData = plan.selected_plan?.daily_itineraries || plan.generated_plans?.[0]?.daily_itineraries;
+    const totalDays = richData?.length || 0;
 
     // 按日期排序，确保天数顺序正确，并转换为新的结构
     return Array.from(dayMap.entries())
       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-      .map(([date, items]) => {
+      .map(([date, items], dayIndex) => {
         // 从richData中查找当天的补充信息
         const dayRichData = richData?.find((day: any) => day.date === date);
+
+        // 判断是否需要显示交通信息
+        // 只过滤掉跨城市的出发/返程交通（如北京到三亚的航班）
+        // 保留旅游城市内部的交通信息（如三亚市内的公交、打车）
+        const shouldShowTransport = (() => {
+          if (!dayRichData?.transportation) return false;
+
+          // 检查是否是跨城市交通
+          const transport = dayRichData.transportation;
+          const stage = transport.stage;
+
+          // 如果明确标记为出发或返程阶段，则不显示
+          if (stage === 'departure' || stage === 'return') {
+            return false;
+          }
+
+          // 检查交通路线是否包含跨城市关键词
+          const primaryRoutes = transport.primary_routes || [];
+          for (const route of primaryRoutes) {
+            const routeName = route.name || route.route || '';
+            // 如果包含"到"字且涉及出发地，可能是跨城市交通
+            if (routeName.includes('到') && (
+              routeName.includes('北京') ||
+              routeName.includes('上海') ||
+              routeName.includes('广州') ||
+              routeName.includes('深圳')
+            )) {
+              // 检查是否是旅游城市内部的交通
+              const destination = plan.destination || '';
+              if (!routeName.includes(destination)) {
+                return false;
+              }
+            }
+          }
+
+          return true;
+        })();
 
         return {
           date,
           // 住宿信息（从richData获取）
           hotel: plan.selected_plan?.hotel || plan.generated_plans?.[0]?.hotel || null,
-          // 交通信息（从richData获取）
-          transportation: dayRichData?.transportation || null,
+          // 交通信息（过滤跨城市交通）
+          transportation: shouldShowTransport ? dayRichData?.transportation : null,
           // 日程时间轴（从richData获取）
           schedule: dayRichData?.schedule || [],
           // 餐饮推荐（从richData获取）
@@ -438,18 +478,45 @@ const getDayActivities = (): DayActivity[] => {
       console.log(`Processing day ${dayIndex}:`, day);
 
       // 判断是否需要显示交通信息
-      // 跳过第一天（出发交通）和最后一天（返程交通）
-      const shouldShowTransport = !(
-        (dayIndex === 0 && day.transportation?.stage === 'departure') ||
-        (dayIndex === totalDays - 1 && day.transportation?.stage === 'return')
-      );
+      // 只过滤掉跨城市的出发/返程交通，保留旅游城市内部的交通
+      const shouldShowTransport = (() => {
+        if (!day.transportation) return false;
+
+        const stage = day.transportation.stage;
+
+        // 如果明确标记为出发或返程阶段，则不显示
+        if (stage === 'departure' || stage === 'return') {
+          return false;
+        }
+
+        // 检查交通路线是否包含跨城市关键词
+        const primaryRoutes = day.transportation.primary_routes || [];
+        for (const route of primaryRoutes) {
+          const routeName = route.name || route.route || '';
+          // 如果包含"到"字且涉及主要城市，可能是跨城市交通
+          if (routeName.includes('到') && (
+            routeName.includes('北京') ||
+            routeName.includes('上海') ||
+            routeName.includes('广州') ||
+            routeName.includes('深圳')
+          )) {
+            // 检查是否是旅游城市内部的交通
+            const destination = plan.destination || '';
+            if (!routeName.includes(destination)) {
+              return false;
+            }
+          }
+        }
+
+        return true;
+      })();
 
       // 返回分组数据结构
       return {
         date,
         // 住宿信息（所有天都可以访问，用于路径优化）
         hotel: planData.hotel || null,
-        // 交通信息（跳过出发和返程交通）
+        // 交通信息（过滤跨城市交通）
         transportation: shouldShowTransport ? day.transportation : null,
         // 日程时间轴（所有活动）
         schedule: day.schedule || [],
@@ -1014,44 +1081,125 @@ const getDayActivities = (): DayActivity[] => {
                   </Space>
                 }
               >
-                {/* 分组展示 */}
+                {/* 分类标签页 */}
                 <div className="activities-list">
-                  {/* 日程时间轴 - 显示在最上方 */}
-                  {day.schedule && day.schedule.length > 0 && (
-                    <DayScheduleSection schedule={day.schedule} />
-                  )}
+                  <Tabs
+                    defaultActiveKey="schedule"
+                    className="category-tabs"
+                    size="small"
+                  >
+                    {/* 日程时间轴 */}
+                    <Tabs.TabPane
+                      key="schedule"
+                      tab={
+                        <Space size={4}>
+                          <ClockCircleOutlined />
+                          <span>今日日程</span>
+                          {day.schedule && day.schedule.length > 0 && (
+                            <Tag color="blue" style={{ marginLeft: 4 }}>{day.schedule.length}</Tag>
+                          )}
+                        </Space>
+                      }
+                    >
+                      {day.schedule && day.schedule.length > 0 ? (
+                        <DayScheduleSection schedule={day.schedule} />
+                      ) : (
+                        <Empty description="暂无日程安排" style={{ padding: '40px 0' }} />
+                      )}
+                    </Tabs.TabPane>
 
-                  {/* 住宿信息 */}
-                  {day.hotel && <HotelSection hotel={day.hotel} />}
+                    {/* 景点列表 */}
+                    <Tabs.TabPane
+                      key="attractions"
+                      tab={
+                        <Space size={4}>
+                          <CameraOutlined />
+                          <span>景点列表</span>
+                          {day.attractions && day.attractions.length > 0 && (
+                            <Tag color="green" style={{ marginLeft: 4 }}>{day.attractions.length}</Tag>
+                          )}
+                        </Space>
+                      }
+                    >
+                      {day.attractions && day.attractions.length > 0 ? (
+                        <AttractionsSection
+                          attractions={day.attractions}
+                          hotelAddress={day.hotel?.address}
+                          hotelCoordinates={day.hotel?.coordinates}
+                          planId={plan?.id}
+                          dayDate={day.date}
+                          onRouteOptimized={(segments) => {
+                            // Handle route segments for map display
+                            setRouteSegments(prev => {
+                              const existing = prev.find(r => r.date === day.date);
+                              if (existing) {
+                                return prev.map(r => r.date === day.date ? { ...r, route_segments: segments } : r);
+                              }
+                              return [...prev, { date: day.date, route_segments: segments }];
+                            });
+                          }}
+                        />
+                      ) : (
+                        <Empty description="暂无景点安排" style={{ padding: '40px 0' }} />
+                      )}
+                    </Tabs.TabPane>
 
-                  {/* 交通信息 */}
-                  {day.transportation && <TransportSection transportation={day.transportation} />}
+                    {/* 住宿信息 */}
+                    <Tabs.TabPane
+                      key="hotel"
+                      tab={
+                        <Space size={4}>
+                          <HomeOutlined />
+                          <span>住宿信息</span>
+                          {day.hotel && <Tag color="purple" style={{ marginLeft: 4 }}>1</Tag>}
+                        </Space>
+                      }
+                    >
+                      {day.hotel ? (
+                        <HotelSection hotel={day.hotel} />
+                      ) : (
+                        <Empty description="暂无住宿信息" style={{ padding: '40px 0' }} />
+                      )}
+                    </Tabs.TabPane>
 
-                  {/* 餐饮推荐 */}
-                  {day.meals && day.meals.length > 0 && (
-                    <MealsSection meals={day.meals} />
-                  )}
+                    {/* 交通信息 */}
+                    <Tabs.TabPane
+                      key="transport"
+                      tab={
+                        <Space size={4}>
+                          <CarOutlined />
+                          <span>交通信息</span>
+                          {day.transportation && <Tag color="cyan" style={{ marginLeft: 4 }}>1</Tag>}
+                        </Space>
+                      }
+                    >
+                      {day.transportation ? (
+                        <TransportSection transportation={day.transportation} />
+                      ) : (
+                        <Empty description="暂无交通信息" style={{ padding: '40px 0' }} />
+                      )}
+                    </Tabs.TabPane>
 
-                  {/* 景点列表 */}
-                  {day.attractions && day.attractions.length > 0 && (
-                    <AttractionsSection
-                      attractions={day.attractions}
-                      hotelAddress={day.hotel?.address}
-                      hotelCoordinates={day.hotel?.coordinates}
-                      planId={plan?.id}
-                      dayDate={day.date}
-                      onRouteOptimized={(segments) => {
-                        // Handle route segments for map display
-                        setRouteSegments(prev => {
-                          const existing = prev.find(r => r.date === day.date);
-                          if (existing) {
-                            return prev.map(r => r.date === day.date ? { ...r, route_segments: segments } : r);
-                          }
-                          return [...prev, { date: day.date, route_segments: segments }];
-                        });
-                      }}
-                    />
-                  )}
+                    {/* 餐饮推荐 */}
+                    <Tabs.TabPane
+                      key="meals"
+                      tab={
+                        <Space size={4}>
+                          <CoffeeOutlined />
+                          <span>餐饮推荐</span>
+                          {day.meals && day.meals.length > 0 && (
+                            <Tag color="orange" style={{ marginLeft: 4 }}>{day.meals.length}</Tag>
+                          )}
+                        </Space>
+                      }
+                    >
+                      {day.meals && day.meals.length > 0 ? (
+                        <MealsSection meals={day.meals} />
+                      ) : (
+                        <Empty description="暂无餐饮推荐" style={{ padding: '40px 0' }} />
+                      )}
+                    </Tabs.TabPane>
+                  </Tabs>
 
                   {/* 添加活动按钮 */}
                   <Button

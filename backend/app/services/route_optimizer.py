@@ -251,12 +251,44 @@ class RouteOptimizer:
         ]
 
         if len(valid_attractions) < 2:
-            logger.warning(f"日期 {date_str} 有效坐标景点不足2个")
-            return {
-                "success": False,
-                "message": "有效坐标景点不足",
-                "date": date_str
-            }
+            logger.warning(f"日期 {date_str} 有效坐标景点不足2个，尝试自动填充坐标")
+
+            # 自动调用一键优化填充坐标
+            from app.services.itinerary_optimizer import ItineraryOptimizer
+            optimizer = ItineraryOptimizer(self.db)
+
+            # 只填充坐标，不均衡行程
+            fill_result = await optimizer.fill_missing_coordinates(plan)
+
+            if fill_result.get("coordinates_filled", 0) > 0:
+                logger.info(f"自动填充了 {fill_result['coordinates_filled']} 个景点坐标")
+
+                # 刷新plan对象，重新获取坐标
+                await self.db.refresh(plan)
+
+                # 重新获取景点列表
+                items_by_date = await self._group_items_by_date(plan)
+                attractions = items_by_date.get(date_str, [])
+
+                # 重新检查坐标
+                valid_attractions = [
+                    a for a in attractions
+                    if a.coordinates and a.coordinates.get('lat') and a.coordinates.get('lng')
+                ]
+
+                if len(valid_attractions) < 2:
+                    logger.error(f"填充坐标后仍然不足2个景点")
+                    return {
+                        "success": False,
+                        "message": "有效坐标景点不足，无法优化",
+                        "date": date_str
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": "无法自动填充景点坐标",
+                    "date": date_str
+                }
 
         # 使用最近邻算法排序
         ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
@@ -372,7 +404,18 @@ class RouteOptimizer:
 
                 # 根据出行方式选择API
                 api_mode = "driving" if mode == "driving" else "transit"
-                routes = await amap_rest_client.get_directions(origin, destination, api_mode)
+
+                # 获取城市名称（从第一个景点的位置推断，或使用默认值）
+                city_name = "三亚"  # 默认城市
+                # 尝试从景点地址中提取城市
+                if from_attr.address:
+                    # 简单的城市提取逻辑
+                    for known_city in ["三亚", "北京", "上海", "广州", "深圳", "成都", "杭州", "西安", "重庆", "武汉"]:
+                        if known_city in from_attr.address:
+                            city_name = known_city
+                            break
+
+                routes = await amap_rest_client.get_directions(origin, destination, api_mode, city_name)
 
                 if routes and len(routes) > 0:
                     # 使用API返回的实际距离和时间
