@@ -6,27 +6,30 @@ import psycopg2.extras
 from psycopg2.extensions import register_adapter, AsIs
 import os
 import time
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 # ==============================================================================
-# 配置区域
+# 配置区域 - 从环境变量读取，如果没有则使用默认值
 # ==============================================================================
 # Excel 数据集路径
-EXCEL_FILE_PATH = r"C:\Users\30564\Desktop\Vibe Coding\travel_guide.xlsx"  # 修改为你的实际文件名称
+EXCEL_FILE_PATH = os.getenv("RAG_EXCEL_FILE_PATH", r"travel_guide.xlsx")
 
 # 数据库连接配置 (你的本地 PostgreSQL / SkyRoam 库)
 DB_CONFIG = {
-    "dbname": "skyroam",
-    "user": "postgres",
-    "password": "123456",
-    "host": "localhost",
-    "port": "5432"
+    "dbname": os.getenv("RAG_DB_NAME", "skyroam"),
+    "user": os.getenv("RAG_DB_USER", "postgres"),
+    "password": os.getenv("RAG_DB_PASSWORD", "123456"),
+    "host": os.getenv("RAG_DB_HOST", "localhost"),
+    "port": os.getenv("RAG_DB_PORT", "5432")
 }
 
-# 向量大模型 API 配置 (Ofox API 等提供 OpenAI 兼容格式接口的平台)
-EMBEDDING_API_BASE = "https://api.ofox.ai/v1"
-EMBEDDING_API_KEY = "your-api-key"
-# 根据你的实际供应商修改模型名称，比如："bge-m3", "text-embedding-3-small" 等
-EMBEDDING_MODEL = "bge-m3"  
+# 向量大模型 API 配置 (硅基流动)
+EMBEDDING_API_BASE = os.getenv("RAG_EMBEDDING_API_BASE", "https://api.siliconflow.cn/v1")
+EMBEDDING_API_KEY = os.getenv("RAG_EMBEDDING_API_KEY", "your-api-key")
+EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")  
 
 # 适配 numpy 类型到 PostgreSQL
 def add_adapters():
@@ -151,4 +154,17 @@ def import_and_vectorize():
         conn.close()
 
 if __name__ == "__main__":
-    import_and_vectorize()
+    try:
+        print("=" * 60)
+        print("RAG数据导入脚本启动")
+        print("=" * 60)
+        print(f"Excel路径: {EXCEL_FILE_PATH}")
+        print(f"数据库: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}")
+        print(f"API地址: {EMBEDDING_API_BASE}")
+        print(f"模型: {EMBEDDING_MODEL}")
+        print("=" * 60)
+        import_and_vectorize()
+    except Exception as e:
+        print(f"\n❌ 脚本执行失败: {e}")
+        import traceback
+        traceback.print_exc()

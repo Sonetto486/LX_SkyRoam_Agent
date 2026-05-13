@@ -170,6 +170,71 @@ async def map_health():
     }
 
 
+@router.get("/geocode")
+async def geocode(
+    address: str = Query(..., min_length=1, description="地址或城市名称"),
+    city: Optional[str] = Query(None, description="指定城市，提高准确性")
+):
+    """
+    地理编码 - 地址转坐标
+    """
+    if not AMAP_API_KEY or AMAP_API_KEY == "your-amap-api-key-here":
+        raise HTTPException(status_code=500, detail="高德地图API密钥未配置")
+
+    # 缓存
+    cache_key = f"cache:geocode:{city or ''}:{address}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return cached
+
+    url = "https://restapi.amap.com/v3/geocode/geo"
+    params = {
+        "key": AMAP_API_KEY,
+        "address": address,
+        "output": "json"
+    }
+    if city:
+        params["city"] = city
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, proxies=None) as client:
+            resp = await client.get(url, params=params)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"地理编码服务错误: {resp.text}")
+
+            data = resp.json()
+            if data.get("status") != "1":
+                raise HTTPException(status_code=500, detail=f"地理编码失败: {data.get('info')}")
+
+            geocodes = data.get("geocodes", [])
+            if not geocodes:
+                return {"status": "not_found", "message": "未找到匹配的坐标", "location": None}
+
+            first = geocodes[0]
+            location = first.get("location", "")
+            if not location:
+                return {"status": "no_location", "message": "坐标为空", "location": None}
+
+            lng, lat = location.split(",")
+            result = {
+                "status": "ok",
+                "formatted_address": first.get("formatted_address", ""),
+                "province": first.get("province", ""),
+                "city": first.get("city", ""),
+                "district": first.get("district", ""),
+                "location": location,
+                "lng": float(lng),
+                "lat": float(lat),
+                "level": first.get("level", "")
+            }
+            await set_cache(cache_key, result, ttl=86400)  # 缓存1天
+            return result
+
+    except httpx.HTTPError as e:
+        logger.error(f"地理编码请求失败: {e}")
+        raise HTTPException(status_code=500, detail="地理编码服务请求失败")
+
+
 @router.get("/tips")
 async def input_tips(
     request: Request,
@@ -177,7 +242,8 @@ async def input_tips(
     city: Optional[str] = Query(None, description="指定城市，提高准确性"),
     datatype: str = Query("all", description="返回数据类型: all|poi|bus|busline"),
     citylimit: bool = Query(False, description="是否限制在指定城市内"),
-    provider: Optional[str] = Query(None, description="输入提示数据源: amap 或 osm")
+    provider: Optional[str] = Query(None, description="输入提示数据源: amap 或 osm"),
+    city_only: bool = Query(False, description="是否只返回城市级别结果（过滤掉车站、机场等POI）")
 ):
     """
     输入提示代理，支持高德(amap)与 OpenStreetMap(osm)
@@ -204,7 +270,7 @@ async def input_tips(
         logger.error(f"map_tips 限流错误: {e}")
 
     # 短期缓存
-    cache_key = f"cache:map_tips:{provider or settings.MAP_PROVIDER}:{city or ''}:{datatype}:{'1' if citylimit else '0'}:{q.strip()}"
+    cache_key = f"cache:map_tips_v2:{provider or settings.MAP_PROVIDER}:{city or ''}:{datatype}:{'1' if citylimit else '0'}:{'1' if city_only else '0'}:{q.strip()}"
     cached = await get_cache(cache_key)
     if cached:
         return cached
@@ -235,11 +301,26 @@ async def input_tips(
 
                 tips = data.get("tips", [])
                 options = []
+                # 城市级别的关键词（用于识别城市）
+                city_keywords = ['市', '省', '自治区', '特别行政区']
+                # 需要排除的POI类型关键词
+                exclude_keywords = ['站', '机场', '港口', '码头', '枢纽', '客运站', '火车站', '高铁站', '汽车站', '电车', '地铁', '轻轨', '线路', '专线']
+
                 for item in tips:
                     name = item.get("name") or ""
                     district = item.get("district") or ""
                     adcode = item.get("adcode") or ""
                     location = item.get("location") or ""
+
+                    # 如果只要城市级别，过滤掉非城市结果
+                    if city_only:
+                        # 排除车站、机场等POI
+                        if any(kw in name for kw in exclude_keywords):
+                            continue
+                        # 只保留城市/省份级别的结果（名称以市、省等结尾）
+                        if not any(name.endswith(kw) for kw in city_keywords):
+                            continue
+
                     label = name if not district else f"{name}（{district}）"
                     options.append({
                         "value": name,

@@ -2,12 +2,19 @@
 LX SkyRoam Agent - 主应用入口
 智能旅游攻略生成系统
 """
+import sys
+import asyncio
 
+# 必须放在 main.py 的最顶端！解决 Windows 下 Uvicorn + Playwright 的异步冲突
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 import os
 import sys
 import subprocess
 import multiprocessing
 import threading
+import signal
+import atexit
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +35,7 @@ from app.core.rate_limit import RateLimitMiddleware
 # 全局变量存储 Celery Worker 进程
 _celery_worker_process = None
 _celery_log_file = None
+_is_shutting_down = False
 
 
 def _stream_celery_logs(pipe, log_prefix):
@@ -49,8 +57,9 @@ def _stream_celery_logs(pipe, log_prefix):
 
 def clean_celery_redis_data():
     """清理 Redis 中损坏的 Celery 任务数据"""
+    import asyncio
+    import redis
     try:
-        import redis
         from app.core.config import settings
 
         logger.info("🧹 开始清理 Redis 中的 Celery 数据...")
@@ -71,14 +80,22 @@ def clean_celery_redis_data():
         logger.info("✅ Redis broker 连接成功")
 
         # 清理 celery 队列中可能残留的消息
-        queue_len = broker_client.llen("celery")
-        if queue_len > 0:
+        _queue_len = broker_client.llen("celery")
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(_queue_len):
+            _queue_len = asyncio.get_event_loop().run_until_complete(_queue_len)
+        queue_len: int = _queue_len  # type: ignore
+        if queue_len and queue_len > 0:
             logger.info(f"发现 celery 队列中有 {queue_len} 条消息，正在清理...")
             broker_client.delete("celery")
             logger.info("✅ 已清理 celery 队列")
 
         # 清理 unacked 队列
-        unacked_keys = broker_client.keys("unacked*")
+        _unacked_keys = broker_client.keys("unacked*")
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(_unacked_keys):
+            _unacked_keys = asyncio.get_event_loop().run_until_complete(_unacked_keys)
+        unacked_keys: list = _unacked_keys  # type: ignore
         if unacked_keys:
             logger.info(f"发现 {len(unacked_keys)} 个 unacked 键，正在清理...")
             broker_client.delete(*unacked_keys)
@@ -96,7 +113,11 @@ def clean_celery_redis_data():
         )
 
         # 查找所有 Celery 任务结果键
-        result_keys = result_client.keys("celery-task-meta-*")
+        _result_keys = result_client.keys("celery-task-meta-*")
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(_result_keys):
+            _result_keys = asyncio.get_event_loop().run_until_complete(_result_keys)
+        result_keys: list = _result_keys  # type: ignore
         if result_keys:
             logger.info(f"发现 {len(result_keys)} 个 Celery 任务结果，正在清理...")
             result_client.delete(*result_keys)
@@ -105,7 +126,11 @@ def clean_celery_redis_data():
             logger.info("✅ 没有需要清理的 Celery 任务结果")
 
         # 清理 _kombu.binding.* 键
-        binding_keys = broker_client.keys("_kombu.binding.*")
+        _binding_keys = broker_client.keys("_kombu.binding.*")
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(_binding_keys):
+            _binding_keys = asyncio.get_event_loop().run_until_complete(_binding_keys)
+        binding_keys: list = _binding_keys  # type: ignore
         if binding_keys:
             logger.info(f"清理 {len(binding_keys)} 个 kombu binding 键...")
             broker_client.delete(*binding_keys)
@@ -121,6 +146,7 @@ def clean_celery_redis_data():
 def wait_for_celery_worker(timeout: int = 15) -> bool:
     """等待 Celery Worker 就绪"""
     import time
+    import asyncio
     from app.core.celery import celery_app
 
     start_time = time.time()
@@ -133,6 +159,9 @@ def wait_for_celery_worker(timeout: int = 15) -> bool:
         try:
             # 方法1：使用 control.ping() - 最直接的检测方式
             ping_result = celery_app.control.ping(timeout=5)
+            # 处理可能的 Awaitable 返回值
+            if asyncio.iscoroutine(ping_result):
+                ping_result = asyncio.get_event_loop().run_until_complete(ping_result)
             if ping_result and len(ping_result) > 0:
                 worker_names = []
                 for result in ping_result:
@@ -148,6 +177,9 @@ def wait_for_celery_worker(timeout: int = 15) -> bool:
             # 方法2：使用 inspect.stats()
             inspect = celery_app.control.inspect(timeout=5)
             stats = inspect.stats()
+            # 处理可能的 Awaitable 返回值
+            if asyncio.iscoroutine(stats):
+                stats = asyncio.get_event_loop().run_until_complete(stats)
             if stats:
                 worker_names = list(stats.keys())
                 logger.info(f"✅ 检测到 Celery Workers (stats): {worker_names}")
@@ -158,7 +190,11 @@ def wait_for_celery_worker(timeout: int = 15) -> bool:
 
         try:
             # 方法3：检查活跃任务
-            active = inspect.active()
+            inspect_obj = celery_app.control.inspect(timeout=5)
+            active = inspect_obj.active()
+            # 处理可能的 Awaitable 返回值
+            if asyncio.iscoroutine(active):
+                active = asyncio.get_event_loop().run_until_complete(active)
             if active is not None:
                 logger.info(f"✅ 检测到 Celery Workers (active)")
                 return True
@@ -185,7 +221,10 @@ def wait_for_celery_worker(timeout: int = 15) -> bool:
 
         # 检查 celery 队列和相关键
         all_keys = redis_client.keys("*")
-        celery_related = [k for k in all_keys if 'celery' in k.lower() or 'worker' in k.lower()]
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(all_keys):
+            all_keys = asyncio.get_event_loop().run_until_complete(all_keys)
+        celery_related = [k for k in all_keys if 'celery' in k.lower() or 'worker' in k.lower()]  # type: ignore
         if celery_related:
             logger.info(f"✅ 在 Redis 中检测到 Celery 相关键: {celery_related[:5]}...")
             return True
@@ -219,6 +258,13 @@ def start_celery_worker():
         logs_dir.mkdir(parents=True, exist_ok=True)
         _celery_log_file = logs_dir / "celery_worker.log"
 
+        # 生成唯一的节点名称，避免重复名称警告
+        import uuid
+        import socket
+        unique_id = str(uuid.uuid4())[:8]
+        hostname = socket.gethostname()
+        node_name = f"skyroam-{unique_id}@{hostname}"
+
         # 启动 Celery Worker
         # Windows 使用 solo 池，其他系统使用默认池
         import platform
@@ -233,11 +279,14 @@ def start_celery_worker():
             "-A", "app.core.celery",
             "worker",
             "--loglevel=info",
+            "-n", node_name,  # 使用唯一的节点名称
             pool_arg
         ]
 
         # 过滤空参数
         cmd = [c for c in cmd if c]
+
+        logger.info(f"启动 Celery Worker，节点名称: {node_name}")
 
         # 创建新进程启动 Celery Worker
         # 不使用 CREATE_NEW_CONSOLE，而是捕获输出并转发到主日志
@@ -273,24 +322,81 @@ def start_celery_worker():
 
 def stop_celery_worker():
     """停止 Celery Worker 子进程"""
-    global _celery_worker_process
+    global _celery_worker_process, _is_shutting_down
+
+    # 防止重复调用
+    if _is_shutting_down:
+        return
+
+    _is_shutting_down = True
+
     if _celery_worker_process:
         try:
-            _celery_worker_process.terminate()
-            _celery_worker_process.wait(timeout=5)
-            logger.info("Celery Worker 已停止")
-        except Exception:
+            logger.info("🛑 正在停止 Celery Worker...")
+
+            # 检查进程是否还在运行
+            if _celery_worker_process.poll() is None:
+                # 先尝试优雅终止 (SIGTERM)
+                _celery_worker_process.terminate()
+
+                # 等待进程结束，最多等待10秒
+                try:
+                    _celery_worker_process.wait(timeout=10)
+                    logger.info("✅ Celery Worker 已优雅停止")
+                except subprocess.TimeoutExpired:
+                    # 如果超时，强制终止
+                    logger.warning("⚠️ Celery Worker 未在超时时间内停止，强制终止...")
+                    _celery_worker_process.kill()
+                    _celery_worker_process.wait(timeout=5)
+                    logger.warning("✅ Celery Worker 已强制终止")
+
+        except Exception as e:
+            logger.error(f"停止 Celery Worker 时发生错误: {e}")
+            # 最后尝试强制终止
             try:
-                _celery_worker_process.kill()
-                logger.warning("Celery Worker 强制终止")
+                if _celery_worker_process.poll() is None:
+                    _celery_worker_process.kill()
             except Exception:
                 pass
-        _celery_worker_process = None
+        finally:
+            _celery_worker_process = None
+    else:
+        logger.info("没有运行中的 Celery Worker")
+
+
+def cleanup_handler(signum=None, frame=None):
+    """信号处理函数，确保 Celery Worker 被正确停止"""
+    logger.info(f"收到终止信号 ({signum})，正在清理...")
+    stop_celery_worker()
+    # 退出程序
+    if signum is not None:
+        sys.exit(0)
+
+
+def register_cleanup_handlers():
+    """注册清理处理器"""
+    # 注册 atexit 处理器（Python 正常退出时调用）
+    atexit.register(stop_celery_worker)
+
+    # 注册信号处理器
+    # SIGINT: Ctrl+C
+    # SIGTERM: kill 命令
+    # Windows 上也支持这些信号
+    signal.signal(signal.SIGINT, cleanup_handler)
+    signal.signal(signal.SIGTERM, cleanup_handler)
+
+    # Windows 特有的信号
+    if sys.platform == "win32":
+        # SIGBREAK: Ctrl+Break
+        signal.signal(signal.SIGBREAK, cleanup_handler)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    # 注册清理处理器，确保进程退出时停止 Celery Worker
+    register_cleanup_handlers()
+
     # 启动时初始化
     logger = setup_logging()
     logger.info("🚀 启动 LX SkyRoam Agent...")
@@ -404,12 +510,16 @@ async def health_check():
 async def celery_health_check():
     """Celery Worker 健康检查"""
     try:
+        import asyncio
         from app.core.celery import celery_app
 
         inspect = celery_app.control.inspect()
 
         # 方法1：检查 worker 统计信息
         stats = inspect.stats()
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(stats):
+            stats = await stats
         if stats:
             worker_names = list(stats.keys())
             return {
@@ -422,6 +532,9 @@ async def celery_health_check():
 
         # 方法2：检查活跃任务
         active = inspect.active()
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(active):
+            active = await active
         if active is not None:
             worker_names = list(active.keys()) if active else []
             return {
@@ -434,6 +547,9 @@ async def celery_health_check():
 
         # 方法3：检查注册的任务
         registered = inspect.registered()
+        # 处理可能的 Awaitable 返回值
+        if asyncio.iscoroutine(registered):
+            registered = await registered
         if registered:
             worker_names = list(registered.keys())
             return {

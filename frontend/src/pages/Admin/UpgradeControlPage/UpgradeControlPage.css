@@ -2,25 +2,26 @@
 .upgrade-control-page {
   padding: 24px;
   min-height: 100vh;
-  background: #0f0f1e;
-  color: #fff;
+  background: var(--bg);
+  color: var(--text);
 }
+
 .page-header {
   margin-bottom: 24px;
   text-align: center;
 }
 
 .page-header .ant-typography {
-  color: #fff;
+  color: var(--text);
 }
 
 .page-header h2 {
-  color: #fff !important;
+  color: var(--text-strong) !important;
   margin-bottom: 8px !important;
 }
 
 .page-header .ant-typography p {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-soft);
   font-size: 16px;
 }
 
@@ -28,8 +29,8 @@
 .status-card,
 .create-upgrade-card,
 .preview-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
   border-radius: 20px;
   backdrop-filter: blur(20px);
   margin-bottom: 24px;
@@ -39,22 +40,29 @@
 .status-card:hover,
 .create-upgrade-card:hover,
 .preview-card:hover {
-  border-color: rgba(167, 139, 250, 0.4);
-  box-shadow: 0 0 40px rgba(167, 139, 250, 0.15);
+  border-color: var(--accent-a);
+  box-shadow: 0 0 40px var(--glow-color);
 }
 
 .status-card .ant-card-head,
 .create-upgrade-card .ant-card-head,
 .preview-card .ant-card-head {
-  border-bottom: 1px solid rgba(167, 139, 250, 0.2);
+  border-bottom: 1px solid var(--border-soft);
   background: transparent;
 }
 
 .status-card .ant-card-head-title,
 .create-upgrade-card .ant-card-head-title,
 .preview-card .ant-card-head-title {
-  color: #fff;
+  color: var(--text-strong);
   font-weight: 600;
+}
+
+.status-card .ant-card-body,
+.create-upgrade-card .ant-card-body,
+.preview-card .ant-card-body {
+  color: var(--text);
+  background: transparent !important;
 }
 
 /* 状态内容 */
@@ -68,9 +76,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--overlay);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-soft);
 }
 
 .status-item .ant-typography {
@@ -78,17 +86,25 @@
 }
 
 .status-item .ant-typography:first-child {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-soft);
   font-weight: 600;
+}
+
+.status-item .ant-typography:last-child {
+  color: var(--text);
 }
 
 /* 进度部分 */
 .progress-section {
   grid-column: 1 / -1;
   padding: 16px;
-  background: rgba(167, 139, 250, 0.05);
+  background: var(--overlay);
   border-radius: 12px;
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  border: 1px solid var(--border);
+}
+
+.progress-section .ant-typography {
+  color: var(--text) !important;
 }
 
 .progress-controls {
@@ -121,14 +137,14 @@
 }
 
 .form-grid .ant-form-item-label > label {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text);
   font-weight: 500;
 }
 
 /* 功能项样式 */
 .feature-item {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  background: var(--overlay);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 16px;
@@ -137,8 +153,8 @@
 }
 
 .feature-item:hover {
-  border-color: rgba(167, 139, 250, 0.4);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent-a);
+  background: var(--border-soft);
 }
 
 .feature-header {
@@ -149,7 +165,7 @@
 }
 
 .feature-header .ant-typography {
-  color: #fff;
+  color: var(--text-strong);
   font-weight: 600;
   font-size: 16px;
 }
@@ -164,7 +180,7 @@
 }
 
 .feature-form .ant-form-item-label > label {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -181,13 +197,13 @@
 }
 
 .preview-header .ant-typography {
-  color: #fff;
+  color: var(--text-strong);
   font-weight: 600;
 }
 
 /* 时间轴样式 */
 .preview-card .ant-timeline {
-  color: #fff;
+  color: var(--text);
 }
 
 .preview-card .ant-timeline-item-head {
@@ -196,17 +212,49 @@
 }
 
 .preview-card .ant-timeline-item-tail {
-  border-left: 2px solid rgba(167, 139, 250, 0.2);
+  border-left: 2px solid var(--border);
 }
 
 .preview-card .ant-timeline-item-content {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--text);
   margin-left: 20px;
 }
 
+/* Alert 样式 */
 .ant-alert-message,
 .ant-alert-description {
-  color: #fff !important;
+  color: var(--text) !important;
+}
+
+/* 输入框样式 */
+.upgrade-control-page .ant-input,
+.upgrade-control-page .ant-input-affix-wrapper {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.upgrade-control-page .ant-input::placeholder {
+  color: var(--text-soft) !important;
+}
+
+.upgrade-control-page .ant-select-selector {
+  background: var(--overlay) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.upgrade-control-page .ant-select-selection-placeholder {
+  color: var(--text-soft) !important;
+}
+
+/* Switch 样式 */
+.upgrade-control-page .ant-switch {
+  background: var(--border) !important;
+}
+
+.upgrade-control-page .ant-switch-checked {
+  background: var(--accent-b) !important;
 }
 
 /* 响应式设计 */
@@ -214,24 +262,24 @@
   .upgrade-control-page {
     padding: 16px;
   }
-  
+
   .form-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .progress-controls {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .progress-controls .ant-input-number {
     width: 100%;
   }
-  
+
   .control-actions .ant-space {
     width: 100%;
   }
-  
+
   .control-actions .ant-btn {
     flex: 1;
   }

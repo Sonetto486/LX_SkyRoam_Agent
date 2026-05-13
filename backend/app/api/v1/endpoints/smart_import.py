@@ -19,6 +19,7 @@ from app.services.travel_plan_service import TravelPlanService
 from app.schemas.travel_plan import TravelPlanCreate, TravelPlanResponse
 from app.core.config import settings
 from app.tools.place_image_service import PlaceImageService
+from app.tools.baidu_ocr_service import ocr_service
 
 router = APIRouter()
 
@@ -27,15 +28,31 @@ router = APIRouter()
 # ==========================================
 
 class ParsedLocation(BaseModel):
-    id: int = Field(default=1, description="唯一标识ID，从1开始递增")
-    name: str = Field(default="未知地点", description="地点/店铺/景点名称")
-    type: str = Field(default="景点", description="类型标签，如：景点 / 餐饮 / 酒店 / 交通")
-    address: str = Field(default="地址未知", description="区域或详细地址")
-    day: str = Field(default="Day 1", description="所属行程，格式必须为 'Day 1', 'Day 2'")
-    excerpt: str = Field(default="无说明", description="原文引用：攻略中对该地点的原话描述")
-    selected: bool = Field(default=True, description="前端复选框默认勾选状态")
-    image_url: Optional[str] = Field(default=None, description="地点图片URL")
-    images: List[str] = Field(default_factory=list, description="地点图片URL列表")
+    id: int = Field(default=1)
+    name: str = Field(default="未知地点")
+    type: str = Field(default="景点")
+    address: str = Field(default="地址未知")
+    day: str = Field(default="Day 1")
+    excerpt: str = Field(default="无说明")
+    selected: bool = Field(default=True)
+    image_url: Optional[str] = Field(default=None)
+    images: List[str] = Field(default_factory=list)
+    # 新增字段
+    highlight: str = Field(default="")
+    lat: Optional[float] = Field(default=None)
+    lng: Optional[float] = Field(default=None)
+    cost: float = Field(default=0.0)
+    
+    @field_validator('cost', mode='before')
+    @classmethod
+    def parse_cost(cls, v):
+        if isinstance(v, str):
+            match = re.search(r'-?\d+\.?\d*', v)
+            if match:
+                try: return float(match.group())
+                except: pass
+            return 0.0
+        return v if isinstance(v, (int, float)) else 0.0
 
 class ScheduleItem(BaseModel):
     time: str = Field(default="全天", description="时间段")
@@ -165,16 +182,21 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
             "cost_breakdown": {{
                 "flights": 0, "hotels": 0, "food": 0, "transport_tickets": 0, "others": 0
             }},
-            "parsed_locations": [
-                {{
-                    "id": 1,
-                    "name": "提取出的具体地点",
-                    "type": "必须是 景点/餐饮/酒店/交通 之一",
-                    "address": "地址或未知",
-                    "day": "Day 1",
-                    "excerpt": "原文中对该地的描述或原话",
-                    "selected": true
-                }}
+           "parsed_locations": [
+    {{
+        "id": 1,
+        "name": "提取出的具体地点",
+        "type": "必须是 景点/餐饮/酒店/交通 之一",
+        "address": "地址或未知",
+        "day": "Day 1",
+        "excerpt": "原文中对该地的描述或原话",
+        "selected": true,
+        "highlight": "亮点（推荐理由）",
+        "lat": 39.9042,
+        "lng": 116.4074,
+        "cost": 0
+    }}
+]
             ]
         }}
 
@@ -211,7 +233,11 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
         except json.JSONDecodeError as je:
             logger.error(f"❌ JSON解析失败(AI输出格式有误): {je}\n【AI原始输出】: {json_str}")
             return ExtractedTravelData()
-
+            
+        except Exception as e:
+            logger.error(f"❌ 数据处理异常: {e}")
+            return ExtractedTravelData()
+    
     except Exception as e:
         logger.error(f"❌ AI调用未知网络异常: {e}")
         return ExtractedTravelData()
@@ -278,8 +304,55 @@ async def import_travel_plan(
                         
                         if not detailed_desc:
                             detailed_desc = await page.evaluate('document.body.innerText')
+                        
+                        # ========== 新增：提取小红书帖子中的图片并进行OCR识别 ==========
+                        image_ocr_text = ""
+                        try:
+                            if ocr_service.is_configured():
+                                # 查找帖子中的所有图片元素
+                                img_elements = await page.query_selector_all('img')
+                                img_urls = []
+                                for img in img_elements:
+                                    src = await img.get_attribute('src')
+                                    # 过滤掉头像和太小的图片
+                                    if src and 'avatar' not in src and 'profile' not in src:
+                                        # 获取图片的自然宽度和高度
+                                        try:
+                                            bounding_box = await img.bounding_box()
+                                            if bounding_box and bounding_box.get('width', 0) > 100 and bounding_box.get('height', 0) > 100:
+                                                img_urls.append(src)
+                                        except:
+                                            img_urls.append(src)
+                                
+                                if img_urls:
+                                    logger.info(f"发现 {len(img_urls)} 张图片，开始OCR识别...")
+                                    # 对前5张图片进行OCR识别
+                                    for i, img_url in enumerate(img_urls[:5]):
+                                        try:
+                                            logger.info(f"正在识别第 {i+1}/{min(5, len(img_urls))} 张图片...")
+                                            img_ocr_text = await ocr_service.recognize_from_url(img_url)
+                                            if img_ocr_text and len(img_ocr_text.strip()) > 5:
+                                                image_ocr_text += f"\n\n【图片{i+1}中的文字】\n{img_ocr_text}"
+                                                logger.info(f"第 {i+1} 张图片识别到 {len(img_ocr_text)} 个字符")
+                                        except Exception as ocr_err:
+                                            logger.warning(f"第 {i+1} 张图片OCR识别失败: {ocr_err}")
+                                            continue
+                                    
+                                    if image_ocr_text:
+                                        logger.info(f"✅ 图片OCR识别完成，共获取 {len(image_ocr_text)} 个字符")
+                                else:
+                                    logger.info("未在页面中发现图片")
+                            else:
+                                logger.warning("百度OCR服务未配置，跳过图片识别")
+                        except Exception as img_err:
+                            logger.warning(f"提取或识别图片时出错: {img_err}")
+                        # ========== 图片OCR识别功能结束 ==========
 
+                        # 合并页面文字和图片OCR文字
                         combined_text = f"标题: {title_text}\n\n内容: {detailed_desc}"
+                        if image_ocr_text:
+                            combined_text += f"\n\n{image_ocr_text}"
+                        
                         source_note = f"来源链接：{real_url}"
                         extracted_info = await _extract_text_logic(combined_text)
                         

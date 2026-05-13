@@ -536,7 +536,7 @@ const TravelPlanPage: React.FC = () => {
 
   const pollGenerationStatus = async (planId: number) => {
     let pollCount = 0;
-    const maxPolls = 150; // 最大轮询次数：150次 * 6秒 = 15分钟
+    const maxPolls = 100; // 最大轮询次数：100次 * 6秒 = 10分钟
     pollTimerRef.current = setInterval(async () => {
       if (currentPlanIdRef.current !== planId) {
         if (pollTimerRef.current) {

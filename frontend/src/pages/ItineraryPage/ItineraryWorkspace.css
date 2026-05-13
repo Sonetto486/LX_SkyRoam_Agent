@@ -3,20 +3,20 @@
 /* 布局 */
 .workspace-layout {
   min-height: calc(100vh - 112px);
-  background: #fff;
+  background: var(--bg-soft);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .workspace-sider {
-  background: #fff !important;
-  border-right: 1px solid #f0f0f0;
+  background: var(--bg-soft) !important;
+  border-right: 1px solid var(--border-soft);
   overflow-y: auto;
 }
 
 .workspace-content {
   position: relative;
-  background: #f5f5f5;
+  background: var(--bg);
 }
 
 /* 加载和错误状态 */
@@ -31,12 +31,17 @@
 /* 顶部看板 */
 .workspace-header {
   padding: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .back-btn {
   padding: 0;
   margin-bottom: 16px;
+  color: var(--text-soft);
+}
+
+.back-btn:hover {
+  color: var(--accent-a);
 }
 
 /* 行程信息 */
@@ -47,23 +52,24 @@
 .itinerary-title {
   margin: 0 0 12px 0 !important;
   font-size: 24px !important;
+  color: var(--text-strong) !important;
 }
 
 .itinerary-meta {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 .itinerary-date {
   font-size: 14px;
-  color: #999;
+  color: var(--text-soft);
   margin-bottom: 8px;
 }
 
 .itinerary-desc {
   margin: 0;
-  color: #666;
+  color: var(--text-soft);
 }
 
 /* 天数标签页 */
@@ -77,11 +83,12 @@
 
 .day-label {
   font-weight: 500;
+  color: var(--text);
 }
 
 .day-date {
   font-size: 12px;
-  color: #999;
+  color: var(--text-soft);
 }
 
 /* 空活动状态 */
@@ -103,31 +110,37 @@
   margin-bottom: 16px;
   transition: all 0.3s ease;
   cursor: pointer;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .activity-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
   transform: translateY(-2px);
 }
 
 .activity-card.hovered {
-  border: 2px solid #1890ff !important;
-  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.2) !important;
+  border: 2px solid var(--accent-a) !important;
+  box-shadow: 0 4px 16px var(--glow-color) !important;
 }
 
 .activity-header {
   margin-bottom: 8px;
 }
 
+.activity-header .ant-typography {
+  color: var(--text-strong) !important;
+}
+
 .activity-location {
   font-size: 13px;
-  color: #666;
+  color: var(--text-soft);
   margin-bottom: 8px;
 }
 
 .activity-description {
   font-size: 13px;
-  color: #999;
+  color: var(--text-soft);
   line-height: 1.4;
   margin-bottom: 12px !important;
 }
@@ -165,9 +178,10 @@
   display: flex !important;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: var(--bg-soft);
+  box-shadow: 0 2px 8px var(--shadow-color);
   border: none;
+  color: var(--text);
 }
 
 .map-control-btn:hover {
@@ -175,12 +189,12 @@
 }
 
 .map-control-btn.primary {
-  background: #1890ff;
+  background: var(--accent-b);
   color: #fff;
 }
 
 .map-control-btn.success {
-  background: #52c41a;
+  background: var(--accent-c);
   color: #fff;
 }
 
@@ -202,7 +216,7 @@
     max-width: 100% !important;
     max-height: 60vh;
     border-right: none !important;
-    border-bottom: 1px solid #f0f0f0 !important;
+    border-bottom: 1px solid var(--border-soft) !important;
   }
 
   .workspace-content {
@@ -245,7 +259,7 @@
 
 /* 活动卡片操作按钮优化 */
 .activity-card .ant-card-actions {
-  background: #fafafa;
+  background: var(--overlay);
 }
 
 .activity-card .ant-card-actions > li {
@@ -256,21 +270,22 @@
   border: none;
   background: transparent;
   padding: 4px 8px;
+  color: var(--text);
 }
 
 .activity-card .ant-card-actions button:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--border-soft);
 }
 
 /* 加载动画 */
 .workspace-loading .ant-spin-dot-item {
-  background-color: #1890ff;
+  background-color: var(--accent-b);
 }
 
 /* 标签页滚动条样式 */
 .day-tabs .ant-tabs-content {
   scrollbar-width: thin;
-  scrollbar-color: #d9d9d9 transparent;
+  scrollbar-color: var(--border) transparent;
 }
 
 .day-tabs .ant-tabs-content::-webkit-scrollbar {
@@ -282,12 +297,12 @@
 }
 
 .day-tabs .ant-tabs-content::-webkit-scrollbar-thumb {
-  background-color: #d9d9d9;
+  background-color: var(--border);
   border-radius: 3px;
 }
 
 .day-tabs .ant-tabs-content::-webkit-scrollbar-thumb:hover {
-  background-color: #bfbfbf;
+  background-color: var(--text-soft);
 }
 
 /* 活动图片悬停效果 */
@@ -304,16 +319,6 @@
   padding: 0 4px;
   height: auto;
   font-size: 12px;
-}
-
-/* 返回按钮样式 */
-.back-btn {
-  color: #666;
-  transition: color 0.3s ease;
-}
-
-.back-btn:hover {
-  color: #1890ff;
 }
 
 /* 地图控制按钮动画 */
@@ -355,29 +360,33 @@
 .plan-info-form .form-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 8px;
   transition: border-color 0.3s;
+  background: var(--overlay);
+  color: var(--text);
 }
 
 .plan-info-form .form-input:focus {
-  border-color: #1890ff;
+  border-color: var(--accent-a);
   outline: none;
 }
 
 .plan-info-form .form-textarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 8px;
   resize: vertical;
   transition: border-color 0.3s;
+  background: var(--overlay);
+  color: var(--text);
 }
 
 .plan-info-form .form-textarea:focus {
-  border-color: #1890ff;
+  border-color: var(--accent-a);
   outline: none;
 }
 
@@ -395,24 +404,26 @@
 .weather-preview-item {
   text-align: center;
   border-radius: 8px;
+  background: var(--overlay);
+  padding: 12px;
 }
 
 .weather-preview-item .weather-date {
   font-size: 12px;
-  color: #999;
+  color: var(--text-soft);
   margin-bottom: 8px;
 }
 
 .weather-preview-item .weather-temp {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-strong);
   margin-bottom: 4px;
 }
 
 .weather-preview-item .weather-condition {
   font-size: 12px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 /* 行程概览样式 */
@@ -427,6 +438,7 @@
 
 .overview-header h3 {
   margin-bottom: 8px;
+  color: var(--text-strong);
 }
 
 .overview-stats {
@@ -438,6 +450,8 @@
 
 .overview-stats .ant-card {
   text-align: center;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .overview-schedule {

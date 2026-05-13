@@ -135,7 +135,7 @@ const HomePage: React.FC = () => {
         </div>
 
         <svg className="hero-wave" viewBox="0 0 1440 120" preserveAspectRatio="none">
-          <path fill="#0f0f1e" d="M0,40 C240,120 480,0 720,60 C960,120 1200,40 1440,100 L1440,120 L0,120 Z" />
+          <path d="M0,40 C240,120 480,0 720,60 C960,120 1200,40 1440,100 L1440,120 L0,120 Z" />
         </svg>
       </section>
 

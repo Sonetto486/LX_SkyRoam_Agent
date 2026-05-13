@@ -29,7 +29,7 @@
 
 .page-header h2 {
   margin: 0;
-  color: #333;
+  color: var(--text-strong);
 }
 
 /* 行程卡片 */
@@ -40,10 +40,12 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
 }
 
 .itinerary-list-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 8px 24px var(--shadow-color) !important;
   transform: translateY(-4px);
 }
 
@@ -90,7 +92,7 @@
 
 .itinerary-card-content h4 {
   margin: 0 0 12px 0;
-  color: #333;
+  color: var(--text-strong);
   font-size: 16px;
   font-weight: 600;
 }
@@ -98,12 +100,12 @@
 .itinerary-card-meta {
   margin-bottom: 8px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 .itinerary-card-date {
   margin: 0 0 16px 0;
-  color: #666;
+  color: var(--text-soft);
   font-size: 14px;
 }
 
@@ -115,7 +117,7 @@
 .itinerary-card-members {
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-soft);
 }
 
 .member-avatars {
@@ -129,18 +131,18 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #1890ff;
+  background: var(--accent-b);
   color: #fff;
   font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #fff;
+  border: 2px solid var(--bg-soft);
 }
 
 .member-avatar.more {
-  background: #f0f0f0;
-  color: #666;
+  background: var(--overlay);
+  color: var(--text-soft);
 }
 
 /* 响应式布局 */
@@ -158,8 +160,8 @@
 
 /* 卡片操作按钮样式优化 */
 .itinerary-list-card .ant-card-actions {
-  background: #fafafa;
-  border-top: 1px solid #f0f0f0;
+  background: var(--overlay);
+  border-top: 1px solid var(--border-soft);
 }
 
 .itinerary-list-card .ant-card-actions > li {
@@ -169,15 +171,16 @@
 .itinerary-list-card .ant-card-actions button {
   border: none;
   background: transparent;
+  color: var(--text);
 }
 
 .itinerary-list-card .ant-card-actions button:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--border-soft);
 }
 
 /* 加载动画 */
 .itinerary-list-loading .ant-spin-dot-item {
-  background-color: #1890ff;
+  background-color: var(--accent-b);
 }
 
 /* 空状态图标大小 */
@@ -190,11 +193,11 @@
 .itinerary-card-info {
   margin-bottom: 12px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 .info-divider {
-  color: #d9d9d9;
+  color: var(--border);
   margin: 0 4px;
 }
 
@@ -210,20 +213,20 @@
 
 .weather-preview-item .weather-date {
   font-size: 12px;
-  color: #999;
+  color: var(--text-soft);
   margin-bottom: 8px;
 }
 
 .weather-preview-item .weather-temp {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-strong);
   margin-bottom: 4px;
 }
 
 .weather-preview-item .weather-condition {
   font-size: 12px;
-  color: #666;
+  color: var(--text-soft);
 }
 
 /* 编辑行程表单样式 */
@@ -249,29 +252,33 @@
 .edit-itinerary-form .form-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 8px;
   transition: border-color 0.3s;
+  background: var(--overlay);
+  color: var(--text);
 }
 
 .edit-itinerary-form .form-input:focus {
-  border-color: #1890ff;
+  border-color: var(--accent-a);
   outline: none;
 }
 
 .edit-itinerary-form .form-textarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 4px;
   margin-top: 8px;
   resize: vertical;
   transition: border-color 0.3s;
+  background: var(--overlay);
+  color: var(--text);
 }
 
 .edit-itinerary-form .form-textarea:focus {
-  border-color: #1890ff;
+  border-color: var(--accent-a);
   outline: none;
 }
 

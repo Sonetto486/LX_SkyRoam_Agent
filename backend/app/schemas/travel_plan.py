@@ -83,6 +83,30 @@ class TravelPlanUpdate(BaseModel):
     travel_mode: Optional[str] = None
     tags: Optional[List[str]] = None
 
+    @field_validator('start_date', 'end_date', mode='before')
+    @classmethod
+    def parse_datetime(cls, v):
+        """解析日期时间，支持多种格式"""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            try:
+                # 尝试解析带时区的格式
+                if 'T' in v or '+' in v or 'Z' in v:
+                    dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                    # 转换为无时区的本地时间
+                    return dt.replace(tzinfo=None)
+                else:
+                    # 尝试解析日期格式 (YYYY-MM-DD)
+                    dt = datetime.fromisoformat(v)
+                    return dt.replace(tzinfo=None)
+            except ValueError:
+                # 如果解析失败，尝试其他格式
+                from dateutil import parser
+                dt = parser.parse(v)
+                return dt.replace(tzinfo=None)
+        return v
+
 
 class TravelPlanItemResponse(BaseModel):
     """旅行计划项目响应模式"""

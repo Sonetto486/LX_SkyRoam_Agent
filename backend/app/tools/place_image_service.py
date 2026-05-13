@@ -1,115 +1,209 @@
-"""
-地点图片服务
-专门负责获取地点的图片信息
-"""
-
 import asyncio
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from loguru import logger
 from app.tools.amap_rest_client import amap_rest_client
+import Levenshtein
 
-# 重试配置
 MAX_RETRIES = 3
-RETRY_DELAY = 1.0  # 秒
+RETRY_DELAY = 1.0
+DEFAULT_IMAGE = "https://picsum.photos/400/300"
 
 
 class PlaceImageService:
-    """地点图片服务"""
-
     def __init__(self):
         self.request_count = 0
 
-    async def get_place_images(self, keywords: str, address: str = "") -> List[str]:
-        """
-        获取地点图片
-
-        Args:
-            keywords: 地点名称
-            address: 地点地址（可选）
-
-        Returns:
-            图片URL列表
-        """
+    async def get_place_images(self, search_query: str, city_limit: str = "") -> List[str]:
         for attempt in range(MAX_RETRIES):
             try:
-                logger.debug(f"开始获取地点图片(第{attempt+1}次尝试): {keywords}")
+                logger.debug(f"开始获取地点图片(第{attempt+1}次尝试): {search_query}")
 
-                # 添加请求间隔，避免QPS超限
                 if self.request_count > 0:
                     await asyncio.sleep(RETRY_DELAY)
                 self.request_count += 1
 
-                # 1. 搜索地点
-                # 优先使用带地址的搜索
-                if address:
-                    places = await amap_rest_client.search_places(
-                        query=keywords,
-                        city=address.split('市')[0] if '市' in address else "",
-                        category="景点"
-                    )
-                else:
-                    # 如果没有地址，使用周边搜索（全国范围）
-                    places = await amap_rest_client.search_places_around(
-                        location="",  # 空字符串表示全国搜索
-                        keywords=keywords,
-                        radius=5000,
-                        offset=1
-                    )
-                
+                places = await amap_rest_client.search_places(
+                    query=search_query,
+                    city=city_limit,
+                    category="景点"
+                )
+
                 if places:
-                    logger.debug(f"找到地点: {places[0].get('name')}")
-                    
-                    # 2. 提取图片
+                    logger.debug(f"找到地点: {places[0].get('name')} (区域: {places[0].get('adname', '未知')})")
                     photos = places[0].get("photos", [])
-                    if photos:
-                        image_urls = [photo.get("url") for photo in photos if photo.get("url")]
+                    image_urls = [photo.get("url") for photo in photos if photo.get("url")]
+                    if image_urls:
                         logger.debug(f"获取到 {len(image_urls)} 张图片")
-                        return image_urls[:3]  # 最多返回3张图片
-            
+                        return image_urls[:3]
             except Exception as e:
-                error_msg = str(e)
-                # 如果是QPS超限错误，进行重试
-                if "CUQPS_HAS_EXCEEDED_THE_LIMIT" in error_msg:
-                    logger.warning(f"QPS超限，等待后重试(第{attempt+1}次): {keywords}")
+                if "CUQPS_HAS_EXCEEDED_THE_LIMIT" in str(e):
+                    logger.warning(f"QPS超限，重试: {search_query}")
                     await asyncio.sleep(RETRY_DELAY * (attempt + 1))
                     continue
-                logger.error(f"获取地点图片失败: {e}")
+                logger.error(f"获取图片失败: {e}")
                 break
-        
-        logger.debug(f"未找到地点 {keywords} 的图片")
-        return []
-    
-    async def get_place_image(self, keywords: str, address: str = "") -> Optional[str]:
-        """
-        获取地点的第一张图片
-        
-        Args:
-            keywords: 地点名称
-            address: 地点地址（可选）
-            
-        Returns:
-            第一张图片的URL，如果没有则返回None
-        """
-        images = await self.get_place_images(keywords, address)
-        return images[0] if images else None
-    
-    async def enrich_location_with_image(self, location: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        为地点添加图片信息
-        
-        Args:
-            location: 地点信息
-            
-        Returns:
-            添加了图片信息的地点
-        """
-        keywords = location.get("name", "")
-        address = location.get("address", "")
-        
-        images = await self.get_place_images(keywords, address)
-        
-        if images:
-            location["images"] = images
-            location["image_url"] = images[0]  # 主图片
-        
+
+        logger.debug(f"未找到 {search_query} 图片，使用兜底图")
+        return [DEFAULT_IMAGE]
+
+    async def get_place_coordinate(self, search_query: str, city_limit: str = "") -> Dict[str, Optional[float]]:
+        try:
+            places = await amap_rest_client.search_places(
+                query=search_query,
+                city=city_limit,
+                category="景点"
+            )
+            if not places:
+                return {"lat": None, "lng": None}
+
+            location = places[0].get("location", "")
+            if "," in location:
+                lng_str, lat_str = location.split(",", 1)
+                return {"lat": float(lat_str.strip()), "lng": float(lng_str.strip())}
+        except Exception as e:
+            logger.warning(f"解析经纬度失败: {e}")
+
+        return {"lat": None, "lng": None}
+
+    def _pick_best_match(self, target_name: str, candidates: List[Dict]) -> Optional[Dict]:
+        """从候选列表中选出名称最相似的POI，相似度过低则丢弃"""
+        best = None
+        best_score = 9999
+        for place in candidates:
+            name = place.get("name", "")
+            if not name:
+                continue
+            clean_name = name.split("(")[0].strip()
+            score = min(
+                Levenshtein.distance(target_name.lower(), name.lower()),
+                Levenshtein.distance(target_name.lower(), clean_name.lower())
+            )
+            if score < best_score:
+                best_score = score
+                best = place
+        if best and best_score <= max(3, len(target_name) * 0.6):
+            return best
+        return None
+
+    async def _search_around_with_loose_match(
+        self, lat: float, lng: float, raw_name: str, radius: int = 1000
+    ) -> Optional[Dict]:
+        """周边搜索，不依赖高德keywords，而是拉取周边POI后本地模糊匹配"""
+        try:
+            nearby_places = await amap_rest_client.search_places_around(
+                location=f"{lng},{lat}",
+                radius=radius,
+                keywords="",
+                types="风景名胜"
+            )
+            if nearby_places:
+                best = self._pick_best_match(raw_name, nearby_places)
+                if best:
+                    return best
+        except Exception as e:
+            logger.warning(f"周边放宽搜索失败: {e}")
+        return None
+
+    async def _try_alternative_queries(
+        self, raw_name: str, city: str, lat: Optional[float] = None, lng: Optional[float] = None
+    ) -> Optional[Dict]:
+        """多级降级搜索：原名 → 去除修饰词 → 仅核心词"""
+        queries = [raw_name]
+        if "·" in raw_name:
+            queries.append(raw_name.split("·")[0])
+        if "（" in raw_name:
+            queries.append(raw_name.split("（")[0])
+        if len(raw_name) > 4:
+            queries.append(raw_name[:6])
+
+        for q in queries:
+            try:
+                places = await amap_rest_client.search_places(
+                    query=q, city=city, category="景点"
+                )
+                if places:
+                    best = self._pick_best_match(raw_name, places)
+                    if best:
+                        return best
+            except Exception as e:
+                logger.warning(f"降级搜索 {q} 失败: {e}")
+                continue
+        return None
+
+    async def enrich_location_with_image(self, location: Dict[str, Any], default_city: str = "") -> Dict[str, Any]:
+        raw_name = location.get("name", "").strip()
+        address = location.get("address", "").strip()
+        lat = location.get("lat")
+        lng = location.get("lng")
+
+        city_context = default_city
+        if not city_context and '市' in address:
+            city_context = address.split('市')[0]
+        if not city_context and lat and lng:
+            if 30.6 < lat < 31.6 and 120.8 < lng < 122.0:
+                city_context = "上海"
+                logger.info(f"📍 坐标坐落上海，自动设置城市为上海")
+        if not city_context and "上海" in address:
+            city_context = "上海"
+
+        if lat is not None and lng is not None:
+            try:
+                nearby = await amap_rest_client.search_places_around(
+                    location=f"{lng},{lat}",
+                    radius=500,
+                    keywords=raw_name,
+                    types="风景名胜"
+                )
+                if nearby:
+                    best_match = self._pick_best_match(raw_name, nearby)
+                    if best_match:
+                        return self._populate_from_poi(location, best_match)
+            except Exception as e:
+                logger.warning(f"严格周边搜索异常: {e}")
+
+            best = await self._search_around_with_loose_match(lat, lng, raw_name, radius=1000)
+            if best:
+                return self._populate_from_poi(location, best)
+
+        enhanced = raw_name
+        if city_context and city_context not in raw_name:
+            enhanced = f"{city_context}{raw_name}"
+
+        logger.info(f"🔍 文本搜索: [{raw_name}] -> [{enhanced}] (城市: {city_context})")
+
+        try:
+            places = await amap_rest_client.search_places(
+                query=enhanced, city=city_context, category="景点"
+            )
+            if places:
+                best = self._pick_best_match(raw_name, places)
+                if best:
+                    return self._populate_from_poi(location, best)
+
+            best = await self._try_alternative_queries(raw_name, city_context or "", lat, lng)
+            if best:
+                return self._populate_from_poi(location, best)
+
+        except Exception as e:
+            logger.error(f"文本搜索异常: {e}")
+
+        location["images"] = [DEFAULT_IMAGE]
+        location["image_url"] = DEFAULT_IMAGE
         return location
+
+    def _populate_from_poi(self, location: Dict[str, Any], poi: Dict[str, Any]) -> Dict[str, Any]:
+        """用POI数据填充location"""
+        photos = poi.get("photos", [])
+        image_urls = [p.get("url") for p in photos if p.get("url")]
+        if image_urls:
+            location["images"] = image_urls[:3]
+            location["image_url"] = image_urls[0]
+        loc_str = poi.get("location", "")
+        if "," in loc_str:
+            lng_str, lat_str = loc_str.split(",", 1)
+            location["lat"] = float(lat_str)
+            location["lng"] = float(lng_str)
+        return location
+
+
+place_image_service = PlaceImageService()

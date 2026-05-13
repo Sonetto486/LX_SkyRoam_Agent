@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from app.core.database import get_async_db
 from app.schemas.travel_plan import (
@@ -56,6 +56,31 @@ async def create_travel_plan(
     data = plan_data.dict()
     data["user_id"] = current_user.id
     return await service.create_travel_plan(TravelPlanCreate(**data))
+
+
+@router.post("/new", response_model=TravelPlanResponse)
+async def create_new_travel_plan(
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """创建新的空白旅行计划（手动创建）"""
+    service = TravelPlanService(db)
+
+    # 创建默认的旅行计划
+    now = datetime.now()
+    tomorrow = now + timedelta(days=1)
+
+    default_plan = TravelPlanCreate(
+        title="未命名行程",
+        destination="待定",
+        start_date=now,
+        end_date=tomorrow,
+        duration_days=1,
+        user_id=current_user.id,
+        preferences={"travelers": 1},
+    )
+
+    return await service.create_travel_plan(default_plan)
 
 
 @router.get("/")
@@ -946,6 +971,31 @@ async def create_plan_item(
     return await service.create_item(plan_id, item_data)
 
 
+@router.put("/{plan_id}/items/reorder")
+async def reorder_plan_items(
+    plan_id: int,
+    request_data: dict,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """重排序行程项目"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权修改该计划")
+
+    item_ids = request_data.get("item_ids", [])
+    if not isinstance(item_ids, list):
+        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
+
+    success = await service.reorder_items(plan_id, item_ids)
+    if not success:
+        raise HTTPException(status_code=400, detail="重排序失败")
+    return {"message": "排序已更新"}
+
+
 @router.put("/{plan_id}/items/{item_id}", response_model=TravelPlanItemResponse)
 async def update_plan_item(
     plan_id: int,
@@ -987,26 +1037,84 @@ async def delete_plan_item(
     return {"message": "行程项目已删除"}
 
 
-@router.put("/{plan_id}/items/reorder")
-async def reorder_plan_items(
+# =============== 行程优化相关端点 ===============
+from pydantic import BaseModel
+from app.services.itinerary_optimizer import ItineraryOptimizer
+
+
+class OptimizeRequest(BaseModel):
+    """优化请求"""
+    fill_coordinates: bool = True  # 是否填充坐标
+    balance_schedule: bool = True  # 是否均衡行程
+
+
+@router.post("/{plan_id}/optimize")
+async def optimize_travel_plan(
     plan_id: int,
-    request_data: dict,
+    request: OptimizeRequest,
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
-    """重排序行程项目"""
+    """一键优化行程（填充坐标 + 均衡行程）"""
     service = TravelPlanService(db)
     plan = await service.get_travel_plan(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="旅行计划不存在")
     if not (is_admin(current_user) or plan.user_id == current_user.id):
-        raise HTTPException(status_code=403, detail="无权修改该计划")
+        raise HTTPException(status_code=403, detail="无权优化该计划")
 
-    item_ids = request_data.get("item_ids", [])
-    if not isinstance(item_ids, list):
-        raise HTTPException(status_code=400, detail="item_ids 必须是数组")
+    optimizer = ItineraryOptimizer(db)
+    result = await optimizer.optimize(
+        plan_id=plan_id,
+        fill_coordinates=request.fill_coordinates,
+        balance_schedule=request.balance_schedule
+    )
 
-    success = await service.reorder_items(plan_id, item_ids)
-    if not success:
-        raise HTTPException(status_code=400, detail="重排序失败")
-    return {"message": "排序已更新"}
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "优化失败"))
+
+    # 获取更新后的计划
+    updated_plan = await service.get_travel_plan(plan_id)
+
+    return {
+        "success": True,
+        "message": result.get("message", "优化完成"),
+        "stats": result.get("stats", {}),
+        "updated_items": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "start_time": item.start_time,
+                "coordinates": item.coordinates,
+                "address": item.address,
+            }
+            for item in updated_plan.items
+        ] if updated_plan else []
+    }
+
+
+# =============== 路线优化相关端点 ===============
+from app.services.route_optimizer import RouteOptimizer
+
+
+@router.post("/{plan_id}/optimize-route")
+async def optimize_travel_route(
+    plan_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """路线优化 - 按距离远近规划最优路线"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权优化该计划")
+
+    optimizer = RouteOptimizer(db)
+    result = await optimizer.optimize_route(plan_id)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "路线优化失败"))
+
+    return result

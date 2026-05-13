@@ -11,6 +11,33 @@
   --accent-a: #a78bfa; /* violet */
   --accent-b: #60a5fa; /* blue */
   --accent-c: #34d399; /* green */
+  /* 额外变量用于主题适配 */
+  --glass-bg: rgba(255,255,255,0.05);
+  --glass-border: rgba(255,255,255,0.1);
+  --shadow-color: rgba(0,0,0,0.35);
+  --glow-color: rgba(167,139,250,0.3);
+  --hero-gradient: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.08) 30%, transparent 80%);
+}
+
+/* 亮色主题 */
+:root[data-theme='light'] {
+  --bg: #f8fafc;
+  --bg-soft: #ffffff;
+  --text-strong: rgba(15,15,30,0.92);
+  --text: rgba(15,15,30,0.85);
+  --text-soft: rgba(15,15,30,0.65);
+  --border: rgba(15,15,30,0.15);
+  --border-soft: rgba(15,15,30,0.08);
+  --overlay: rgba(15,15,30,0.04);
+  --accent-a: #7c3aed; /* 更深的 violet */
+  --accent-b: #2563eb; /* 更深的 blue */
+  --accent-c: #059669; /* 更深的 green */
+  /* 亮色主题额外变量 */
+  --glass-bg: rgba(15,15,30,0.03);
+  --glass-border: rgba(15,15,30,0.08);
+  --shadow-color: rgba(0,0,0,0.1);
+  --glow-color: rgba(124,58,237,0.2);
+  --hero-gradient: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124, 58, 237, 0.08) 0%, rgba(37, 99, 235, 0.05) 30%, transparent 80%);
 }
 
 /* 页面容器与标题样式 */
@@ -25,15 +52,15 @@
 
 /* 通用玻璃卡片 */
 .glass-card {
-  background: var(--overlay) !important;
-  border: 1px solid var(--border) !important;
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
   border-radius: 20px !important;
   backdrop-filter: blur(20px) !important;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.35) !important;
+  box-shadow: 0 10px 30px var(--shadow-color) !important;
 }
 .glass-card:hover {
-  border-color: rgba(167,139,250,0.5) !important;
-  box-shadow: 0 0 40px rgba(167,139,250,0.3), 0 20px 60px rgba(0,0,0,0.4) !important;
+  border-color: var(--accent-a) !important;
+  box-shadow: 0 0 40px var(--glow-color), 0 20px 60px var(--shadow-color) !important;
   transform: translateY(-6px) !important;
 }
 
@@ -44,8 +71,8 @@
 }
 .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; color: white !important; border: none !important; }
 .btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.btn-secondary { background: rgba(255,255,255,0.12) !important; color: white !important; border: 1px solid var(--border) !important; }
-.btn-secondary:hover { border-color: rgba(167,139,250,0.5) !important; }
+.btn-secondary { background: var(--overlay) !important; color: var(--text) !important; border: 1px solid var(--border) !important; }
+.btn-secondary:hover { border-color: var(--accent-a) !important; }
 
 /* 文本与基础元素统一为暗色主题 */
 body, .ant-layout, .ant-layout-content { background: var(--bg) !important; }
@@ -61,14 +88,14 @@ html, body, #root { height: 100%; min-height: 100vh; }
 /* 表单与输入控件 */
 .ant-form-item-label > label { color: var(--text) !important; }
 .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number, .ant-cascader-picker {
-  background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important;
+  background: var(--overlay) !important; color: var(--text) !important; border-color: var(--border) !important;
 }
-/* 前缀/后缀输入框容器与内部输入统一暗色 */
-.ant-input-affix-wrapper > input.ant-input { background: transparent !important; color: #fff !important; }
+/* 前缀/后缀输入框容器与内部输入统一 */
+.ant-input-affix-wrapper > input.ant-input { background: transparent !important; color: var(--text) !important; }
 .ant-input-suffix, .ant-input-prefix { color: var(--text-soft) !important; }
 /* Select 多选模式下的选中项（小标签）提升对比度与可读性 */
 .ant-select-multiple .ant-select-selection-item {
-  background: rgba(255,255,255,0.14) !important;
+  background: var(--overlay) !important;
   border: 1px solid var(--border) !important;
   color: var(--text) !important;
   border-radius: 12px !important;
@@ -76,38 +103,59 @@ html, body, #root { height: 100%; min-height: 100vh; }
 .ant-select-multiple .ant-select-selection-item-content { color: var(--text) !important; }
 .ant-select-multiple .ant-select-selection-item-remove { color: var(--text-soft) !important; }
 .ant-select-multiple .ant-select-selection-item:hover {
-  background: rgba(255,255,255,0.20) !important;
+  background: var(--border-soft) !important;
 }
-/* 数字输入内部区域统一暗色 */
+/* 数字输入内部区域统一 */
 .ant-input-number-input-wrap { background: transparent !important; background-color: transparent !important; }
 .ant-input-number .ant-input-number-input-wrap { background: transparent !important; }
-.ant-input-number-input { background: transparent !important; background-color: transparent !important; color: #fff !important; }
-.ant-input-number .ant-input-number-input { background: transparent !important; color: #fff !important; }
+.ant-input-number-input { background: transparent !important; background-color: transparent !important; color: var(--text) !important; }
+.ant-input-number .ant-input-number-input { background: transparent !important; color: var(--text) !important; }
 /* 聚焦态统一高亮 */
 .ant-input-affix-wrapper-focused, .ant-input:focus,
 .ant-select-focused .ant-select-selector, .ant-picker-focused,
 .ant-input-number.ant-input-number-focused {
-  border-color: rgba(167,139,250,0.6) !important;
-  box-shadow: 0 0 0 2px rgba(167,139,250,0.25) !important;
+  border-color: var(--accent-a) !important;
+  box-shadow: 0 0 0 2px var(--glow-color) !important;
 }
-.ant-input::placeholder, .ant-select-selection-placeholder, .ant-picker-input > input::placeholder, .ant-input-number-input::placeholder { color: rgba(255,255,255,0.45) !important; }
-/* InputNumber 步进器与按钮暗色适配 */
-.ant-input-number-handler-wrap { background: var(--overlay) !important; border-left: 1px solid rgba(255,255,255,0.2) !important; }
+.ant-input::placeholder, .ant-select-selection-placeholder, .ant-picker-input > input::placeholder, .ant-input-number-input::placeholder { color: var(--text-soft) !important; }
+/* InputNumber 步进器与按钮适配 */
+.ant-input-number-handler-wrap { background: var(--overlay) !important; border-left: 1px solid var(--border) !important; }
 .ant-input-number-handler, .ant-input-number-handler-up, .ant-input-number-handler-down { color: var(--text-soft) !important; }
 .ant-input-number-handler-up-inner, .ant-input-number-handler-down-inner { color: var(--text-soft) !important; }
-.ant-input-number:hover .ant-input-number-handler-wrap { background: rgba(255,255,255,0.08) !important; }
+.ant-input-number:hover .ant-input-number-handler-wrap { background: var(--border-soft) !important; }
 .ant-select-arrow, .ant-picker-suffix { color: var(--text-soft) !important; }
-/* Input/InputNumber 组合附加区暗色背景 */
-.ant-input-group-addon, .ant-input-number-group-addon { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
-.ant-input-group-wrapper:hover .ant-input-group-addon, .ant-input-number-group-wrapper:hover .ant-input-number-group-addon { background: rgba(255,255,255,0.08) !important; }
+/* Input/InputNumber 组合附加区背景 */
+.ant-input-group-addon, .ant-input-number-group-addon { background: var(--overlay) !important; color: var(--text) !important; border-color: var(--border) !important; }
+.ant-input-group-wrapper:hover .ant-input-group-addon, .ant-input-number-group-wrapper:hover .ant-input-number-group-addon { background: var(--border-soft) !important; }
 /* 组合内输入与数字输入背景保持一致 */
 .ant-input-group .ant-input, .ant-input-group .ant-input-number { background: var(--overlay) !important; }
-/* 强制覆盖 Ant v5 开发态 outlined 变体的白色背景 */
-.ant-input-number.ant-input-number-outlined { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
-:where(.css-dev-only-do-not-override-1fsucgp).ant-input-number-outlined { background: var(--overlay) !important; color: #fff !important; border-color: rgba(255,255,255,0.25) !important; }
+/* 强制覆盖 Ant v5 开发态 outlined 变体的背景 */
+.ant-input-number.ant-input-number-outlined { background: var(--overlay) !important; color: var(--text) !important; border-color: var(--border) !important; }
+:where(.css-dev-only-do-not-override-1fsucgp).ant-input-number-outlined { background: var(--overlay) !important; color: var(--text) !important; border-color: var(--border) !important; }
 /* 悬停与聚焦态保持统一高亮 */
-.ant-input-number-outlined:hover { border-color: rgba(167,139,250,0.6) !important; }
-.ant-input-number-outlined.ant-input-number-focused { box-shadow: 0 0 0 2px rgba(167,139,250,0.25) !important; }
+.ant-input-number-outlined:hover { border-color: var(--accent-a) !important; }
+.ant-input-number-outlined.ant-input-number-focused { box-shadow: 0 0 0 2px var(--glow-color) !important; }
+
+/* Ant Design Sider 侧边栏主题适配 */
+.ant-layout-sider,
+.ant-layout-sider-dark,
+.ant-layout-sider-light,
+.ant-layout-sider .ant-layout-sider-children {
+  background: var(--bg-soft) !important;
+  background-color: var(--bg-soft) !important;
+}
+
+/* 侧边栏折叠触发器 */
+.ant-layout-sider-trigger {
+  background: var(--bg-soft) !important;
+  color: var(--text) !important;
+  border-top: 1px solid var(--border-soft);
+}
+
+.ant-layout-sider-trigger:hover {
+  background: var(--overlay) !important;
+  color: var(--accent-a) !important;
+}
 
 /* 卡片、表格、弹窗等容器 */
 .ant-card { background: var(--overlay) !important; border-color: var(--border) !important; color: var(--text) !important; }
@@ -120,7 +168,7 @@ html, body, #root { height: 100%; min-height: 100vh; }
 .dest-plan-card .ant-card-body { background: transparent !important; }
 .dest-plan-card .ant-typography, .dest-plan-card p { color: var(--text) !important; }
 .dest-plan-card .ant-tag:not(.ant-tag-has-color):not([class*="ant-tag-"]) { color: var(--text) !important; border-color: var(--border) !important; background: transparent !important; }
-.dest-plan-card:hover { border-color: rgba(167,139,250,0.5) !important; box-shadow: 0 0 40px rgba(167,139,250,0.3), 0 20px 60px rgba(0,0,0,0.4) !important; transform: translateY(-4px) !important; }
+.dest-plan-card:hover { border-color: var(--accent-a) !important; box-shadow: 0 0 40px var(--glow-color), 0 20px 60px var(--shadow-color) !important; transform: translateY(-4px) !important; }
 .ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-dropdown-menu, .ant-tooltip-inner {
   background: var(--bg-soft) !important; color: var(--text) !important; border: 1px solid var(--border-soft) !important;
 }
@@ -135,7 +183,7 @@ html, body, #root { height: 100%; min-height: 100vh; }
 .ant-modal .glass-card .ant-card-body { background: transparent !important; }
 .ant-modal .glass-card .ant-typography, .ant-modal .glass-card p { color: var(--text) !important; }
 .ant-dropdown-menu .ant-dropdown-menu-item:hover {
-  background: rgba(255,255,255,0.08) !important;
+  background: var(--overlay) !important;
 }
 .ant-dropdown-menu .ant-dropdown-menu-item-divider {
   border-top-color: var(--border-soft) !important;
@@ -150,7 +198,7 @@ html, body, #root { height: 100%; min-height: 100vh; }
   color: var(--text) !important;
 }
 .ant-drawer .ant-menu-item:hover {
-  background: rgba(255,255,255,0.06) !important;
+  background: var(--overlay) !important;
 }
 .ant-drawer .ant-menu-light .ant-menu-item-selected {
   background: transparent !important;
@@ -172,7 +220,7 @@ html, body, #root { height: 100%; min-height: 100vh; }
 .ant-table, .ant-table-container { background: transparent !important; }
 .ant-table-thead > tr > th { background: var(--bg-soft) !important; color: var(--text) !important; border-bottom-color: var(--border-soft) !important; }
 .ant-table-tbody > tr > td { background: transparent !important; color: var(--text) !important; border-bottom-color: var(--border-soft) !important; }
-.ant-table-row:hover > td { background: rgba(255,255,255,0.04) !important; }
+.ant-table-row:hover > td { background: var(--overlay) !important; }
 
 /* 标签、提示等小组件 */
 /* 仅对非配色标签应用暗色文字与边框，避免预设色变淡 */
@@ -181,8 +229,8 @@ html, body, #root { height: 100%; min-height: 100vh; }
 .ant-alert { background: var(--overlay) !important; color: var(--text) !important; border: 1px solid var(--border-soft) !important; }
 
 /* 链接颜色 */
-a { color: #93c5fd; }
-a:hover { color: #bfdbfe; }
+a { color: var(--accent-b); }
+a:hover { color: var(--accent-a); }
 
 /* Empty 空状态描述文字为白色 */
 .ant-empty-description { color: var(--text) !important; }
@@ -199,14 +247,14 @@ a:hover { color: #bfdbfe; }
 .ant-pagination-item { background: transparent !important; border-color: var(--border) !important; }
 .ant-pagination-item a { color: var(--text) !important; }
 .ant-pagination-item-ellipsis { color: var(--text-soft) !important; }
-.ant-pagination-item:hover { border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.06) !important; }
-.ant-pagination-item-active { border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.10) !important; }
+.ant-pagination-item:hover { border-color: var(--accent-a) !important; background: var(--overlay) !important; }
+.ant-pagination-item-active { border-color: var(--accent-a) !important; background: var(--border-soft) !important; }
 .ant-pagination-item-active a { color: var(--text-strong) !important; }
 .ant-pagination-next .ant-pagination-item-link, .ant-pagination-prev .ant-pagination-item-link {
   color: var(--text) !important; background: transparent !important; border-color: var(--border) !important;
 }
 .ant-pagination-next:hover .ant-pagination-item-link, .ant-pagination-prev:hover .ant-pagination-item-link {
-  border-color: rgba(167,139,250,0.6) !important; background: rgba(255,255,255,0.06) !important;
+  border-color: var(--accent-a) !important; background: var(--overlay) !important;
 }
 .ant-pagination-total-text { color: var(--text) !important; }
 
@@ -222,9 +270,9 @@ a:hover { color: #bfdbfe; }
 
 /* PlanDetail 专属美化样式 */
 .plan-header-card {
-  border: 1px solid rgba(167, 139, 250, 0.2) !important;
+  border: 1px solid var(--accent-a) !important;
   background: var(--overlay) !important;
-  box-shadow: 0 0 40px rgba(167, 139, 250, 0.15) !important;
+  box-shadow: 0 0 40px var(--glow-color) !important;
   border-radius: 24px !important;
   padding: 32px !important;
 }
@@ -232,13 +280,13 @@ a:hover { color: #bfdbfe; }
 .plan-detail-page .ant-card {
   border-radius: 24px !important;
   border: 1px solid var(--border) !important;
-  box-shadow: 0 0 30px rgba(167, 139, 250, 0.12) !important;
+  box-shadow: 0 0 30px var(--glow-color) !important;
   transition: all 0.3s ease !important;
 }
 
 .plan-detail-page .ant-card:hover {
-  border-color: rgba(167, 139, 250, 0.4) !important;
-  box-shadow: 0 0 50px rgba(167, 139, 250, 0.24) !important;
+  border-color: var(--accent-a) !important;
+  box-shadow: 0 0 50px var(--glow-color) !important;
   transform: translateY(-3px) !important;
 }
 
@@ -287,7 +335,7 @@ a:hover { color: #bfdbfe; }
 /* TravelPlan 页面专属样式：提示文本与预览卡片悬浮动效 */
 .travel-plan-page .ant-alert-message,
 .travel-plan-page .ant-alert-description {
-  color: #fff !important;
+  color: var(--text) !important;
 }
 
 .travel-plan-page .ant-card-hoverable {
@@ -295,8 +343,8 @@ a:hover { color: #bfdbfe; }
 }
 .travel-plan-page .ant-card-hoverable:hover {
   transform: translateY(-4px) !important;
-  box-shadow: 0 8px 24px rgba(167, 139, 250, 0.3) !important;
-  border-color: rgba(167,139,250,0.5) !important;
+  box-shadow: 0 8px 24px var(--glow-color) !important;
+  border-color: var(--accent-a) !important;
 }
 
 /* 行程时间线暗色适配：透明点与柔和线条 */
@@ -326,8 +374,8 @@ a:hover { color: #bfdbfe; }
 }
 
 .plan-detail-page .ant-tag:not(.ant-tag-has-color):not([class*="ant-tag-"]) {
-  background: rgba(167, 139, 250, 0.12) !important;
-  border: 1px solid rgba(167, 139, 250, 0.3) !important;
+  background: var(--overlay) !important;
+  border: 1px solid var(--accent-a) !important;
   color: var(--accent-a) !important;
 }
 

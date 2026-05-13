@@ -1,7 +1,7 @@
 .place-detail-container {
   min-height: 100vh;
-  background: #16111d;
-  color: rgba(255, 255, 255, 0.88);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .place-detail-loading,
@@ -11,6 +11,7 @@
   align-items: center;
   min-height: 70vh;
   font-size: 18px;
+  color: var(--text);
 }
 
 .place-detail-hero {
@@ -27,9 +28,13 @@
 }
 
 .back-link {
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: var(--text) !important;
   padding: 0 !important;
   margin-bottom: 16px;
+}
+
+.back-link:hover {
+  color: var(--accent-a) !important;
 }
 
 .hero-tags {
@@ -46,21 +51,21 @@
 }
 
 .info-card {
-  background: #251d32 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 16px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--text);
 }
 
 .info-card .ant-card-body,
 .mini-card .ant-card-body {
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--text);
 }
 
 .info-card h3,
 .info-card h4,
 .mini-card h5 {
-  color: #fff !important;
+  color: var(--text-strong) !important;
 }
 
 .info-grid {
@@ -84,8 +89,8 @@
 }
 
 .mini-card {
-  background: #2c2439 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
   height: 100%;
 }
 
@@ -104,12 +109,12 @@
 
 .mini-meta {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-soft);
   margin-bottom: 8px;
 }
 
 .mini-desc {
-  color: rgba(255, 255, 255, 0.72) !important;
+  color: var(--text) !important;
   margin-bottom: 0 !important;
 }
 

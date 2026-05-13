@@ -396,8 +396,10 @@ class AgentService:
                 return
 
             start_date = plan.start_date
-            if hasattr(start_date, 'date'):
+            if hasattr(start_date, 'date') and not isinstance(start_date, datetime):
                 start_date = start_date.date() if callable(getattr(start_date, 'date', None)) else start_date
+            if not isinstance(start_date, datetime):
+                start_date = datetime.now()
 
             # 4. 将生成的方案同步到 items 表
             first_plan = plans[0]
@@ -406,14 +408,7 @@ class AgentService:
 
             items_added = 0
             for day_index, day_data in enumerate(daily_itineraries):
-                # 计算当天日期
-                if isinstance(start_date, datetime):
-                    day_date = start_date + timedelta(days=day_index)
-                else:
-                    day_date = datetime.combine(
-                        start_date + timedelta(days=day_index),
-                        datetime.min.time()
-                    )
+                day_date = start_date + timedelta(days=day_index)
 
                 attractions = day_data.get('attractions', [])
                 logger.info(f"Day {day_index + 1}: {len(attractions)} 个景点")

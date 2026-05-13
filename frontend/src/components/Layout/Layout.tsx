@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Layout as AntLayout, Menu, Button, Drawer, Typography, Avatar, Dropdown, Modal, Form, Input, message } from 'antd';
-import { 
-  HomeOutlined, 
-  HistoryOutlined, 
+import {
+  HomeOutlined,
+  HistoryOutlined,
   InfoCircleOutlined,
   MenuOutlined,
   UserOutlined,
   EnvironmentOutlined,
-  RocketOutlined
+  RocketOutlined,
+  SunOutlined,
+  MoonOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Layout.css';
@@ -18,6 +20,7 @@ import { buildApiUrl } from '../../config/api';
 import AIAssistant from '../AIAssistant';
 import SystemUpgradeNotice from '../SystemUpgradeNotice/SystemUpgradeNotice';
 import UpgradeManager from '../../utils/upgradeManager';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Header, Content, Footer } = AntLayout;
 const { Title } = Typography;
@@ -39,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [saving, setSaving] = useState(false);
   const [upgradeNoticeVisible, setUpgradeNoticeVisible] = useState(false);
   const [upgradeConfig, setUpgradeConfig] = useState(UpgradeManager.getCurrentConfig());
+  const { theme, toggleTheme, isDark } = useTheme();
 
   // 监听升级配置变化
   useEffect(() => {
@@ -167,10 +171,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <Menu
       mode="vertical"
       selectedKeys={[location.pathname]}
-     
       onClick={({ key }) => handleMenuClick(key)}
       style={{ border: 'none' }}
-      theme="dark"
     />
   );
 
@@ -186,16 +188,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
            <Menu
              mode="horizontal"
              selectedKeys={[location.pathname]}
-            
              onClick={({ key }) => handleMenuClick(key)}
              style={{ background: 'transparent', border: 'none' }}
-             theme="dark"
            />
 
           <div className="header-actions">
-           
-            
-           
+            {/* 主题切换按钮 */}
+            <Button
+              type="text"
+              icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleTheme}
+              className="theme-toggle-btn"
+              title={isDark ? '切换到亮色模式' : '切换到暗色模式'}
+            />
+
             {token ? (
               <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                 <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
@@ -263,10 +269,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {children}
       </Content>
 
-      <Footer 
-        style={{ textAlign: 'center', background: '#0f0f1e', borderTop: '1px solid rgba(255,255,255,0.1)' }}
+      <Footer
+        style={{ textAlign: 'center', background: 'var(--bg)', borderTop: '1px solid var(--border-soft)' }}
       >
-        <div style={{ color: 'rgba(255,255,255,0.7)' }}>
+        <div style={{ color: 'var(--text-soft)' }}>
           <p style={{ margin: '8px 0' }}>
             © 2025{' '}
             <a
