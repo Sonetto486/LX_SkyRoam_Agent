@@ -24,8 +24,7 @@ class MCPClient:
             timeout=timeout,
             verify=False,  # 暂时禁用SSL验证
             follow_redirects=True,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
-            proxy=None  # 在新版本 httpx 中使用 proxy 代替 proxies
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
         )
         self.base_url = "https://api.example.com"  # 示例API地址
         self._amadeus_token = None

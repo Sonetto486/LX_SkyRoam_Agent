@@ -19,32 +19,23 @@ class RAGRetriever:
     """RAG检索器 - 从xhs_note_chunks表中检索相关旅行攻略"""
 
     def __init__(self):
-        # 数据库连接配置
+        # 数据库连接配置（使用统一配置）
         self.db_config = {
-            "dbname": "skyroam",
-            "user": "postgres",
-            "password": "123456",
-            "host": "localhost",
-            "port": "5432"
+            "dbname": settings.RAG_DB_NAME,
+            "user": settings.RAG_DB_USER,
+            "password": settings.RAG_DB_PASSWORD,
+            "host": settings.RAG_DB_HOST,
+            "port": str(settings.RAG_DB_PORT)
         }
 
-        # 向量化API配置（使用硅基流动）
-        self.embedding_api_base = os.getenv(
-            "RAG_EMBEDDING_API_BASE",
-            "https://api.siliconflow.cn/v1"
-        )
-        self.embedding_api_key = os.getenv(
-            "RAG_EMBEDDING_API_KEY",
-            "sk-akxmmyreibwsszkfvxsfnmnifgbaoxswrghligcjnygvgayo"
-        )
-        self.embedding_model = os.getenv(
-            "RAG_EMBEDDING_MODEL",
-            "Qwen/Qwen3-Embedding-0.6B"
-        )
+        # 向量化API配置（使用统一配置）
+        self.embedding_api_base = settings.RAG_EMBEDDING_API_BASE
+        self.embedding_api_key = settings.RAG_EMBEDDING_API_KEY
+        self.embedding_model = settings.RAG_EMBEDDING_MODEL
 
         # 检索配置
-        self.default_top_k = int(os.getenv("RAG_TOP_K", "5"))
-        self.similarity_threshold = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.5"))
+        self.default_top_k = settings.POI_TOP_K
+        self.similarity_threshold = settings.POI_SIMILARITY_THRESHOLD
 
     def get_embedding(self, text: str) -> List[float]:
         """调用API获取文本的向量表示"""

@@ -61,8 +61,7 @@ class DataCollector:
         self.xhs_client = XHSAPIClient(settings.XHS_API_BASE)  # 小红书API客户端
         self.http_client = httpx.AsyncClient(
             timeout=30.0,
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
-            proxy=None
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
         )
         self.map_provider = settings.MAP_PROVIDER  # 地图服务提供商（保留用于兼容）
         self.unified_map_service = UnifiedMapService()  # 统一地图服务，支持多提供商回退
@@ -1611,7 +1610,7 @@ class DataCollector:
 
 
     async def close(self):
-        """关闭HTTP客户端"""
+        """关闭HTTP客户端（仅关闭实例级别的客户端，不关闭全局单例）"""
         try:
             await self.http_client.aclose()
         except Exception:
@@ -1624,14 +1623,8 @@ class DataCollector:
             await self.mcp_client.close()
         except Exception:
             pass
-        try:
-            await amap_rest_client.close()
-        except Exception:
-            pass
-        try:
-            await self.unified_map_service.close()
-        except Exception:
-            pass
+        # 注意：不关闭 amap_rest_client 和 unified_map_service，因为它们是全局单例
+        # 在其他地方可能还需要使用
         try:
             await self.xhs_client.close()
         except Exception:
