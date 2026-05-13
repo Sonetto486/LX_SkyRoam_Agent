@@ -160,14 +160,13 @@ const PlaceDetailPage: React.FC = () => {
               <Row gutter={[16, 16]}>
                 {(place.relatedAttractions || []).map((item) => (
                   <Col xs={24} sm={12} lg={8} key={item.id}>
-                    <Card hoverable className="mini-card" onClick={() => navigate(`/places/attractions/${item.id}`)}>
+                    <Card className="mini-card">
                       <div className="mini-card-image-wrap">
                         <img src={item.image || `https://picsum.photos/seed/attr_${item.id}/800/600`} alt={item.name} />
                       </div>
                       <Title level={5}>{item.name}</Title>
                       <div className="mini-meta">{item.category || '景点'} · {item.rating ?? '-'} 分</div>
                       <Paragraph ellipsis={{ rows: 2 }} className="mini-desc">{item.description}</Paragraph>
-                      <Button type="link" style={{ paddingLeft: 0 }}>查看详情 →</Button>
                     </Card>
                   </Col>
                 ))}

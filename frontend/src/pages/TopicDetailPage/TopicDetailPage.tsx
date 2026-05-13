@@ -125,13 +125,6 @@ const TopicDetailPage: React.FC = () => {
                   <Paragraph ellipsis={{ rows: 3 }} className="place-desc">
                     {place.description}
                   </Paragraph>
-
-                  <Button type="link" style={{ padding: 0 }} onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/places/${place.type}/${place.relatedId ?? place.id}`);
-                  }}>
-                    查看更详细信息 →
-                  </Button>
                 </Card>
               </Badge.Ribbon>
             </Col>
