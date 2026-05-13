@@ -173,6 +173,22 @@ class Settings(BaseSettings):
     LOG_TO_CONSOLE: bool = os.getenv("LOG_TO_CONSOLE", "").lower() in ("true", "1", "yes")  # 是否输出到控制台
     LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", "").lower() in ("true", "1", "yes")  # 是否输出到文件
 
+    # RAG 向量数据库配置（用于 POI 检索）
+    RAG_DB_NAME: str = os.getenv("RAG_DB_NAME", "skyroam")
+    RAG_DB_USER: str = os.getenv("RAG_DB_USER", "postgres")
+    RAG_DB_PASSWORD: str = os.getenv("RAG_DB_PASSWORD", "")
+    RAG_DB_HOST: str = os.getenv("RAG_DB_HOST", "localhost")
+    RAG_DB_PORT: int = int(os.getenv("RAG_DB_PORT", "5432"))
+
+    # RAG 向量化 API 配置（智谱 AI Embedding）
+    RAG_EMBEDDING_API_BASE: str = os.getenv("RAG_EMBEDDING_API_BASE", "https://open.bigmodel.cn/api/paas/v4")
+    RAG_EMBEDDING_API_KEY: str = os.getenv("RAG_EMBEDDING_API_KEY", "")
+    RAG_EMBEDDING_MODEL: str = os.getenv("RAG_EMBEDDING_MODEL", "embedding-2")
+
+    # POI 检索配置
+    POI_TOP_K: int = int(os.getenv("POI_TOP_K", "20"))
+    POI_SIMILARITY_THRESHOLD: float = float(os.getenv("POI_SIMILARITY_THRESHOLD", "0.3"))
+
     # 缓存配置
     CACHE_TTL: int = int(os.getenv("CACHE_TTL", "3600"))  # 1小时
     CACHE_MAX_SIZE: int = int(os.getenv("CACHE_MAX_SIZE", "1000"))

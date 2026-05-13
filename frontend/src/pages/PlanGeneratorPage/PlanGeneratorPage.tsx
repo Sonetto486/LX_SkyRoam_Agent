@@ -712,7 +712,7 @@ const PlanGeneratorPage: React.FC = () => {
           <Spin size="large" style={{ marginBottom: 24 }} />
           <Progress percent={Math.round(generationProgress)} status="active" strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }} />
           <p className="generation-status">{generationStatus || '处理中...'}</p>
-          <p className="generation-hint">预计需要 2-5 分钟，请耐心等待</p>
+          <p className="generation-hint">预计需要 1 分钟，请耐心等待</p>
         </div>
       </Modal>
 
