@@ -416,18 +416,27 @@ const getDayActivities = (): DayActivity[] => {
 
     console.log('Extracting rich daily itineraries from planData:', planData);
 
+    const totalDays = planData.daily_itineraries.length;
+
     return planData.daily_itineraries.map((day: any, dayIndex: number) => {
       const date = day.date || getDateByOffset(plan.start_date, dayIndex);
 
       console.log(`Processing day ${dayIndex}:`, day);
+
+      // 判断是否需要显示交通信息
+      // 跳过第一天（出发交通）和最后一天（返程交通）
+      const shouldShowTransport = !(
+        (dayIndex === 0 && day.transportation?.stage === 'departure') ||
+        (dayIndex === totalDays - 1 && day.transportation?.stage === 'return')
+      );
 
       // 返回分组数据结构
       return {
         date,
         // 住宿信息（只在第一天显示）
         hotel: dayIndex === 0 && planData.hotel ? planData.hotel : null,
-        // 交通信息
-        transportation: day.transportation || null,
+        // 交通信息（跳过出发和返程交通）
+        transportation: shouldShowTransport ? day.transportation : null,
         // 日程时间轴（所有活动）
         schedule: day.schedule || [],
         // 餐饮推荐（去重）
@@ -461,21 +470,20 @@ const getDayActivities = (): DayActivity[] => {
     });
   };
 
-  // 新增：提取景点信息并去重
+  // 新增：提取景点信息（保留所有景点，标记是否在schedule中）
   const extractAttractionsWithDedup = (attractions: any[], schedule: any[]): any[] => {
     if (!attractions) return [];
 
-    return attractions.filter(attr => {
-      // 检查 schedule 中是否已提到该景点
+    // 返回所有景点，但标记是否已在schedule中提到
+    return attractions.map(attr => {
       const existsInSchedule = schedule?.some(item =>
         item.location?.includes(attr.name) || item.activity?.includes(attr.name)
       );
 
-      if (existsInSchedule) {
-        console.log(`Skipping duplicate attraction: ${attr.name}`);
-      }
-
-      return !existsInSchedule;
+      return {
+        ...attr,
+        inSchedule: existsInSchedule, // 标记是否已在日程中
+      };
     });
   };
 
@@ -535,6 +543,50 @@ const getDayActivities = (): DayActivity[] => {
     if (markers.length > 0) {
       return markers[0].position;
     }
+
+    // 如果没有标记点，使用目的地城市的坐标
+    if (plan?.destination) {
+      // 常见城市坐标映射
+      const cityCoordinates: Record<string, { lat: number; lng: number }> = {
+        '北京': { lat: 39.9042, lng: 116.4074 },
+        '上海': { lat: 31.2304, lng: 121.4737 },
+        '广州': { lat: 23.1291, lng: 113.2644 },
+        '深圳': { lat: 22.5431, lng: 114.0579 },
+        '成都': { lat: 30.5728, lng: 104.0668 },
+        '杭州': { lat: 30.2741, lng: 120.1551 },
+        '西安': { lat: 34.3416, lng: 108.9398 },
+        '重庆': { lat: 29.4316, lng: 106.9123 },
+        '武汉': { lat: 30.5928, lng: 114.3055 },
+        '南京': { lat: 32.0603, lng: 118.7969 },
+        '天津': { lat: 39.0842, lng: 117.2009 },
+        '苏州': { lat: 31.2989, lng: 120.5853 },
+        '郑州': { lat: 34.7466, lng: 113.6254 },
+        '长沙': { lat: 28.2282, lng: 112.9388 },
+        '青岛': { lat: 36.0671, lng: 120.3826 },
+        '大连': { lat: 38.9140, lng: 121.6147 },
+        '厦门': { lat: 24.4798, lng: 118.0894 },
+        '昆明': { lat: 25.0389, lng: 102.7183 },
+        '三亚': { lat: 18.2528, lng: 109.5120 },
+        '贵阳': { lat: 26.6470, lng: 106.6302 },
+        '桂林': { lat: 25.2744, lng: 110.2900 },
+        '丽江': { lat: 26.8721, lng: 100.2297 },
+        '拉萨': { lat: 29.6500, lng: 91.1000 },
+      };
+
+      // 尝试匹配城市名
+      const cityName = plan.destination.replace('市', '');
+      if (cityCoordinates[cityName]) {
+        return cityCoordinates[cityName];
+      }
+
+      // 如果城市不在列表中，尝试模糊匹配
+      for (const [city, coords] of Object.entries(cityCoordinates)) {
+        if (plan.destination.includes(city)) {
+          return coords;
+        }
+      }
+    }
+
     // 默认返回北京坐标
     return { lat: 39.9042, lng: 116.4074 };
   };
@@ -848,7 +900,7 @@ const getDayActivities = (): DayActivity[] => {
   return (
     <Layout className="workspace-layout">
       {/* 左半屏：信息流面板 */}
-      <Sider width={480} className="workspace-sider">
+      <Sider width={600} className="workspace-sider">
         {/* 顶部看板 */}
         <div className="workspace-header">
           <Button
@@ -950,16 +1002,16 @@ const getDayActivities = (): DayActivity[] => {
               >
                 {/* 分组展示 */}
                 <div className="activities-list">
+                  {/* 日程时间轴 - 显示在最上方 */}
+                  {day.schedule && day.schedule.length > 0 && (
+                    <DayScheduleSection schedule={day.schedule} />
+                  )}
+
                   {/* 住宿信息 */}
                   {day.hotel && <HotelSection hotel={day.hotel} />}
 
                   {/* 交通信息 */}
                   {day.transportation && <TransportSection transportation={day.transportation} />}
-
-                  {/* 日程时间轴 */}
-                  {day.schedule && day.schedule.length > 0 && (
-                    <DayScheduleSection schedule={day.schedule} />
-                  )}
 
                   {/* 餐饮推荐 */}
                   {day.meals && day.meals.length > 0 && (
@@ -968,7 +1020,23 @@ const getDayActivities = (): DayActivity[] => {
 
                   {/* 景点列表 */}
                   {day.attractions && day.attractions.length > 0 && (
-                    <AttractionsSection attractions={day.attractions} />
+                    <AttractionsSection
+                      attractions={day.attractions}
+                      hotelAddress={day.hotel?.address}
+                      hotelCoordinates={day.hotel?.coordinates}
+                      planId={plan?.id}
+                      dayDate={day.date}
+                      onRouteOptimized={(segments) => {
+                        // Handle route segments for map display
+                        setRouteSegments(prev => {
+                          const existing = prev.find(r => r.date === day.date);
+                          if (existing) {
+                            return prev.map(r => r.date === day.date ? { ...r, route_segments: segments } : r);
+                          }
+                          return [...prev, { date: day.date, route_segments: segments }];
+                        });
+                      }}
+                    />
                   )}
 
                   {/* 添加活动按钮 */}
