@@ -25,6 +25,8 @@ class PlaywrightXHSCrawler:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.is_logged_in = False
+        self.crawl_delay_min = float(os.getenv("XHS_CRAWL_DELAY_MIN", "1.0"))
+        self.crawl_delay_max = float(os.getenv("XHS_CRAWL_DELAY_MAX", "2.5"))
         
         # 设置cookie存储目录和文件
         if cookies_dir:
@@ -38,6 +40,12 @@ class PlaywrightXHSCrawler:
         
         logger.info(f"Cookie存储路径: {self.cookies_file}")
         # ... (原有 __init__ 代码) ...
+
+    async def _human_delay(self, extra: float = 0.0):
+        """模拟真人停顿，降低爬取速率"""
+        delay_min = max(0.0, self.crawl_delay_min)
+        delay_max = max(delay_min, self.crawl_delay_max)
+        await asyncio.sleep(random.uniform(delay_min, delay_max) + max(0.0, extra))
 
     def _get_page(self) -> Page:
         """安全获取 page 对象，确保不为 None (解决 Pyright 报错)"""
@@ -487,6 +495,7 @@ class PlaywrightXHSCrawler:
                 # 构建搜索URL
                 search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=note"
                 await self._get_page().goto(search_url)
+                await self._human_delay(0.3)
                 
                 try:
                     await self._get_page().wait_for_load_state('domcontentloaded', timeout=5000)
@@ -543,6 +552,7 @@ class PlaywrightXHSCrawler:
                         await self._get_page().wait_for_load_state('networkidle', timeout=3000)
                     except Exception:
                         await self._get_page().wait_for_timeout(500)
+                await self._human_delay(0.2)
                 
                 # 检测是否进入错误页面
                 if await self._is_error_page():
@@ -575,6 +585,7 @@ class PlaywrightXHSCrawler:
                     remaining_needed = max_notes - len(notes)
                     if remaining_needed <= 0:
                         break
+                    await self._human_delay(0.1)
                     page_notes = await self._extract_notes_from_page(keyword, max_to_extract=remaining_needed)
                     
                     # 如果提取失败（可能是错误页面），尝试恢复
@@ -609,6 +620,7 @@ class PlaywrightXHSCrawler:
                         except Exception:
                             pass
                         await self._get_page().evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                        await self._human_delay(0.4)
 
                         try:
                             await self._get_page().wait_for_function(f'document.querySelectorAll("a[href*=\\\"/explore/\\\"]").length > {prev_count}', timeout=3000)
