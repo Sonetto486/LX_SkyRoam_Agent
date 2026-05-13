@@ -92,10 +92,13 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
 
       const data = await response.json();
 
+      console.log('路线优化返回数据:', data);
+      console.log('route_segments:', data.route_segments);
+
       if (data.route_segments && data.route_segments.length > 0) {
         setRouteSegments(data.route_segments);
         setOptimized(true);
-        message.success('路径优化完成');
+        message.success(`路径优化完成，共 ${data.route_segments.length} 个路段`);
 
         if (onRouteOptimized) {
           onRouteOptimized(data.route_segments);

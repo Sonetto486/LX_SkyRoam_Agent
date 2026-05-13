@@ -111,6 +111,9 @@ class RouteOptimizer:
             if actual_attractions:
                 await self._update_attractions_order(actual_attractions, date_str)
 
+        # 新增：同步景点顺序到JSON字段
+        await self._sync_attractions_order_to_json(plan, date_str, ordered_attractions)
+
         # 计算总距离和时间
         total_distance = sum(seg.get("distance", 0) for seg in route_segments)
         total_duration = sum(seg.get("duration", 0) for seg in route_segments)
@@ -605,3 +608,80 @@ class RouteOptimizer:
 
         await self.db.commit()
         logger.info(f"行程 {plan.id} 已标记为路线优化完成")
+
+    async def _sync_attractions_order_to_json(
+        self,
+        plan: TravelPlan,
+        date_str: str,
+        ordered_attractions: List[TravelPlanItem]
+    ):
+        """
+        同步景点顺序到JSON字段（selected_plan 和 generated_plans）
+
+        Args:
+            plan: 旅行计划对象
+            date_str: 日期字符串
+            ordered_attractions: 排序后的景点列表
+        """
+        # 过滤掉虚拟起点（id=-1）
+        actual_attractions = [a for a in ordered_attractions if a.id != -1]
+
+        if not actual_attractions:
+            return
+
+        updated = False
+
+        # 更新 selected_plan
+        if plan.selected_plan and plan.selected_plan.get('daily_itineraries'):
+            for day_itinerary in plan.selected_plan['daily_itineraries']:
+                if day_itinerary.get('date') == date_str:
+                    # 按新顺序重建 attractions 数组
+                    day_itinerary['attractions'] = [
+                        {
+                            'name': item.title,
+                            'address': item.address,
+                            'coordinates': item.coordinates,
+                            'type': item.details.get('type') if item.details else None,
+                            'score': item.details.get('score') if item.details else None,
+                            'description': item.description
+                        }
+                        for item in actual_attractions
+                    ]
+                    updated = True
+                    logger.info(f"已同步 selected_plan 中 {date_str} 的景点顺序")
+                    break
+
+            # 触发字段更新
+            if updated:
+                plan.selected_plan = dict(plan.selected_plan)
+                logger.info("已触发 selected_plan 字段更新")
+
+        # 更新 generated_plans
+        if plan.generated_plans:
+            for generated_plan in plan.generated_plans:
+                if generated_plan.get('daily_itineraries'):
+                    for day_itinerary in generated_plan['daily_itineraries']:
+                        if day_itinerary.get('date') == date_str:
+                            day_itinerary['attractions'] = [
+                                {
+                                    'name': item.title,
+                                    'address': item.address,
+                                    'coordinates': item.coordinates,
+                                    'type': item.details.get('type') if item.details else None,
+                                    'score': item.details.get('score') if item.details else None,
+                                    'description': item.description
+                                }
+                                for item in actual_attractions
+                            ]
+                            updated = True
+                            logger.info(f"已同步 generated_plans 中 {date_str} 的景点顺序")
+                            break
+
+            # 触发字段更新
+            if updated:
+                plan.generated_plans = list(plan.generated_plans)
+                logger.info("已触发 generated_plans 字段更新")
+
+        if updated:
+            await self.db.commit()
+            logger.info("景点顺序JSON同步完成")

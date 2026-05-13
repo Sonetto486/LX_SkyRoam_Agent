@@ -310,24 +310,10 @@ const getDayActivities = (): DayActivity[] => {
   console.log('plan.selected_plan:', plan.selected_plan);
   console.log('plan.generated_plans:', plan.generated_plans);
 
-  // 优先使用生成的方案数据（包含丰富的schedule、meals、transportation等）
-  if (plan.selected_plan?.daily_itineraries) {
-    console.log('Using selected_plan data with rich extraction');
-    return extractRichDailyItineraries(plan.selected_plan);
-  }
-
-  // 如果有 generated_plans，使用第一个方案（增强版）
-  if (plan.generated_plans && plan.generated_plans.length > 0) {
-    console.log('Using generated_plans data with rich extraction');
-    const firstPlan = plan.generated_plans[0];
-    if (firstPlan.daily_itineraries) {
-      return extractRichDailyItineraries(firstPlan);
-    }
-  }
-
-  // 最后才使用 items 数据（用户手动添加的活动）
+  // 优先使用items数据（数据库中的实际数据，会被优化功能更新）
+  // 只有当items为空时才使用JSON数据
   if (plan.items && plan.items.length > 0) {
-    console.log('Using items data (fallback)');
+    console.log('优先使用 items 数据（数据库实际数据）');
     const dayMap = new Map<string, TravelPlanItem[]>();
     plan.items.forEach(item => {
       const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
@@ -336,28 +322,56 @@ const getDayActivities = (): DayActivity[] => {
       }
       dayMap.get(date)!.push(item);
     });
+
+    // 如果有selected_plan，用它来补充住宿、餐饮、交通等丰富信息
+    const richData = plan.selected_plan?.daily_itineraries || plan.generated_plans?.[0]?.daily_itineraries;
+
     // 按日期排序，确保天数顺序正确，并转换为新的结构
     return Array.from(dayMap.entries())
       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-      .map(([date, items]) => ({
-        date,
-        hotel: null,
-        transportation: null,
-        schedule: items.map(item => ({
-          time: item.start_time ? item.start_time.split('T')[1]?.substring(0, 5) : undefined,
-          activity: item.title,
-          location: item.location || item.address,
-          description: item.description,
-        })),
-        meals: [],
-        attractions: items.filter(item => item.item_type === 'attraction').map(item => ({
-          name: item.title,
-          address: item.address,
-          coordinates: item.coordinates,
-        })),
-        daily_tips: [],
-        estimated_cost: 0,
-      }));
+      .map(([date, items]) => {
+        // 从richData中查找当天的补充信息
+        const dayRichData = richData?.find((day: any) => day.date === date);
+
+        return {
+          date,
+          // 住宿信息（从richData获取）
+          hotel: plan.selected_plan?.hotel || plan.generated_plans?.[0]?.hotel || null,
+          // 交通信息（从richData获取）
+          transportation: dayRichData?.transportation || null,
+          // 日程时间轴（从richData获取）
+          schedule: dayRichData?.schedule || [],
+          // 餐饮推荐（从richData获取）
+          meals: dayRichData?.meals || [],
+          // 景点列表（从items获取，这是关键！）
+          attractions: items.filter(item => item.item_type === 'attraction').map(item => ({
+            name: item.title,
+            address: item.address,
+            coordinates: item.coordinates,
+            type: item.details?.type,
+            score: item.details?.score,
+            description: item.description,
+          })),
+          // 每日提示（从richData获取）
+          daily_tips: dayRichData?.daily_tips || [],
+          // 每日预算（从richData获取）
+          estimated_cost: dayRichData?.estimated_cost || 0,
+        };
+      });
+  }
+
+  // 如果items为空，才使用JSON数据（AI生成的静态数据）
+  if (plan.selected_plan?.daily_itineraries) {
+    console.log('items为空，使用 selected_plan 数据');
+    return extractRichDailyItineraries(plan.selected_plan);
+  }
+
+  if (plan.generated_plans && plan.generated_plans.length > 0) {
+    console.log('items为空，使用 generated_plans 数据');
+    const firstPlan = plan.generated_plans[0];
+    if (firstPlan.daily_itineraries) {
+      return extractRichDailyItineraries(firstPlan);
+    }
   }
 
   // 兼容智能导入的 parsed_locations
@@ -433,8 +447,8 @@ const getDayActivities = (): DayActivity[] => {
       // 返回分组数据结构
       return {
         date,
-        // 住宿信息（只在第一天显示）
-        hotel: dayIndex === 0 && planData.hotel ? planData.hotel : null,
+        // 住宿信息（所有天都可以访问，用于路径优化）
+        hotel: planData.hotel || null,
         // 交通信息（跳过出发和返程交通）
         transportation: shouldShowTransport ? day.transportation : null,
         // 日程时间轴（所有活动）
