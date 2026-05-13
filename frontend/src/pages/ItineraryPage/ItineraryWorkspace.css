@@ -106,6 +106,40 @@
   padding-top: 16px;
 }
 
+/* 增强版活动卡片样式 */
+.enhanced-activity-card {
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+
+.enhanced-activity-card:hover {
+  box-shadow: 0 4px 12px var(--shadow-color) !important;
+  transform: translateY(-2px);
+}
+
+.enhanced-activity-card.hovered {
+  border: 2px solid var(--accent-a) !important;
+  box-shadow: 0 4px 16px var(--glow-color) !important;
+}
+
+.activity-detail-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.activity-expanded-details {
+  padding: 12px 0;
+}
+
+.detail-section {
+  margin-bottom: 12px;
+}
+
+/* 旧版活动卡片样式（保留兼容） */
 .activity-card {
   margin-bottom: 16px;
   transition: all 0.3s ease;

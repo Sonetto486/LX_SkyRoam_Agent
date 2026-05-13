@@ -18,6 +18,7 @@ import UsersAdminPage from '../../pages/Admin/UsersAdminPage';
 import HistoryAdminPage from '../../pages/Admin/HistoryAdminPage';
 import AttractionDetailsAdminPage from '../../pages/Admin/AttractionDetailsAdminPage';
 import UpgradeControlPage from '../../pages/Admin/UpgradeControlPage/UpgradeControlPage';
+import TestDataExtraction from '../../pages/TestDataExtraction';
 
 const AppRoutes: React.FC = () => {
   return (
@@ -47,7 +48,10 @@ const AppRoutes: React.FC = () => {
         
         {/* 个人中心模块 */}
         <Route path="/profile" element={<ProfilePage />} />
-        
+
+        {/* 测试页面 */}
+        <Route path="/test-data" element={<TestDataExtraction />} />
+
         {/* 管理员模块 */}
         <Route path="/admin/users" element={<RequireAdmin><UsersAdminPage /></RequireAdmin>} />
         <Route path="/admin/history" element={<RequireAdmin><HistoryAdminPage /></RequireAdmin>} />

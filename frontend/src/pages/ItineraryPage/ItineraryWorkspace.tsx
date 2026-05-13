@@ -31,6 +31,12 @@ import WeatherCard from '../../components/Itinerary/WeatherCard';
 import ActivityEditModal from '../../components/Itinerary/ActivityEditModal';
 import DateRangeEditor from '../../components/Itinerary/DateRangeEditor';
 import RouteSegment from '../../components/Itinerary/RouteSegment';
+import EnhancedActivityCard from '../../components/Itinerary/EnhancedActivityCard';
+import HotelSection from '../../components/Itinerary/HotelSection';
+import TransportSection from '../../components/Itinerary/TransportSection';
+import DayScheduleSection from '../../components/Itinerary/DayScheduleSection';
+import MealsSection from '../../components/Itinerary/MealsSection';
+import AttractionsSection from '../../components/Itinerary/AttractionsSection';
 import { buildApiUrl } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 import './ItineraryWorkspace.css';
@@ -81,7 +87,7 @@ interface TravelPlan {
 
 // 行程项目接口
 interface TravelPlanItem {
-  id: number;
+  id: number | string;
   title: string;
   description?: string;
   item_type: string;
@@ -93,11 +99,16 @@ interface TravelPlanItem {
   coordinates?: { lat: number; lng: number };
   details?: any;
   images?: string[];
+  // 新增字段用于增强显示
+  time?: string;
+  cost?: number;
+  tips?: string;
+  transport_note?: string;
 }
 
 // 活动编辑数据接口（id可选）
 interface ActivityEditData {
-  id?: number;
+  id?: number | string;
   title: string;
   description?: string;
   item_type: string;
@@ -111,10 +122,16 @@ interface ActivityEditData {
   images?: string[];
 }
 
-// 每日活动数据
+// 每日活动数据（优化版：分组结构）
 interface DayActivity {
   date: string;
-  activities: TravelPlanItem[];
+  hotel?: any;  // 住宿信息（仅第一天）
+  transportation?: any;  // 交通信息
+  schedule: any[];  // 日程时间轴
+  meals: any[];  // 餐饮推荐（去重）
+  attractions: any[];  // 景点列表（去重）
+  daily_tips?: string[];  // 每日提示
+  estimated_cost?: number;  // 每日预算
 }
 
 const ItineraryWorkspace: React.FC = () => {
@@ -123,7 +140,7 @@ const ItineraryWorkspace: React.FC = () => {
   const [plan, setPlan] = useState<TravelPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeDay, setActiveDay] = useState(0);
-  const [hoveredActivity, setHoveredActivity] = useState<number | null>(null);
+  const [hoveredActivity, setHoveredActivity] = useState<number | string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // 编辑弹窗状态
@@ -243,7 +260,7 @@ const ItineraryWorkspace: React.FC = () => {
   };
 
   // 删除活动
-  const handleDeleteActivity = async (activityId: number) => {
+  const handleDeleteActivity = async (activityId: number | string) => {
     if (!plan || !id) return;
     try {
       const res = await authFetch(
@@ -258,40 +275,9 @@ const ItineraryWorkspace: React.FC = () => {
     }
   };
 
-  // 移动活动顺序
-  const handleMoveActivity = async (activityId: number, direction: 'up' | 'down') => {
-    if (!plan || !id) return;
-    const dayActivities = getDayActivities();
-    if (activeDay >= dayActivities.length) return;
-
-    const activities = [...dayActivities[activeDay].activities];
-    const currentIndex = activities.findIndex(a => a.id === activityId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= activities.length) {
-      message.warning(direction === 'up' ? '已经是第一个' : '已经是最后一个');
-      return;
-    }
-
-    // 交换位置
-    [activities[currentIndex], activities[newIndex]] = [activities[newIndex], activities[currentIndex]];
-
-    try {
-      const res = await authFetch(
-        buildApiUrl(`/travel-plans/${id}/items/reorder`),
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item_ids: activities.map(a => a.id) }),
-        }
-      );
-      if (!res.ok) throw new Error('排序失败');
-      message.success(direction === 'up' ? '活动已上移' : '活动已下移');
-      fetchPlan();
-    } catch (err: any) {
-      message.error(err.message || '移动失败');
-    }
+  // 移动活动顺序（暂时禁用，因为新版本使用时间轴展示）
+  const handleMoveActivity = async (activityId: number | string, direction: 'up' | 'down') => {
+    message.info('新版本使用时间轴展示，活动按时间自动排序');
   };
 
   // 更新日期
@@ -315,12 +301,33 @@ const ItineraryWorkspace: React.FC = () => {
     }
   };
 
-  // 获取每日活动数据
+  // 获取每日活动数据（增强版：包含住宿、餐饮、交通、日程等所有信息）
 const getDayActivities = (): DayActivity[] => {
   if (!plan) return [];
 
-  // 优先使用 items 数据（用户手动添加或从生成内容同步的活动）
+  console.log('getDayActivities called, plan:', plan);
+  console.log('plan.items:', plan.items);
+  console.log('plan.selected_plan:', plan.selected_plan);
+  console.log('plan.generated_plans:', plan.generated_plans);
+
+  // 优先使用生成的方案数据（包含丰富的schedule、meals、transportation等）
+  if (plan.selected_plan?.daily_itineraries) {
+    console.log('Using selected_plan data with rich extraction');
+    return extractRichDailyItineraries(plan.selected_plan);
+  }
+
+  // 如果有 generated_plans，使用第一个方案（增强版）
+  if (plan.generated_plans && plan.generated_plans.length > 0) {
+    console.log('Using generated_plans data with rich extraction');
+    const firstPlan = plan.generated_plans[0];
+    if (firstPlan.daily_itineraries) {
+      return extractRichDailyItineraries(firstPlan);
+    }
+  }
+
+  // 最后才使用 items 数据（用户手动添加的活动）
   if (plan.items && plan.items.length > 0) {
+    console.log('Using items data (fallback)');
     const dayMap = new Map<string, TravelPlanItem[]>();
     plan.items.forEach(item => {
       const date = item.start_time ? item.start_time.split('T')[0] : plan.start_date.split('T')[0];
@@ -329,49 +336,28 @@ const getDayActivities = (): DayActivity[] => {
       }
       dayMap.get(date)!.push(item);
     });
-    // 按日期排序，确保天数顺序正确
+    // 按日期排序，确保天数顺序正确，并转换为新的结构
     return Array.from(dayMap.entries())
       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-      .map(([date, activities]) => ({ date, activities }));
-  }
-
-  // 如果有 selected_plan，从中提取每日行程
-  if (plan.selected_plan?.daily_itineraries) {
-    return plan.selected_plan.daily_itineraries.map((day: any, index: number) => ({
-      date: day.date || getDateByOffset(plan.start_date, index),
-      activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
-        id: index * 100 + attrIndex,
-        title: attr.name || attr,
-        description: attr.description || '',
-        item_type: 'attraction',
-        location: attr.location || '',
-        address: attr.address || '',
-        coordinates: attr.coordinates || { lat: 0, lng: 0 },
-        images: attr.images || [],
-        details: attr,
-      })),
-    }));
-  }
-
-  // 如果有 generated_plans，使用第一个方案
-  if (plan.generated_plans && plan.generated_plans.length > 0) {
-    const firstPlan = plan.generated_plans[0];
-    if (firstPlan.daily_itineraries) {
-      return firstPlan.daily_itineraries.map((day: any, index: number) => ({
-        date: day.date || getDateByOffset(plan.start_date, index),
-        activities: (day.attractions || []).map((attr: any, attrIndex: number) => ({
-          id: index * 100 + attrIndex,
-          title: attr.name || attr,
-          description: attr.description || '',
-          item_type: 'attraction',
-          location: attr.location || '',
-          address: attr.address || '',
-          coordinates: attr.coordinates || { lat: 0, lng: 0 },
-          images: attr.images || [],
-          details: attr,
+      .map(([date, items]) => ({
+        date,
+        hotel: null,
+        transportation: null,
+        schedule: items.map(item => ({
+          time: item.start_time ? item.start_time.split('T')[1]?.substring(0, 5) : undefined,
+          activity: item.title,
+          location: item.location || item.address,
+          description: item.description,
         })),
+        meals: [],
+        attractions: items.filter(item => item.item_type === 'attraction').map(item => ({
+          name: item.title,
+          address: item.address,
+          coordinates: item.coordinates,
+        })),
+        daily_tips: [],
+        estimated_cost: 0,
       }));
-    }
   }
 
   // 兼容智能导入的 parsed_locations
@@ -399,7 +385,22 @@ const getDayActivities = (): DayActivity[] => {
 
     const aiDays = Object.values(locationMap).map((activities, i) => ({
       date: getDateByOffset(plan.start_date, i),
-      activities
+      hotel: null,
+      transportation: null,
+      schedule: activities.map(item => ({
+        time: undefined,
+        activity: item.title,
+        location: item.location || item.address,
+        description: undefined,
+      })),
+      meals: [],
+      attractions: activities.filter(item => item.item_type === 'attraction' || item.item_type === '景点').map(item => ({
+        name: item.title,
+        address: item.address,
+        coordinates: item.coordinates,
+      })),
+      daily_tips: [],
+      estimated_cost: 0,
     }));
 
     if (aiDays.length) return aiDays;
@@ -408,6 +409,75 @@ const getDayActivities = (): DayActivity[] => {
   // 默认返回空数组
   return [];
 };
+
+  // 新增：从生成方案中提取丰富的每日行程数据（优化版：智能去重）
+  const extractRichDailyItineraries = (planData: any): DayActivity[] => {
+    if (!planData.daily_itineraries || !plan) return [];
+
+    console.log('Extracting rich daily itineraries from planData:', planData);
+
+    return planData.daily_itineraries.map((day: any, dayIndex: number) => {
+      const date = day.date || getDateByOffset(plan.start_date, dayIndex);
+
+      console.log(`Processing day ${dayIndex}:`, day);
+
+      // 返回分组数据结构
+      return {
+        date,
+        // 住宿信息（只在第一天显示）
+        hotel: dayIndex === 0 && planData.hotel ? planData.hotel : null,
+        // 交通信息
+        transportation: day.transportation || null,
+        // 日程时间轴（所有活动）
+        schedule: day.schedule || [],
+        // 餐饮推荐（去重）
+        meals: extractMealsWithDedup(day.meals, day.schedule),
+        // 景点列表（去重）
+        attractions: extractAttractionsWithDedup(day.attractions, day.schedule),
+        // 每日提示
+        daily_tips: day.daily_tips || [],
+        // 每日预算
+        estimated_cost: day.estimated_cost || 0,
+      };
+    });
+  };
+
+  // 新增：提取餐饮信息并去重
+  const extractMealsWithDedup = (meals: any[], schedule: any[]): any[] => {
+    if (!meals) return [];
+
+    return meals.filter(meal => {
+      // 检查 schedule 中是否已有相同时间的餐饮
+      const existsInSchedule = schedule?.some(item =>
+        item.time === meal.time &&
+        (item.activity?.includes(meal.type) || item.activity?.includes('餐'))
+      );
+
+      if (existsInSchedule) {
+        console.log(`Skipping duplicate meal: ${meal.type} at ${meal.time}`);
+      }
+
+      return !existsInSchedule;
+    });
+  };
+
+  // 新增：提取景点信息并去重
+  const extractAttractionsWithDedup = (attractions: any[], schedule: any[]): any[] => {
+    if (!attractions) return [];
+
+    return attractions.filter(attr => {
+      // 检查 schedule 中是否已提到该景点
+      const existsInSchedule = schedule?.some(item =>
+        item.location?.includes(attr.name) || item.activity?.includes(attr.name)
+      );
+
+      if (existsInSchedule) {
+        console.log(`Skipping duplicate attraction: ${attr.name}`);
+      }
+
+      return !existsInSchedule;
+    });
+  };
 
   // 根据偏移量计算日期
   const getDateByOffset = (startDate: string, offset: number): string => {
@@ -427,15 +497,36 @@ const getDayActivities = (): DayActivity[] => {
     const dayActivities = getDayActivities();
     if (dayActivities.length === 0 || activeDay >= dayActivities.length) return [];
 
-    return dayActivities[activeDay].activities
-      .filter(activity => activity.coordinates && activity.coordinates.lat && activity.coordinates.lng)
-      .map(activity => ({
-        id: activity.id,
-        name: activity.title,
-        position: activity.coordinates!,
-        address: activity.address || activity.location || '',
-        isHovered: hoveredActivity === activity.id,
-      }));
+    const day = dayActivities[activeDay];
+    const markers: any[] = [];
+
+    // 从景点中提取坐标
+    if (day.attractions) {
+      day.attractions.forEach((attr: any) => {
+        if (attr.coordinates && attr.coordinates.lat && attr.coordinates.lng) {
+          markers.push({
+            id: attr.name,
+            name: attr.name,
+            position: attr.coordinates,
+            address: attr.address || '',
+            isHovered: false,
+          });
+        }
+      });
+    }
+
+    // 从住宿中提取坐标（仅第一天）
+    if (day.hotel && day.hotel.coordinates) {
+      markers.push({
+        id: 'hotel',
+        name: day.hotel.name,
+        position: day.hotel.coordinates,
+        address: day.hotel.address || '',
+        isHovered: false,
+      });
+    }
+
+    return markers;
   };
 
   // 获取地图中心点
@@ -857,94 +948,30 @@ const getDayActivities = (): DayActivity[] => {
                   </Space>
                 }
               >
-                {/* 活动列表 */}
+                {/* 分组展示 */}
                 <div className="activities-list">
-                  {day.activities.map((activity, activityIndex) => {
-                    // 查找当前景点到下一个景点的路线信息
-                    const currentDayOptimized = routeSegments.find((dayData: any) =>
-                      dayData.date === day.date || dayData.ordered_items?.some((item: any) => item.id === activity.id)
-                    );
-                    const segmentInfo = currentDayOptimized?.route_segments?.[activityIndex];
+                  {/* 住宿信息 */}
+                  {day.hotel && <HotelSection hotel={day.hotel} />}
 
-                    return (
-                      <React.Fragment key={activity.id}>
-                        <Card
-                          className={`activity-card ${hoveredActivity === activity.id ? 'hovered' : ''}`}
-                          onMouseEnter={() => setHoveredActivity(activity.id)}
-                          onMouseLeave={() => setHoveredActivity(null)}
-                          actions={[
-                            <Tooltip key="edit" title="编辑">
-                              <Button
-                                icon={<EditOutlined />}
-                                size="small"
-                                onClick={() => openActivityModal(activity)}
-                              />
-                            </Tooltip>,
-                            <Tooltip key="move-up" title="上移">
-                              <Button
-                                icon={<UpOutlined />}
-                                size="small"
-                                onClick={() => handleMoveActivity(activity.id, 'up')}
-                              />
-                            </Tooltip>,
-                            <Tooltip key="move-down" title="下移">
-                              <Button
-                                icon={<DownOutlined />}
-                                size="small"
-                                onClick={() => handleMoveActivity(activity.id, 'down')}
-                              />
-                            </Tooltip>,
-                            <Popconfirm
-                              key="delete"
-                              title="确定删除此活动？"
-                              okText="删除"
-                              cancelText="取消"
-                              onConfirm={() => handleDeleteActivity(activity.id)}
-                            >
-                              <Button danger icon={<DeleteOutlined />} size="small" />
-                            </Popconfirm>
-                          ]}
-                        >
-                          <div className="activity-header">
-                            <Tag color="blue">{activity.item_type || '景点'}</Tag>
-                            <Text strong>{activity.title}</Text>
-                          </div>
-                          {activity.location && (
-                            <div className="activity-location">
-                              <EnvironmentOutlined /> {activity.location}
-                            </div>
-                          )}
-                          {activity.description && (
-                            <Paragraph className="activity-description" ellipsis={{ rows: 2 }}>
-                              {activity.description}
-                            </Paragraph>
-                          )}
-                          {activity.images && activity.images.length > 0 && (
-                            <div className="activity-images">
-                          <img
-                            src={activity.images[0]}
-                            alt={activity.title}
-                            className="activity-image"
-                          />
-                        </div>
-                      )}
-                    </Card>
+                  {/* 交通信息 */}
+                  {day.transportation && <TransportSection transportation={day.transportation} />}
 
-                    {/* 显示路线信息 */}
-                    {segmentInfo && (
-                      <RouteSegment
-                        from={segmentInfo.from}
-                        to={segmentInfo.to}
-                        distance={segmentInfo.distance}
-                        duration={segmentInfo.duration}
-                        mode={segmentInfo.mode}
-                      />
-                    )}
-                  </React.Fragment>
-                    );
-                  })}
+                  {/* 日程时间轴 */}
+                  {day.schedule && day.schedule.length > 0 && (
+                    <DayScheduleSection schedule={day.schedule} />
+                  )}
 
-                {/* 添加活动按钮 */}
+                  {/* 餐饮推荐 */}
+                  {day.meals && day.meals.length > 0 && (
+                    <MealsSection meals={day.meals} />
+                  )}
+
+                  {/* 景点列表 */}
+                  {day.attractions && day.attractions.length > 0 && (
+                    <AttractionsSection attractions={day.attractions} />
+                  )}
+
+                  {/* 添加活动按钮 */}
                   <Button
                     type="dashed"
                     block
@@ -1274,11 +1301,28 @@ const getDayActivities = (): DayActivity[] => {
                 <Card key={index} size="small" style={{ marginBottom: 8 }}>
                   <Text strong>Day {index + 1} - {formatDateDisplay(day.date)}</Text>
                   <div style={{ marginTop: 8 }}>
-                    {day.activities.map((activity, actIndex) => (
-                      <Tag key={actIndex} style={{ marginBottom: 4 }}>
-                        {activity.title}
-                      </Tag>
-                    ))}
+                    {/* 显示日程 */}
+                    {day.schedule && day.schedule.length > 0 && (
+                      <div>
+                        <Text type="secondary">日程：</Text>
+                        {day.schedule.map((item, idx) => (
+                          <Tag key={idx} style={{ marginBottom: 4 }}>
+                            {item.activity}
+                          </Tag>
+                        ))}
+                      </div>
+                    )}
+                    {/* 显示景点 */}
+                    {day.attractions && day.attractions.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        <Text type="secondary">景点：</Text>
+                        {day.attractions.map((attr, idx) => (
+                          <Tag key={idx} color="blue" style={{ marginBottom: 4 }}>
+                            {attr.name}
+                          </Tag>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Card>
               ))}

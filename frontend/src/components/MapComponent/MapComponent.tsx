@@ -234,42 +234,82 @@ const MapComponent: React.FC<MapComponentProps> = ({
             dayMarkers[dayMarkers.length - 1].position.lat
           );
 
-          driving.search(
-            origin,
-            destination,
-            waypoints.length > 0 ? { waypoints: waypoints } : undefined,
-            (status: string, result: any) => {
-              if (status === 'complete' && result.routes && result.routes.length > 0) {
-                console.log('驾车路线规划成功，开始绘制路线');
+          // 根据是否有途经点，决定调用方式
+          if (waypoints.length > 0) {
+            driving.search(
+              origin,
+              destination,
+              { waypoints: waypoints },
+              (status: string, result: any) => {
+                if (status === 'complete' && result.routes && result.routes.length > 0) {
+                  console.log('驾车路线规划成功，开始绘制路线');
 
-                const route = result.routes[0];
-                const path: any[] = [];
+                  const route = result.routes[0];
+                  const path: any[] = [];
 
-                route.steps.forEach((step: any) => {
-                  step.path.forEach((point: any) => {
-                    path.push([point.lng, point.lat]);
+                  route.steps.forEach((step: any) => {
+                    step.path.forEach((point: any) => {
+                      path.push([point.lng, point.lat]);
+                    });
                   });
-                });
 
-                const actualPolyline = new window.AMap.Polyline({
-                  path: path,
-                  strokeColor: '#1890ff',
-                  strokeWeight: 4,
-                  strokeOpacity: 0.9,
-                  strokeStyle: 'solid',
-                  lineJoin: 'round',
-                  lineCap: 'round',
-                  showDir: true
-                });
+                  const actualPolyline = new window.AMap.Polyline({
+                    path: path,
+                    strokeColor: '#1890ff',
+                    strokeWeight: 4,
+                    strokeOpacity: 0.9,
+                    strokeStyle: 'solid',
+                    lineJoin: 'round',
+                    lineCap: 'round',
+                    showDir: true
+                  });
 
-                mapInstanceRef.current.add(actualPolyline);
-                polylineRef.current.push(actualPolyline);
-              } else {
-                console.error('驾车路线规划失败:', status, result);
-                drawStraightLine(dayMarkers, isCurrentDay);
+                  mapInstanceRef.current.add(actualPolyline);
+                  polylineRef.current.push(actualPolyline);
+                } else {
+                  console.error('驾车路线规划失败:', status, result);
+                  drawStraightLine(dayMarkers, isCurrentDay);
+                }
               }
-            }
-          );
+            );
+          } else {
+            // 没有途经点时，只传起点、终点和回调函数
+            driving.search(
+              origin,
+              destination,
+              (status: string, result: any) => {
+                if (status === 'complete' && result.routes && result.routes.length > 0) {
+                  console.log('驾车路线规划成功，开始绘制路线');
+
+                  const route = result.routes[0];
+                  const path: any[] = [];
+
+                  route.steps.forEach((step: any) => {
+                    step.path.forEach((point: any) => {
+                      path.push([point.lng, point.lat]);
+                    });
+                  });
+
+                  const actualPolyline = new window.AMap.Polyline({
+                    path: path,
+                    strokeColor: '#1890ff',
+                    strokeWeight: 4,
+                    strokeOpacity: 0.9,
+                    strokeStyle: 'solid',
+                    lineJoin: 'round',
+                    lineCap: 'round',
+                    showDir: true
+                  });
+
+                  mapInstanceRef.current.add(actualPolyline);
+                  polylineRef.current.push(actualPolyline);
+                } else {
+                  console.error('驾车路线规划失败:', status, result);
+                  drawStraightLine(dayMarkers, isCurrentDay);
+                }
+              }
+            );
+          }
 
           drivingRef.current = driving;
         } else {
