@@ -6,6 +6,8 @@ import DiscoverPage from '../../pages/DiscoverPage/DiscoverPage';
 import TopicDetailPage from '../../pages/TopicDetailPage/TopicDetailPage';
 import TopicsPage from '../../pages/TopicsPage/TopicsPage';
 import PublicPlansPage from '../../pages/PublicPlansPage/PublicPlansPage';
+import NotesPage from '../../pages/NotesPage/NotesPage';
+import NoteDetailPage from '../../pages/NoteDetailPage/NoteDetailPage';
 import PlanDetailPage from '../../pages/PlanDetailPage/PlanDetailPage';
 import ItineraryListPage from '../../pages/ItineraryPage/ItineraryListPage';
 import ItineraryWorkspace from '../../pages/ItineraryPage/ItineraryWorkspace';
@@ -33,6 +35,8 @@ const AppRoutes: React.FC = () => {
         <Route path="/discover" element={<DiscoverPage />} />
         <Route path="/topics" element={<TopicsPage />} />
         <Route path="/topics/:id" element={<TopicDetailPage />} />
+        <Route path="/inspiration" element={<NotesPage />} />
+        <Route path="/notes/:id" element={<NoteDetailPage />} />
         <Route path="/public-plans" element={<PublicPlansPage />} />
         <Route path="/plans/:id" element={<PlanDetailPage />} />
         

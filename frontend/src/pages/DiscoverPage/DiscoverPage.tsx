@@ -72,30 +72,31 @@ const DiscoverPage: React.FC = () => {
   const fetchPublicItineraries = async () => {
     try {
       setLoading(true);
-      const response = await authFetch(`/travel-plans/public?keyword=${encodeURIComponent(searchValue)}`);
+      const limit = 8;
+      const response = await authFetch(`/notes?limit=${limit}&is_random=true&keyword=${encodeURIComponent(searchValue)}`);
       const data = await response.json();
-      if (data && data.plans) {
-        const mappedItineraries = data.plans.map((plan: any) => ({
-          id: plan.id,
-          title: plan.title || '未命名行程',
-          image: 'https://picsum.photos/seed/' + plan.id + '/800/600', // 暂用随机图
-          destination: plan.destination || '未知目的地',
-          days: plan.duration_days || 1,
-          activities: plan.items ? plan.items.length : 15,
-          rating: plan.score || 4.8
+      if (data && data.items) {
+        const mappedNotes = data.items.map((note: any) => ({
+          id: note.id,
+          title: note.title || '未命名攻略',
+          image: note.image_url || 'https://picsum.photos/seed/' + note.id + '/800/600',
+          destination: note.destination || '未知目的地',
+          days: 1, // mock days equivalent
+          activities: 15, // mock activities count
+          rating: 4.8 // mock rating
         }));
-        setItineraries(mappedItineraries);
+        setItineraries(mappedNotes); // Still setting it to itineraries state but rendering Notes data
       }
     } catch (error) {
-      console.error('获取推荐行程失败:', error);
-      message.error({ content: '获取推荐行程失败，请刷新重试', key: 'fetchPlansError' });
+      console.error('获取旅行灵感失败:', error);
+      message.error({ content: '获取推荐攻略失败，请刷新重试', key: 'fetchPlansError' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleItineraryClick = (id: number | string) => {
-    navigate(`/plans/${id}`);
+  const handleNoteClick = (id: number | string) => {
+    navigate(`/notes/${id}`);
   };
 
   const handleTopicClick = (id: number | string) => {
@@ -106,8 +107,8 @@ const DiscoverPage: React.FC = () => {
     navigate('/topics');
   };
 
-  const handleViewAllItineraries = () => {
-    navigate('/public-plans');
+  const handleViewAllInspiration = () => {
+    navigate('/inspiration');
   };
 
   return (
@@ -183,11 +184,11 @@ const DiscoverPage: React.FC = () => {
         </Spin>
       </div>
 
-      {/* 推荐行程 */}
+      {/* 旅行灵感 */}
       <div className="section">
         <div className="section-header">
-          <Title level={3}>推荐行程</Title>
-          <Button type="link" onClick={handleViewAllItineraries}>查看全部</Button>
+          <Title level={3}>旅行灵感</Title>
+          <Button type="link" onClick={handleViewAllInspiration}>查看全部</Button>
         </div>
         {loading ? (
            <div style={{ textAlign: 'center', padding: '50px 0' }}><Spin size="large" /></div>
@@ -195,30 +196,34 @@ const DiscoverPage: React.FC = () => {
           <Row gutter={[16, 16]}>
             {itineraries.map((itinerary) => (
               <Col xs={24} sm={12} md={8} lg={6} key={itinerary.id}>
-                <Card className="itinerary-card">
+                <Card className="itinerary-card" onClick={() => handleNoteClick(itinerary.id)}>
                   <div className="itinerary-image">
                     <img src={itinerary.image} alt={itinerary.title} />
                   </div>
                   <div className="itinerary-content">
-                    <Title level={4}>{itinerary.title}</Title>
+                    <Title level={4} ellipsis={{ rows: 2 }}>{itinerary.title}</Title>
                     <div className="itinerary-meta">
-                      <Space>
+                      <Space split={<span style={{ color: '#ccc' }}>|</span>} wrap>
                         <Space>
                           <EnvironmentOutlined />
                           <span>{itinerary.destination}</span>
                         </Space>
                         <Space>
-                          <CalendarOutlined />
-                          <span>{itinerary.days}天</span>
-                        </Space>
-                        <Space>
                           <StarOutlined />
-                          <span>{itinerary.rating}</span>
+                          <span>4.8</span>
                         </Space>
                       </Space>
                     </div>
-                    <Button type="primary" size="small" style={{ marginTop: 16 }} onClick={() => handleItineraryClick(itinerary.id)}>
-                      查看行程
+                    <Button 
+                      type="primary" 
+                      size="small" 
+                      style={{ marginTop: 12, borderRadius: 6 }} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNoteClick(itinerary.id);
+                      }}
+                    >
+                      查看详情
                     </Button>
                   </div>
                 </Card>
@@ -226,7 +231,7 @@ const DiscoverPage: React.FC = () => {
             ))}
           </Row>
         ) : (
-          <Empty description="暂无推荐行程" />
+          <Empty description="暂无旅行灵感" />
         )}
       </div>
     </div>

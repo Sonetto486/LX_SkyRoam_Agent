@@ -62,7 +62,7 @@ class DataCollector:
         self.http_client = httpx.AsyncClient(
             timeout=30.0,
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
-            proxies={}
+            proxy=None
         )
         self.map_provider = settings.MAP_PROVIDER  # 地图服务提供商（保留用于兼容）
         self.unified_map_service = UnifiedMapService()  # 统一地图服务，支持多提供商回退
