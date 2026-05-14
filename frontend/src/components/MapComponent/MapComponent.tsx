@@ -15,6 +15,7 @@ interface Marker {
   isHovered?: boolean;
   day?: number;
   time?: string;
+  isHotel?: boolean;  // 标记为酒店，不参与路线绘制
 }
 
 interface RouteSegment {
@@ -95,19 +96,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
     // 添加标记点
     markers.forEach(marker => {
       try {
+        // 酒店标记使用特殊样式
+        const labelContent = marker.isHotel
+          ? `<div class="map-marker-label" style="background:#722ed1;color:#fff;border-color:#722ed1;">🏨 ${marker.name}</div>`
+          : `<div class="map-marker-label">${marker.name}</div>`;
+
         const amapMarker = new window.AMap.Marker({
           position: [marker.position.lng, marker.position.lat],
           title: marker.name,
           label: {
-            content: `<div class="map-marker-label">${marker.name}</div>`,
+            content: labelContent,
             direction: 'top'
           }
         });
         const infoWindow = new window.AMap.InfoWindow({
           content: `
             <div style="padding: 10px; max-width: 200px;">
-              <h4 style="margin:0 0 8px 0;color:#1890ff;">${marker.name}</h4>
+              <h4 style="margin:0 0 8px 0;color:${marker.isHotel ? '#722ed1' : '#1890ff'};">
+                ${marker.isHotel ? '🏨 ' : ''}${marker.name}
+              </h4>
               <p style="margin:0 0 4px 0;color:#666;">${marker.address}</p>
+              ${marker.isHotel ? '<p style="margin:0;color:#722ed1;">住宿推荐</p>' : ''}
               ${marker.time ? `<p style="margin:0;color:#999;">时间: ${marker.time}</p>` : ''}
               ${marker.day ? `<p style="margin:0;color:#999;">第 ${marker.day} 天</p>` : ''}
             </div>
@@ -122,9 +131,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
       } catch (e) { }
     });
 
-    // 绘制路线：按天分组
+    // 绘制路线：按天分组（排除酒店标记）
     const markersByDay: Record<number, Marker[]> = {};
     markers.forEach(m => {
+      // 酒店标记不参与路线绘制
+      if (m.isHotel) return;
+
       const day = m.day || 1;
       if (!markersByDay[day]) markersByDay[day] = [];
       markersByDay[day].push(m);

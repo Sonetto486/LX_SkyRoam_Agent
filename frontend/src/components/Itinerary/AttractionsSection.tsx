@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, List, Tag, Button, Space, Typography, Collapse, Rate, message, Spin } from 'antd';
+import { Card, List, Tag, Button, Space, Typography, Collapse, Rate, message, Spin, Tooltip, Popconfirm } from 'antd';
 import {
   CameraOutlined,
   EnvironmentOutlined,
@@ -10,9 +10,16 @@ import {
   ClockCircleOutlined,
   DollarOutlined,
   SwapOutlined,
-  CheckCircleOutlined
+  CheckCircleOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  StarFilled,
+  UpOutlined,
+  DownOutlined as MoveDownOutlined
 } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
+import { buildApiUrl } from '../../config/api';
+import './AttractionsSection.css';
 
 const { Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -25,15 +32,29 @@ interface Attraction {
   description?: string;
   coordinates?: { lat: number; lng: number };
   inSchedule?: boolean; // 是否已在日程中
+  priority?: string; // 'must' | 'optional' | 'backup'
+  id?: number | string; // 景点ID
+}
+
+interface TravelAlternative {
+  mode: string;
+  mode_label: string;
+  duration: number;
+  distance: number;
 }
 
 interface RouteSegment {
   from: string;
   to: string;
+  from_id?: number | string;
+  to_id?: number | string;
   distance?: number;
   duration?: number;
   mode?: string;
+  mode_label?: string;
   cost?: number;
+  path?: any[]; // 路径点数组
+  alternatives?: TravelAlternative[]; // 多种出行方案
 }
 
 interface AttractionsSectionProps {
@@ -43,6 +64,10 @@ interface AttractionsSectionProps {
   planId?: number;
   dayDate?: string;
   onRouteOptimized?: (segments: RouteSegment[]) => void;
+  onEditAttraction?: (index: number) => void;
+  onDeleteAttraction?: (index: number) => void;
+  onTogglePriority?: (index: number, priority: string) => void;
+  onMoveAttraction?: (index: number, direction: 'up' | 'down') => void;
 }
 
 const AttractionsSection: React.FC<AttractionsSectionProps> = ({
@@ -51,17 +76,29 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   hotelCoordinates,
   planId,
   dayDate,
-  onRouteOptimized
+  onRouteOptimized,
+  onEditAttraction,
+  onDeleteAttraction,
+  onTogglePriority,
+  onMoveAttraction
 }) => {
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
   const [loading, setLoading] = useState(false);
   const [optimized, setOptimized] = useState(false);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [lastAttractionsKey, setLastAttractionsKey] = useState<string>('');
 
   useEffect(() => {
-    // 重置优化状态
-    setOptimized(false);
-    setRouteSegments([]);
-  }, [attractions]);
+    // 只在景点列表真正变化时重置优化状态
+    const currentKey = attractions.map(a => `${a.name}-${a.coordinates?.lat}-${a.coordinates?.lng}`).join(',');
+
+    if (currentKey !== lastAttractionsKey && lastAttractionsKey !== '') {
+      console.log('景点列表变化，重置优化状态');
+      setOptimized(false);
+      setRouteSegments([]);
+    }
+    setLastAttractionsKey(currentKey);
+  }, [attractions, lastAttractionsKey]);
 
   const handleOptimizeRoute = async () => {
     if (!planId) {
@@ -69,42 +106,71 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
       return;
     }
 
+    if (attractions.length < 2) {
+      message.warning('景点数量不足，至少需要2个景点才能优化路线');
+      return;
+    }
+
     setLoading(true);
+    console.log('开始路径优化，planId:', planId, 'dayDate:', dayDate);
+    console.log('景点列表:', attractions);
+
     try {
+      // 使用第一个景点作为起点
+      const firstAttraction = attractions[0];
+      const startPoint = firstAttraction.coordinates ? {
+        name: firstAttraction.name,
+        coordinates: firstAttraction.coordinates
+      } : null;
+
+      console.log('起点:', startPoint);
+
+      const requestBody = {
+        date: dayDate,
+        start_point: startPoint,
+      };
+      console.log('请求体:', requestBody);
+
       // 调用后端路径优化API
-      const response = await authFetch(`/travel-plans/${planId}/optimize-route`, {
+      const url = buildApiUrl(`/travel-plans/${planId}/optimize-route`);
+      console.log('API URL:', url);
+
+      const response = await authFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          date: dayDate,
-          start_point: hotelCoordinates ? {
-            name: '酒店',
-            coordinates: hotelCoordinates
-          } : null,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log('响应状态:', response.status, response.ok);
+
       if (!response.ok) {
-        throw new Error('路径优化失败');
+        const errorText = await response.text();
+        console.error('API错误响应:', errorText);
+        throw new Error('路径优化失败: ' + errorText);
       }
 
       const data = await response.json();
 
       console.log('路线优化返回数据:', data);
       console.log('route_segments:', data.route_segments);
+      console.log('route_segments长度:', data.route_segments?.length);
+      console.log('success:', data.success);
 
-      if (data.route_segments && data.route_segments.length > 0) {
+      if (data.success && data.route_segments && data.route_segments.length > 0) {
         setRouteSegments(data.route_segments);
         setOptimized(true);
         message.success(`路径优化完成，共 ${data.route_segments.length} 个路段`);
+
+        console.log('设置routeSegments后，当前routeSegments:', data.route_segments);
 
         if (onRouteOptimized) {
           onRouteOptimized(data.route_segments);
         }
       } else {
-        message.info('没有可优化的路径');
+        console.log('没有route_segments或success为false');
+        message.warning(data.message || '没有可优化的路径');
       }
     } catch (error: any) {
       console.error('路径优化失败:', error);
@@ -114,7 +180,65 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
     }
   };
 
+  // 获取出行方式图标
+  const getModeIcon = (mode?: string) => {
+    switch (mode) {
+      case 'walking':
+        return <span style={{ fontSize: '14px' }}>🚶</span>;
+      case 'transit':
+        return <span style={{ fontSize: '14px' }}>🚌</span>;
+      case 'driving':
+        return <CarOutlined style={{ fontSize: '14px' }} />;
+      default:
+        return <CarOutlined style={{ fontSize: '14px' }} />;
+    }
+  };
+
+  // 获取优先级标签
+  const getPriorityTag = (priority?: string) => {
+    switch (priority) {
+      case 'must':
+        return <Tag color="red" icon={<StarFilled />}>必去</Tag>;
+      case 'optional':
+        return <Tag color="blue">可选</Tag>;
+      case 'backup':
+        return <Tag color="default">备选</Tag>;
+      default:
+        return <Tag color="blue">可选</Tag>;
+    }
+  };
+
+  // 切换优先级
+  const handleTogglePriority = (index: number, currentPriority?: string) => {
+    if (!onTogglePriority) return;
+
+    let newPriority: string;
+    switch (currentPriority) {
+      case 'must':
+        newPriority = 'optional';
+        break;
+      case 'optional':
+        newPriority = 'backup';
+        break;
+      case 'backup':
+        newPriority = 'must';
+        break;
+      default:
+        newPriority = 'must';
+    }
+
+    onTogglePriority(index, newPriority);
+  };
+
   if (!attractions || attractions.length === 0) return null;
+
+  // 调试输出
+  console.log('AttractionsSection渲染:', {
+    attractionsCount: attractions.length,
+    routeSegmentsCount: routeSegments.length,
+    optimized,
+    routeSegments
+  });
 
   return (
     <Card
@@ -127,26 +251,34 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
         </Space>
       }
       extra={
-        <Button
-          type="primary"
-          size="small"
-          icon={<SwapOutlined />}
-          onClick={handleOptimizeRoute}
-          loading={loading}
-          disabled={optimized}
-        >
-          {optimized ? '已优化' : '路线优化'}
-        </Button>
+        <Space>
+          <Tooltip title="调整景点顺序后点击优化路线">
+            <Button
+              type="primary"
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={handleOptimizeRoute}
+              loading={loading}
+            >
+              {loading ? '优化中...' : '路线优化'}
+            </Button>
+          </Tooltip>
+        </Space>
       }
       style={{ marginBottom: 16 }}
     >
-      {/* 显示起点（酒店） */}
-      {hotelAddress && (
+      {/* 起点提示 */}
+      {attractions.length > 0 && (
         <Card size="small" style={{ marginBottom: 8, backgroundColor: '#f6ffed' }}>
           <Space>
             <Tag color="green">起点</Tag>
-            <Text strong>酒店</Text>
-            <Text type="secondary">{hotelAddress}</Text>
+            <Text strong>{attractions[0].name}</Text>
+            <Text type="secondary">（第一个景点）</Text>
+            {attractions.length > 1 && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                使用上移按钮调整起点位置
+              </Text>
+            )}
           </Space>
         </Card>
       )}
@@ -161,94 +293,201 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
               <Card
                 size="small"
                 hoverable
-                style={{ width: '100%', borderLeft: '4px solid #1890ff' }}
+                className={`attraction-card ${hoveredIndex === index ? 'hovered' : ''}`}
+                style={{
+                  width: '100%',
+                  borderLeft: index === 0 ? '4px solid #52c41a' : '4px solid #1890ff'
+                }}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
               >
-                <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                  <Space>
-                    <Tag color="blue">{index + 1}</Tag>
-                    <Text strong>{attraction.name}</Text>
-                    {attraction.inSchedule && (
-                      <Tag color="green" style={{ fontSize: 10 }}>已在日程</Tag>
-                    )}
-                  </Space>
+                <div className="attraction-card-content">
+                  <div className="attraction-info">
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                      <Space>
+                        <Tag color={index === 0 ? 'green' : 'blue'}>{index + 1}</Tag>
+                        {index === 0 && <Tag color="green">起点</Tag>}
+                        <Text strong>{attraction.name}</Text>
+                        {attraction.inSchedule && (
+                          <Tag color="green" style={{ fontSize: 10 }}>已在日程</Tag>
+                        )}
+                        {getPriorityTag(attraction.priority)}
+                      </Space>
 
-                  {attraction.type && (
-                    <Tag color="blue" style={{ marginTop: 4 }}>{attraction.type}</Tag>
-                  )}
+                      {attraction.type && (
+                        <Tag color="blue" style={{ marginTop: 4 }}>{attraction.type}</Tag>
+                      )}
 
-                  {attraction.score && (
-                    <Space style={{ marginTop: 4 }}>
-                      <StarOutlined style={{ color: '#faad14' }} />
-                      <Text>{attraction.score} 分</Text>
-                    </Space>
-                  )}
+                      {attraction.score && (
+                        <Space style={{ marginTop: 4 }}>
+                          <StarOutlined style={{ color: '#faad14' }} />
+                          <Text>{attraction.score} 分</Text>
+                        </Space>
+                      )}
 
-                  {attraction.address && (
-                    <Paragraph style={{ margin: '4px 0', fontSize: 12, color: '#8c8c8c' }}>
-                      <EnvironmentOutlined style={{ marginRight: 4 }} />
-                      {attraction.address}
-                    </Paragraph>
-                  )}
-
-                  {attraction.description && (
-                    <Collapse ghost>
-                      <Panel header="查看详情" key="1">
-                        <Paragraph style={{ margin: 0 }}>
-                          {attraction.description}
+                      {attraction.address && (
+                        <Paragraph style={{ margin: '4px 0', fontSize: 12, color: '#8c8c8c' }}>
+                          <EnvironmentOutlined style={{ marginRight: 4 }} />
+                          {attraction.address}
                         </Paragraph>
-                      </Panel>
-                    </Collapse>
-                  )}
-                </Space>
+                      )}
+
+                      {attraction.description && (
+                        <Collapse ghost>
+                          <Panel header="查看详情" key="1">
+                            <Paragraph style={{ margin: 0 }}>
+                              {attraction.description}
+                            </Paragraph>
+                          </Panel>
+                        </Collapse>
+                      )}
+                    </Space>
+                  </div>
+
+                  {/* 操作按钮（hover显示） */}
+                  <div className={`attraction-actions ${hoveredIndex === index ? 'visible' : ''}`}>
+                    {/* 上移按钮 */}
+                    {onMoveAttraction && index > 0 && (
+                      <Tooltip title="上移">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<UpOutlined />}
+                          onClick={() => onMoveAttraction(index, 'up')}
+                        />
+                      </Tooltip>
+                    )}
+                    {/* 下移按钮 */}
+                    {onMoveAttraction && index < attractions.length - 1 && (
+                      <Tooltip title="下移">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<MoveDownOutlined />}
+                          onClick={() => onMoveAttraction(index, 'down')}
+                        />
+                      </Tooltip>
+                    )}
+                    {/* 优先级切换 */}
+                    {onTogglePriority && (
+                      <Tooltip title="切换优先级">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<StarFilled />}
+                          onClick={() => handleTogglePriority(index, attraction.priority)}
+                        />
+                      </Tooltip>
+                    )}
+                    {onEditAttraction && (
+                      <Tooltip title="编辑">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => onEditAttraction(index)}
+                        />
+                      </Tooltip>
+                    )}
+                    {onDeleteAttraction && (
+                      <Popconfirm
+                        title="确定删除此景点？"
+                        okText="删除"
+                        cancelText="取消"
+                        onConfirm={() => onDeleteAttraction(index)}
+                      >
+                        <Tooltip title="删除">
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                          />
+                        </Tooltip>
+                      </Popconfirm>
+                    )}
+                  </div>
+                </div>
               </Card>
             </List.Item>
 
             {/* 显示到下一个景点的路线信息 */}
-            {index < attractions.length - 1 && routeSegments[index] && (
+            {(() => {
+              const shouldShow = index < attractions.length - 1 && routeSegments[index];
+              if (index === 0) {
+                console.log(`交通卡片检查 [index=${index}]:`, {
+                  'index < attractions.length - 1': index < attractions.length - 1,
+                  'routeSegments[index]': routeSegments[index],
+                  'shouldShow': shouldShow,
+                  'routeSegments': routeSegments
+                });
+              }
+              return shouldShow;
+            })() && (
               <Card
+                key={`route-${index}`}
                 size="small"
+                className="route-segment-card"
                 style={{
                   margin: '4px 0 8px 0',
                   backgroundColor: '#e6f7ff',
                   border: '1px dashed #1890ff'
                 }}
               >
-                <Space split={<Text type="secondary">→</Text>} size={8}>
-                  <Text type="secondary">
-                    <CarOutlined /> {routeSegments[index].mode || '打车'}
-                  </Text>
-                  {routeSegments[index].duration && (
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  {/* 主要出行方式 */}
+                  <Space split={<Text type="secondary">→</Text>} size={8}>
                     <Text type="secondary">
-                      <ClockCircleOutlined /> {routeSegments[index].duration}分钟
+                      {getModeIcon(routeSegments[index].mode)} {routeSegments[index].mode_label || routeSegments[index].mode || '交通'}
                     </Text>
-                  )}
-                  {routeSegments[index].distance && (
-                    <Text type="secondary">
-                      <EnvironmentOutlined /> {routeSegments[index].distance}公里
-                    </Text>
-                  )}
-                  {routeSegments[index].cost && (
-                    <Text type="warning">
-                      <DollarOutlined /> ¥{routeSegments[index].cost}
-                    </Text>
-                  )}
+                    {routeSegments[index].duration && (
+                      <Text type="secondary">
+                        <ClockCircleOutlined /> {routeSegments[index].duration}分钟
+                      </Text>
+                    )}
+                    {routeSegments[index].distance && (
+                      <Text type="secondary">
+                        <EnvironmentOutlined /> {routeSegments[index].distance}公里
+                      </Text>
+                    )}
+                    {routeSegments[index].cost && (
+                      <Text type="warning">
+                        <DollarOutlined /> ¥{routeSegments[index].cost}
+                      </Text>
+                    )}
+                  </Space>
+
+                  {/* 其他出行方案（折叠显示） */}
+                  {(() => {
+                    const segment = routeSegments[index];
+                    if (!segment?.alternatives || segment.alternatives.length === 0) return null;
+                    return (
+                      <Collapse ghost size="small">
+                        <Panel header="查看其他出行方案" key="alternatives">
+                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            {segment.alternatives.map((alt, altIndex) => (
+                              <Space key={altIndex} size={8}>
+                                {getModeIcon(alt.mode)}
+                                <Text type="secondary">{alt.mode_label}</Text>
+                                <Text type="secondary">
+                                  <ClockCircleOutlined /> {alt.duration}分钟
+                                </Text>
+                                <Text type="secondary">
+                                  <EnvironmentOutlined /> {alt.distance}公里
+                                </Text>
+                              </Space>
+                            ))}
+                          </Space>
+                        </Panel>
+                      </Collapse>
+                    );
+                  })()}
                 </Space>
               </Card>
             )}
           </div>
         )}
       />
-
-      {/* 显示终点（返回酒店） */}
-      {hotelAddress && attractions.length > 0 && optimized && (
-        <Card size="small" style={{ marginTop: 8, backgroundColor: '#fff7e6' }}>
-          <Space>
-            <Tag color="orange">终点</Tag>
-            <Text strong>返回酒店</Text>
-            <Text type="secondary">{hotelAddress}</Text>
-          </Space>
-        </Card>
-      )}
     </Card>
   );
 };

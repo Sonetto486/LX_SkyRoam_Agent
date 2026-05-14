@@ -40,7 +40,7 @@ const HotelSection: React.FC<HotelSectionProps> = ({ hotel }) => {
 
   return (
     <Card
-      title="🏨 住宿信息"
+      title="🏨 住宿推荐"
       extra={
         hotel.phone && (
           <Button

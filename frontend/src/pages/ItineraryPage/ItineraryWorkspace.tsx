@@ -277,9 +277,76 @@ const ItineraryWorkspace: React.FC = () => {
     }
   };
 
-  // 移动活动顺序（暂时禁用，因为新版本使用时间轴展示）
+  // 移动活动顺序（景点上移下移）
   const handleMoveActivity = async (activityId: number | string, direction: 'up' | 'down') => {
-    message.info('新版本使用时间轴展示，活动按时间自动排序');
+    if (!plan || !id) return;
+
+    try {
+      // 获取当前景点的时间
+      const currentItem = plan.items?.find(item => item.id === activityId);
+      if (!currentItem || !currentItem.start_time) {
+        message.warning('无法移动此景点');
+        return;
+      }
+
+      // 获取同一天的所有景点
+      const currentDate = currentItem.start_time.split('T')[0];
+      const sameDayItems = plan.items?.filter(item =>
+        item.item_type === 'attraction' &&
+        item.start_time &&
+        item.start_time.split('T')[0] === currentDate
+      ).sort((a, b) => {
+        if (!a.start_time || !b.start_time) return 0;
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+      });
+
+      if (!sameDayItems || sameDayItems.length < 2) {
+        message.warning('景点数量不足，无法移动');
+        return;
+      }
+
+      // 找到当前景点在列表中的位置
+      const currentIndex = sameDayItems.findIndex(item => item.id === activityId);
+
+      // 计算目标位置
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+      if (targetIndex < 0 || targetIndex >= sameDayItems.length) {
+        message.warning('无法移动到该位置');
+        return;
+      }
+
+      // 交换时间
+      const targetItem = sameDayItems[targetIndex];
+
+      // 更新两个景点的时间
+      await authFetch(
+        buildApiUrl(`/travel-plans/${id}/items/${activityId}`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start_time: targetItem.start_time
+          }),
+        }
+      );
+
+      await authFetch(
+        buildApiUrl(`/travel-plans/${id}/items/${targetItem.id}`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start_time: currentItem.start_time
+          }),
+        }
+      );
+
+      message.success(`景点已${direction === 'up' ? '上移' : '下移'}`);
+      fetchPlan();
+    } catch (err: any) {
+      message.error('移动失败：' + (err.message || '未知错误'));
+    }
   };
 
   // 更新日期
@@ -604,7 +671,7 @@ const getDayActivities = (): DayActivity[] => {
       });
     }
 
-    // 从住宿中提取坐标（仅第一天）
+    // 从住宿中提取坐标（仅作为标注点，不参与路线规划）
     if (day.hotel && day.hotel.coordinates) {
       markers.push({
         id: 'hotel',
@@ -612,6 +679,7 @@ const getDayActivities = (): DayActivity[] => {
         position: day.hotel.coordinates,
         address: day.hotel.address || '',
         isHovered: false,
+        isHotel: true,  // 标记为酒店，不参与路线绘制
       });
     }
 
@@ -1102,7 +1170,55 @@ const getDayActivities = (): DayActivity[] => {
                       }
                     >
                       {day.schedule && day.schedule.length > 0 ? (
-                        <DayScheduleSection schedule={day.schedule} />
+                        <DayScheduleSection
+                          schedule={day.schedule}
+                          onEdit={(index) => {
+                            // 从schedule中找到对应的活动，转换为TravelPlanItem格式
+                            const scheduleItem = day.schedule[index];
+                            if (scheduleItem) {
+                              // 尝试从items中找到匹配的活动
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === scheduleItem.activity ||
+                                item.location === scheduleItem.location
+                              );
+
+                              if (matchingItem) {
+                                openActivityModal(matchingItem);
+                              } else {
+                                // 如果找不到，创建一个新的活动数据
+                                openActivityModal({
+                                  title: scheduleItem.activity || '',
+                                  item_type: 'attraction',
+                                  location: scheduleItem.location,
+                                  description: scheduleItem.description,
+                                  start_time: day.date,
+                                  details: {
+                                    cost: scheduleItem.cost,
+                                    tips: scheduleItem.tips,
+                                    transport_note: scheduleItem.transport_note,
+                                    priority: scheduleItem.priority
+                                  }
+                                });
+                              }
+                            }
+                          }}
+                          onDelete={(index) => {
+                            // 从schedule中找到对应的活动，尝试从items中删除
+                            const scheduleItem = day.schedule[index];
+                            if (scheduleItem) {
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === scheduleItem.activity ||
+                                item.location === scheduleItem.location
+                              );
+
+                              if (matchingItem && matchingItem.id) {
+                                handleDeleteActivity(matchingItem.id);
+                              } else {
+                                message.warning('无法删除此活动：未找到对应的行程项');
+                              }
+                            }
+                          }}
+                        />
                       ) : (
                         <Empty description="暂无日程安排" style={{ padding: '40px 0' }} />
                       )}
@@ -1138,19 +1254,111 @@ const getDayActivities = (): DayActivity[] => {
                               return [...prev, { date: day.date, route_segments: segments }];
                             });
                           }}
+                          onEditAttraction={(index) => {
+                            // 从attractions中找到对应的景点
+                            const attraction = day.attractions[index];
+                            if (attraction) {
+                              // 尝试从items中找到匹配的景点
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === attraction.name ||
+                                item.address === attraction.address
+                              );
+
+                              if (matchingItem) {
+                                openActivityModal(matchingItem);
+                              } else {
+                                // 如果找不到，创建一个新的活动数据
+                                openActivityModal({
+                                  title: attraction.name,
+                                  item_type: 'attraction',
+                                  location: attraction.address,
+                                  address: attraction.address,
+                                  coordinates: attraction.coordinates,
+                                  description: attraction.description,
+                                  start_time: day.date,
+                                  details: {
+                                    type: attraction.type,
+                                    score: attraction.score,
+                                    priority: attraction.priority
+                                  }
+                                });
+                              }
+                            }
+                          }}
+                          onDeleteAttraction={(index) => {
+                            // 从attractions中找到对应的景点，尝试从items中删除
+                            const attraction = day.attractions[index];
+                            if (attraction) {
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === attraction.name ||
+                                item.address === attraction.address
+                              );
+
+                              if (matchingItem && matchingItem.id) {
+                                handleDeleteActivity(matchingItem.id);
+                              } else {
+                                message.warning('无法删除此景点：未找到对应的行程项');
+                              }
+                            }
+                          }}
+                          onTogglePriority={(index, priority) => {
+                            // 更新景点的优先级
+                            const attraction = day.attractions[index];
+                            if (attraction) {
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === attraction.name ||
+                                item.address === attraction.address
+                              );
+
+                              if (matchingItem && matchingItem.id) {
+                                // 更新details中的priority
+                                const updatedDetails = {
+                                  ...(matchingItem.details || {}),
+                                  priority: priority
+                                };
+
+                                handleSaveActivity({
+                                  id: matchingItem.id,
+                                  title: matchingItem.title,
+                                  item_type: matchingItem.item_type,
+                                  details: updatedDetails
+                                } as any).catch(err => {
+                                  message.error('更新优先级失败');
+                                });
+                              } else {
+                                message.warning('无法更新优先级：未找到对应的行程项');
+                              }
+                            }
+                          }}
+                          onMoveAttraction={(index, direction) => {
+                            // 移动景点顺序
+                            const attraction = day.attractions[index];
+                            if (attraction) {
+                              const matchingItem = plan.items?.find(item =>
+                                item.title === attraction.name ||
+                                item.address === attraction.address
+                              );
+
+                              if (matchingItem && matchingItem.id) {
+                                handleMoveActivity(matchingItem.id, direction);
+                              } else {
+                                message.warning('无法移动此景点：未找到对应的行程项');
+                              }
+                            }
+                          }}
                         />
                       ) : (
                         <Empty description="暂无景点安排" style={{ padding: '40px 0' }} />
                       )}
                     </Tabs.TabPane>
 
-                    {/* 住宿信息 */}
+                    {/* 住宿推荐 */}
                     <Tabs.TabPane
                       key="hotel"
                       tab={
                         <Space size={4}>
                           <HomeOutlined />
-                          <span>住宿信息</span>
+                          <span>住宿推荐</span>
                           {day.hotel && <Tag color="purple" style={{ marginLeft: 4 }}>1</Tag>}
                         </Space>
                       }
@@ -1158,7 +1366,7 @@ const getDayActivities = (): DayActivity[] => {
                       {day.hotel ? (
                         <HotelSection hotel={day.hotel} />
                       ) : (
-                        <Empty description="暂无住宿信息" style={{ padding: '40px 0' }} />
+                        <Empty description="暂无住宿推荐" style={{ padding: '40px 0' }} />
                       )}
                     </Tabs.TabPane>
 

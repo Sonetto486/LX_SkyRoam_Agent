@@ -1,0 +1,91 @@
+/* DayScheduleSection.css */
+
+.schedule-item-wrapper {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  transition: all 0.3s ease;
+}
+
+.schedule-item-wrapper:hover {
+  background-color: #fafafa;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+}
+
+.schedule-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.schedule-item-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  margin-left: 8px;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.schedule-item-actions.visible {
+  opacity: 1;
+}
+
+.schedule-item-actions .ant-btn {
+  padding: 4px 8px;
+}
+
+/* 交通卡片样式 */
+.transport-card {
+  margin: 8px 0;
+}
+
+.transport-info-card {
+  background: linear-gradient(135deg, #e6f7ff 0%, #f0f5ff 100%);
+  border: 1px dashed #1890ff;
+  border-radius: 6px;
+}
+
+.transport-info-card .ant-card-body {
+  padding: 8px 12px;
+}
+
+.transport-info-card .ant-space {
+  flex-wrap: wrap;
+}
+
+/* 时间轴样式优化 */
+.ant-timeline-item-content {
+  margin-left: 24px;
+}
+
+.ant-timeline-item-tail {
+  border-left: 2px solid #f0f0f0;
+}
+
+.ant-timeline-item-head {
+  background-color: #fff;
+}
+
+/* 优先级标签样式 */
+.ant-tag-red {
+  font-weight: 500;
+}
+
+.ant-tag-blue {
+  font-weight: 500;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .schedule-item-wrapper {
+    flex-direction: column;
+  }
+
+  .schedule-item-actions {
+    opacity: 1;
+    margin-left: 0;
+    margin-top: 8px;
+  }
+}

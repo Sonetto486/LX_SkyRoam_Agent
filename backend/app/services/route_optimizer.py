@@ -372,7 +372,7 @@ class RouteOptimizer:
         ordered_attractions: List[TravelPlanItem]
     ) -> List[Dict[str, Any]]:
         """
-        获取相邻景点间的路线信息
+        获取相邻景点间的路线信息（包含多种出行方案）
 
         Args:
             ordered_attractions: 排序后的景点列表
@@ -394,8 +394,11 @@ class RouteOptimizer:
                 to_attr.coordinates['lng']
             )
 
-            # 根据距离确定出行方式
+            # 根据距离确定主要出行方式
             mode = self._determine_travel_mode(straight_distance)
+
+            # 计算多种出行方案
+            alternatives = self._calculate_all_travel_modes(straight_distance)
 
             # 尝试调用地图API获取实际路线
             try:
@@ -444,7 +447,8 @@ class RouteOptimizer:
                         "duration": actual_duration,
                         "mode": mode,
                         "mode_label": self._get_mode_label(mode),
-                        "path": path_points  # 添加路径点
+                        "path": path_points,  # 添加路径点
+                        "alternatives": alternatives  # 添加多种出行方案
                     })
                 else:
                     # API失败，使用直线距离估算
@@ -458,7 +462,8 @@ class RouteOptimizer:
                         "duration": estimated_duration,
                         "mode": mode,
                         "mode_label": self._get_mode_label(mode),
-                        "path": []  # 没有路径点
+                        "path": [],  # 没有路径点
+                        "alternatives": alternatives
                     })
 
             except Exception as e:
@@ -473,10 +478,36 @@ class RouteOptimizer:
                     "duration": estimated_duration,
                     "mode": mode,
                     "mode_label": self._get_mode_label(mode),
-                    "path": []  # 没有路径点
+                    "path": [],  # 没有路径点
+                    "alternatives": alternatives
                 })
 
         return segments
+
+    def _calculate_all_travel_modes(self, distance: float) -> List[Dict[str, Any]]:
+        """
+        计算所有出行方式的时间和距离
+
+        Args:
+            distance: 距离（km）
+
+        Returns:
+            多种出行方案列表
+        """
+        modes = ["walking", "transit", "driving"]
+        alternatives = []
+
+        for mode in modes:
+            duration = self._estimate_duration(distance, mode)
+            mode_label = self._get_mode_label(mode)
+            alternatives.append({
+                "mode": mode,
+                "mode_label": mode_label,
+                "duration": duration,
+                "distance": round(distance, 2)
+            })
+
+        return alternatives
 
     def _determine_travel_mode(self, distance: float) -> str:
         """

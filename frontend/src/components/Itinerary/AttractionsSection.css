@@ -1,0 +1,83 @@
+/* AttractionsSection.css */
+
+.attraction-card {
+  transition: all 0.3s ease;
+}
+
+.attraction-card.hovered {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.attraction-card-content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attraction-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.attraction-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+.attraction-actions.visible {
+  opacity: 1;
+}
+
+.attraction-actions .ant-btn {
+  padding: 4px 8px;
+}
+
+/* 优先级标签样式 */
+.ant-tag-red {
+  font-weight: 500;
+}
+
+.ant-tag-blue {
+  font-weight: 500;
+}
+
+/* 景点卡片边框颜色根据优先级变化 */
+.attraction-card[data-priority="must"] {
+  border-left-color: #ff4d4f;
+}
+
+.attraction-card[data-priority="optional"] {
+  border-left-color: #1890ff;
+}
+
+.attraction-card[data-priority="backup"] {
+  border-left-color: #d9d9d9;
+}
+
+/* 路线信息卡片样式 */
+.ant-card.ant-card-bordered[style*="backgroundColor: rgb(230, 247, 255)"] {
+  transition: all 0.3s ease;
+}
+
+.ant-card.ant-card-bordered[style*="backgroundColor: rgb(230, 247, 255)"]:hover {
+  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .attraction-card-content {
+    flex-direction: column;
+  }
+
+  .attraction-actions {
+    opacity: 1;
+    margin-top: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
