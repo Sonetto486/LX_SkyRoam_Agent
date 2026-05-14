@@ -290,6 +290,22 @@ class RouteOptimizer:
         if not attractions:
             return []
 
+        # 防御性去重：确保没有重复景点
+        seen_coords = set()
+        unique_attractions = []
+        for attr in attractions:
+            if attr.coordinates:
+                coord_key = f"{attr.coordinates.get('lat', 0):.6f},{attr.coordinates.get('lng', 0):.6f}"
+                if coord_key not in seen_coords:
+                    seen_coords.add(coord_key)
+                    unique_attractions.append(attr)
+                else:
+                    logger.warning(f"最近邻算法去重：移除重复景点 {attr.title} (坐标: {coord_key})")
+            else:
+                unique_attractions.append(attr)
+
+        attractions = unique_attractions
+
         ordered = [attractions[0]]  # 第一个景点作为起点
         remaining = attractions[1:]
 
@@ -340,6 +356,14 @@ class RouteOptimizer:
         for i in range(len(ordered_attractions) - 1):
             from_attr = ordered_attractions[i]
             to_attr = ordered_attractions[i + 1]
+
+            # 跳过起点和终点坐标相同的路段（距离为0）
+            if from_attr.coordinates and to_attr.coordinates:
+                from_coord_key = f"{from_attr.coordinates.get('lat', 0):.6f},{from_attr.coordinates.get('lng', 0):.6f}"
+                to_coord_key = f"{to_attr.coordinates.get('lat', 0):.6f},{to_attr.coordinates.get('lng', 0):.6f}"
+                if from_coord_key == to_coord_key:
+                    logger.warning(f"跳过坐标相同的路段: {from_attr.title} -> {to_attr.title}")
+                    continue
 
             # 计算直线距离
             straight_distance = self._calculate_distance(
@@ -618,6 +642,23 @@ class RouteOptimizer:
 
         # 按日期排序
         items_by_date = dict(sorted(items_by_date.items()))
+
+        # 去重：移除相同坐标的重复景点
+        for date_str in items_by_date:
+            seen_coords = set()
+            unique_items = []
+            for item in items_by_date[date_str]:
+                if item.coordinates:
+                    coord_key = f"{item.coordinates.get('lat', 0):.6f},{item.coordinates.get('lng', 0):.6f}"
+                    if coord_key not in seen_coords:
+                        seen_coords.add(coord_key)
+                        unique_items.append(item)
+                    else:
+                        logger.warning(f"去重：移除重复景点 {item.title} (坐标: {coord_key})")
+                else:
+                    # 没有坐标的景点也保留
+                    unique_items.append(item)
+            items_by_date[date_str] = unique_items
 
         return items_by_date
 

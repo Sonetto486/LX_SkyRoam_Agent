@@ -454,7 +454,7 @@ class AmapRestClient:
                         "name": f"步行路线{i+1}",
                         "description": "高德地图步行路线",
                         "duration": duration // 60,
-                        "distance": distance // 1000,
+                        "distance": round(distance / 1000, 2),  # 使用浮点数除法，保留2位小数
                         "price": 0,
                         "currency": "CNY",
                         "operating_hours": "随时",
@@ -493,7 +493,7 @@ class AmapRestClient:
                         "name": f"高德路线{i+1}",
                         "description": "高德地图推荐路线",
                         "duration": duration // 60,
-                        "distance": distance // 1000,
+                        "distance": round(distance / 1000, 2),  # 使用浮点数除法，保留2位小数
                         "price": self._estimate_cost(distance, duration),
                         "currency": "CNY",
                         "operating_hours": "06:00-23:00",
@@ -537,7 +537,7 @@ class AmapRestClient:
                         "name": f"高德路线{i+1}",
                         "description": "高德地图推荐路线",
                         "duration": duration // 60,
-                        "distance": distance // 1000,
+                        "distance": round(distance / 1000, 2),  # 使用浮点数除法，保留2位小数
                         "price": self._estimate_cost(distance, duration),
                         "currency": "CNY",
                         "operating_hours": "24小时",
