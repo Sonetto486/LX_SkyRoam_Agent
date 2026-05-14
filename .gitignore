@@ -183,3 +183,6 @@ code
 tmp
 backend/tmp
 travel_guide.xlsx
+
+# 脚本生成的临时文件
+scripts/poi_import_progress.json

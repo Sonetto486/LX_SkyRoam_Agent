@@ -2556,6 +2556,17 @@ class PlanGenerator:
             except Exception as e:
                 logger.warning(f"RAG检索失败，将使用传统数据源: {e}")
 
+            # 注意：POI 检索已在 data_collector.py 的 collect_attraction_data 方法中完成
+            # attractions_data 已经包含了 POI 向量库检索的景点 + 高德 API 补充的实时信息
+            # 这里只需要检查数据来源并记录日志
+            if attractions_data:
+                # 检查是否来自 POI 向量库
+                poi_count = sum(1 for a in attractions_data if a.get("source", "").startswith("POI"))
+                if poi_count > 0:
+                    logger.info(f"景点数据包含 {poi_count} 个来自POI向量库的景点")
+                else:
+                    logger.info(f"景点数据来自高德地图API搜索")
+
             def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
                 budget_info = (
                     f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
@@ -2567,20 +2578,25 @@ class PlanGenerator:
                     )
                 system_prompt = (
                     "你是一位资深景点规划师，请针对某一天制定详细的景点游览安排，"
-                    "需以小红书用户的真实体验为主，结合参考景点数据，输出结构化结果。\n"
+                    "需优先使用提供的景点数据，结合其他数据源，输出结构化结果。\n"
                     "具体要求：\n"
-                    "1. 必须以小红书数据为主，优先选择小红书中用户真实分享的景点和体验；\n"
-                    "2. 景点定位数据仅作为补充参考，因为定位精度限制，这些数据只是大概的，不能代表一座城市所有景点；\n"
+                    "1. 【最重要】优先使用提供的景点数据中的景点，这些景点来自全国景点基础库或地图搜索，信息真实可靠；\n"
+                    "2. 如果景点数据提供了实时信息（评分、门票、开放时间等），请在行程中体现；\n"
                     "3. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
                     "4. 对于相距较远、需要长时间通勤的景点，当天安排的景点数量要减少，并在行程中明确写出长途通勤时间；\n"
                     "5. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
                     "6. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
-                    "7. 不要凭空捏造不存在的地点，优先使用小红书数据中的景点信息。"
+                    "7. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源。"
                 )
                 # 构建RAG上下文部分
                 rag_section = ""
                 if rag_context:
                     rag_section = f"【RAG检索 - 真实旅行攻略参考】：\n{rag_context}\n"
+
+                # 构建景点数据上下文
+                attractions_section = ""
+                if attractions_data:
+                    attractions_section = f"【主要数据源 - 景点数据】：\n{self.data_processor.format_data_for_llm(attractions_data, 'attraction')}\n"
 
                 user_prompt = f"""
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
@@ -2592,21 +2608,16 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
-{rag_section}
-【主要数据源 - 小红书真实体验分享】：
+{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
 {notes_str}
-
-【参考数据 - 景点定位数据（仅供参考）】：
-注意：以下景点数据来自地图定位服务，由于定位精度限制，这些数据只是大概的参考，并不能代表一座城市所有的景点。请优先使用小红书数据中的景点信息。
-{self.data_processor.format_data_for_llm(attractions_data, 'attraction')}
 
 {intl_hint}
 
 重要提示：
-1. 必须优先使用小红书数据中的景点和体验，这是主要数据源；
-2. RAG检索的攻略数据来自真实旅行者的经验分享，请重点参考；
-3. 景点定位数据仅作为补充参考，当小红书数据不足时可以参考，但不能依赖这些数据作为主要依据；
-4. 确保推荐的景点来自小红书用户的真实分享，保证行程的真实性和可操作性。
+1. 【最重要】必须优先使用提供的景点数据中的景点，这些景点来自全国景点基础库或地图搜索，信息真实可靠；
+2. 如果景点数据提供了实时信息（评分、门票、开放时间等），请在行程中体现；
+3. 如果景点数据不足，可以参考小红书数据；
+4. 确保推荐的景点来自提供的数据源，不要凭空捏造景点名称。
 
 请返回JSON对象，字段与示例一致，estimated_cost根据已知信息估算：{{
   "day": {day},
@@ -2616,7 +2627,7 @@ class PlanGenerator:
   "estimated_cost": 100,
   "daily_tips": [...]
 }}
-务必优先使用小红书数据中的景点，并给出实用游览建议。"""
+务必使用提供的景点数据中的景点，并给出实用游览建议。"""
                 return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1200), 0.6
 
             def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:

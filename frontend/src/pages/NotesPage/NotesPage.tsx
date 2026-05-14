@@ -37,7 +37,7 @@ const NotesPage: React.FC = () => {
     
     try {
       const limit = 20;
-      const url = `/notes?limit=${limit}&page=${pageNum}&keyword=${encodeURIComponent(keyword)}`;
+      const url = `/notes/?limit=${limit}&page=${pageNum}&keyword=${encodeURIComponent(keyword)}`;
       const response = await authFetch(url);
       const data = await response.json();
       

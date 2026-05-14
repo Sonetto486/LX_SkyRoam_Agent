@@ -73,7 +73,7 @@ const DiscoverPage: React.FC = () => {
     try {
       setLoading(true);
       const limit = 8;
-      const response = await authFetch(`/notes?limit=${limit}&is_random=true&keyword=${encodeURIComponent(searchValue)}`);
+      const response = await authFetch(`/notes/?limit=${limit}&is_random=true&keyword=${encodeURIComponent(searchValue)}`);
       const data = await response.json();
       if (data && data.items) {
         const mappedNotes = data.items.map((note: any) => ({
