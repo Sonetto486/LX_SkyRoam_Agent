@@ -290,21 +290,9 @@ class RouteOptimizer:
         if not attractions:
             return []
 
-        # 防御性去重：确保没有重复景点
-        seen_coords = set()
-        unique_attractions = []
-        for attr in attractions:
-            if attr.coordinates:
-                coord_key = f"{attr.coordinates.get('lat', 0):.6f},{attr.coordinates.get('lng', 0):.6f}"
-                if coord_key not in seen_coords:
-                    seen_coords.add(coord_key)
-                    unique_attractions.append(attr)
-                else:
-                    logger.warning(f"最近邻算法去重：移除重复景点 {attr.title} (坐标: {coord_key})")
-            else:
-                unique_attractions.append(attr)
-
-        attractions = unique_attractions
+        # 不进行去重，保留所有景点
+        # 用户可能在同一天多次访问同一个景点，或者在多天访问同一个景点
+        # 这些都是合理的行程安排
 
         ordered = [attractions[0]]  # 第一个景点作为起点
         remaining = attractions[1:]
@@ -643,22 +631,7 @@ class RouteOptimizer:
         # 按日期排序
         items_by_date = dict(sorted(items_by_date.items()))
 
-        # 去重：移除相同坐标的重复景点
-        for date_str in items_by_date:
-            seen_coords = set()
-            unique_items = []
-            for item in items_by_date[date_str]:
-                if item.coordinates:
-                    coord_key = f"{item.coordinates.get('lat', 0):.6f},{item.coordinates.get('lng', 0):.6f}"
-                    if coord_key not in seen_coords:
-                        seen_coords.add(coord_key)
-                        unique_items.append(item)
-                    else:
-                        logger.warning(f"去重：移除重复景点 {item.title} (坐标: {coord_key})")
-                else:
-                    # 没有坐标的景点也保留
-                    unique_items.append(item)
-            items_by_date[date_str] = unique_items
+        # 不进行去重，保留所有景点
 
         return items_by_date
 

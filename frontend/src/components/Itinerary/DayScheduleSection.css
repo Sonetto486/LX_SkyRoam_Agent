@@ -8,7 +8,7 @@
 }
 
 .schedule-item-wrapper:hover {
-  background-color: #fafafa;
+  background-color: var(--overlay);
   border-radius: 4px;
   padding: 4px 8px;
   margin: -4px -8px;
