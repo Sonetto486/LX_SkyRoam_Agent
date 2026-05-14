@@ -158,6 +158,7 @@ const ItineraryWorkspace: React.FC = () => {
   const [weatherData, setWeatherData] = useState<any[]>([]);
   const [overviewModalVisible, setOverviewModalVisible] = useState(false);
   const [routeSegments, setRouteSegments] = useState<any[]>([]); // 路线段信息
+  const [fitRouteTrigger, setFitRouteTrigger] = useState(0); // 用于触发地图视野调整
 
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
@@ -667,6 +668,8 @@ const getDayActivities = (): DayActivity[] => {
             position: attr.coordinates,
             address: attr.address || '',
             isHovered: false,
+            day: activeDay + 1,  // 添加天数
+            date: day.date,  // 添加日期字符串
           });
         }
       });
@@ -681,6 +684,8 @@ const getDayActivities = (): DayActivity[] => {
         address: day.hotel.address || '',
         isHovered: false,
         isHotel: true,  // 标记为酒店，不参与路线绘制
+        day: activeDay + 1,
+        date: day.date,
       });
     }
 
@@ -883,7 +888,7 @@ const getDayActivities = (): DayActivity[] => {
     }
   };
 
-  // 路线优化
+  // 路线优化 - 优化所有天数
   const handleRouteOptimize = async () => {
     if (!plan) return;
     message.loading({ content: '正在优化路线...', key: 'route-optimize' });
@@ -898,9 +903,22 @@ const getDayActivities = (): DayActivity[] => {
       }
       const data = await res.json();
 
+      console.log('路线优化返回数据:', data);
+
       // 保存路线段信息（按天分组）
+      // optimized_days 格式: [{ date, route_segments, ordered_items }, ...]
       if (data.optimized_days && data.optimized_days.length > 0) {
-        setRouteSegments(data.optimized_days);
+        // 转换为 MapComponent 期望的格式
+        const routeData = data.optimized_days.map((day: any) => ({
+          date: day.date,
+          route_segments: day.route_segments || [],
+          ordered_items: day.ordered_items || []
+        }));
+        setRouteSegments(routeData);
+        console.log('设置路线段数据:', routeData);
+
+        // 触发地图视野调整，让用户能清晰看到路线
+        setFitRouteTrigger(prev => prev + 1);
       }
 
       const stats = data.stats || {};
@@ -1443,10 +1461,11 @@ const getDayActivities = (): DayActivity[] => {
         <MapComponent
           markers={getMapMarkers()}
           center={getMapCenter()}
-          zoom={12}
+          zoom={14}
           viewMode="day"
           currentDay={activeDay + 1}
           routeSegments={routeSegments}
+          fitRouteTrigger={fitRouteTrigger}
         />
 
         {/* 地图控制按钮 */}

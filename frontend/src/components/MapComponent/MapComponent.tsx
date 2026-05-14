@@ -14,6 +14,7 @@ interface Marker {
   address: string;
   isHovered?: boolean;
   day?: number;
+  date?: string;  // 日期字符串，用于路线匹配
   time?: string;
   isHotel?: boolean;  // 标记为酒店，不参与路线绘制
 }
@@ -40,6 +41,7 @@ interface MapComponentProps {
   viewMode?: 'day' | 'full';
   currentDay?: number;
   routeSegments?: DayRouteData[];
+  fitRouteTrigger?: number;  // 用于触发地图视野调整
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({
@@ -48,7 +50,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
   zoom,
   viewMode = 'day',
   currentDay = 1,
-  routeSegments = []
+  routeSegments = [],
+  fitRouteTrigger = 0
 }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -81,13 +84,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
       const polyline = new window.AMap.Polyline({
         path: path,
-        strokeColor: isCurrentDay ? '#1890ff' : '#999999',
+        strokeColor: '#1890ff',  // 统一蓝色
         strokeWeight: isCurrentDay ? 4 : 2,
-        strokeOpacity: isCurrentDay ? 0.9 : 0.5,
-        strokeStyle: isCurrentDay ? 'solid' : 'dashed',
+        strokeOpacity: isCurrentDay ? 0.9 : 0.6,
+        strokeStyle: 'solid',
         lineJoin: 'round',
         lineCap: 'round',
-        showDir: true
+        showDir: true  // 使用高德地图原生箭头，自动指向路径方向
       });
       mapInstanceRef.current.add(polyline);
       polylineRef.current.push(polyline);
@@ -149,10 +152,17 @@ const MapComponent: React.FC<MapComponentProps> = ({
       const dayNum = parseInt(day);
       const isCurrentDay = viewMode === 'full' || dayNum === currentDay;
 
+      // 获取当天的日期字符串（从第一个marker获取）
+      const dayDateString = dayMarkers[0]?.date;
+
       // 查找当天的路线段信息 - 改进匹配逻辑
       // 1. 先尝试按日期字符串匹配
       // 2. 如果没有匹配，尝试按景点ID匹配
       const dayRouteSegments = routeSegments.find((seg: DayRouteData) => {
+        // 优先按日期字符串匹配
+        if (dayDateString && seg.date === dayDateString) {
+          return true;
+        }
         // 检查是否有ordered_items可以用于匹配
         if (seg.ordered_items && seg.ordered_items.length > 0) {
           return seg.ordered_items.some((item: any) =>
@@ -182,53 +192,17 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
             const polyline = new window.AMap.Polyline({
               path: path,
-              strokeColor: isCurrentDay ? '#1890ff' : '#999999',
+              strokeColor: '#1890ff',  // 统一蓝色
               strokeWeight: isCurrentDay ? 4 : 2,
-              strokeOpacity: isCurrentDay ? 0.9 : 0.5,
-              strokeStyle: isCurrentDay ? 'solid' : 'dashed',
+              strokeOpacity: isCurrentDay ? 0.9 : 0.6,
+              strokeStyle: 'solid',
               lineJoin: 'round',
               lineCap: 'round',
-              showDir: true
+              showDir: true  // 使用高德地图原生箭头，自动指向路径方向
             });
 
             mapInstanceRef.current.add(polyline);
             polylineRef.current.push(polyline);
-
-            // 添加方向箭头
-            const arrowCount = Math.min(3, Math.floor(path.length / 5));
-            for (let i = 0; i < path.length - 1; i += Math.floor(path.length / (arrowCount + 1))) {
-              const startPoint = path[i];
-              const endPoint = path[Math.min(i + 1, path.length - 1)];
-
-              if (!startPoint || !endPoint) continue;
-
-              const midLng = (startPoint[0] + endPoint[0]) / 2;
-              const midLat = (startPoint[1] + endPoint[1]) / 2;
-
-              const dx = endPoint[0] - startPoint[0];
-              const dy = endPoint[1] - startPoint[1];
-              const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-              const arrowMarker = new window.AMap.Marker({
-                position: [midLng, midLat],
-                icon: new window.AMap.Icon({
-                  size: new window.AMap.Size(16, 16),
-                  image: 'data:image/svg+xml;base64,' + btoa(`
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-                      <path d="M8 2 L14 8 L8 14 L8 10 L2 10 L2 6 L8 6 Z"
-                            fill="${isCurrentDay ? '#1890ff' : '#999999'}"
-                            transform="rotate(${angle} 8 8)"/>
-                    </svg>
-                  `),
-                  imageSize: new window.AMap.Size(16, 16)
-                }),
-                offset: new window.AMap.Pixel(-8, -8),
-                zIndex: 100
-              });
-
-              mapInstanceRef.current.add(arrowMarker);
-              markersRef.current.push(arrowMarker);
-            }
           } else {
             // 如果没有路径点，使用直线连接相邻景点
             console.log(`路径段 ${segIndex} 没有路径点，使用直线连接`);
@@ -248,12 +222,22 @@ const MapComponent: React.FC<MapComponentProps> = ({
       }
     });
 
-    // 自适应视图
-    if (markers.length > 0 && isMountedRef.current) {
+    // 自适应视图 - 优先使用绘制的路线，否则使用标记点
+    if (isMountedRef.current && mapInstanceRef.current) {
       try {
-        const positions = markers.map(m => [m.position.lng, m.position.lat]);
-        mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
-      } catch (e) { }
+        // 如果有绘制的路线，使用路线来调整视野
+        if (polylineRef.current.length > 0) {
+          mapInstanceRef.current.setFitView(polylineRef.current, false, [50, 50, 50, 50]);
+          console.log('使用路线调整视野，路线数量:', polylineRef.current.length);
+        } else if (markers.length > 0) {
+          // 否则使用标记点
+          const positions = markers.map(m => [m.position.lng, m.position.lat]);
+          mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
+          console.log('使用标记点调整视野，标记数量:', markers.length);
+        }
+      } catch (e) {
+        console.error('自适应视图失败:', e);
+      }
     }
   }, [markers, mapLoaded, viewMode, currentDay, routeSegments]);
 
@@ -292,6 +276,20 @@ const MapComponent: React.FC<MapComponentProps> = ({
           if (isMountedRef.current) {
             setMapLoaded(true);
             updateMarkers();
+
+            // 地图加载完成后，调整视野以包含所有标记点
+            // 延迟执行，确保 markers 已更新
+            setTimeout(() => {
+              if (markers.length > 0 && mapInstanceRef.current) {
+                try {
+                  const positions = markers.map(m => [m.position.lng, m.position.lat]);
+                  mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
+                  console.log('初始地图视野已调整，包含', markers.length, '个标记点');
+                } catch (e) {
+                  console.error('初始视野调整失败:', e);
+                }
+              }
+            }, 100);
           }
         });
       } catch (error) {
@@ -342,6 +340,33 @@ const MapComponent: React.FC<MapComponentProps> = ({
   useEffect(() => {
     updateMarkers();
   }, [markers, mapLoaded, viewMode, currentDay, updateMarkers]);
+
+  // 路线优化成功后，调整地图视野让用户清晰看到路线
+  useEffect(() => {
+    if (fitRouteTrigger > 0 && mapLoaded && mapInstanceRef.current) {
+      console.log('路线优化完成，调整地图视野，fitRouteTrigger:', fitRouteTrigger);
+
+      // 使用已绘制的 polyline 来调整视野
+      if (polylineRef.current.length > 0) {
+        try {
+          // setFitView 接收覆盖物数组，自动调整视野包含所有覆盖物
+          mapInstanceRef.current.setFitView(polylineRef.current, false, [60, 60, 60, 60]);
+          console.log('地图视野已调整，包含', polylineRef.current.length, '条路线');
+        } catch (e) {
+          console.error('调整地图视野失败:', e);
+        }
+      } else if (markers.length > 0) {
+        // 如果没有路线，使用标记点调整视野
+        try {
+          const positions = markers.map(m => [m.position.lng, m.position.lat]);
+          mapInstanceRef.current.setFitView(positions, false, [60, 60, 60, 60]);
+          console.log('地图视野已调整，包含', markers.length, '个标记点');
+        } catch (e) {
+          console.error('调整地图视野失败:', e);
+        }
+      }
+    }
+  }, [fitRouteTrigger, mapLoaded, markers]);
 
   if (loadError) {
     return (
