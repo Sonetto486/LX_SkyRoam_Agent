@@ -405,20 +405,23 @@ class RouteOptimizer:
                 origin = f"{from_attr.coordinates['lng']},{from_attr.coordinates['lat']}"
                 destination = f"{to_attr.coordinates['lng']},{to_attr.coordinates['lat']}"
 
-                # 根据出行方式选择API
-                api_mode = "driving" if mode == "driving" else "transit"
-
-                # 获取城市名称（从第一个景点的位置推断，或使用默认值）
-                city_name = "三亚"  # 默认城市
-                # 尝试从景点地址中提取城市
-                if from_attr.address:
-                    # 简单的城市提取逻辑
-                    for known_city in ["三亚", "北京", "上海", "广州", "深圳", "成都", "杭州", "西安", "重庆", "武汉"]:
-                        if known_city in from_attr.address:
-                            city_name = known_city
-                            break
-
-                routes = await amap_rest_client.get_directions(origin, destination, api_mode, city_name)
+                # 根据距离选择合适的API
+                if mode == "walking":
+                    # 步行模式
+                    routes = await amap_rest_client.get_directions(origin, destination, "walking")
+                elif mode == "driving":
+                    # 驾车模式
+                    routes = await amap_rest_client.get_directions(origin, destination, "driving")
+                else:
+                    # 公交模式 - 需要城市参数
+                    city_name = "三亚"  # 默认城市
+                    # 尝试从景点地址中提取城市
+                    if from_attr.address:
+                        for known_city in ["三亚", "北京", "上海", "广州", "深圳", "成都", "杭州", "西安", "重庆", "武汉"]:
+                            if known_city in from_attr.address:
+                                city_name = known_city
+                                break
+                    routes = await amap_rest_client.get_directions(origin, destination, "transit", city_name)
 
                 if routes and len(routes) > 0:
                     # 使用API返回的实际距离和时间
@@ -428,8 +431,12 @@ class RouteOptimizer:
 
                     # 提取路线的详细路径点
                     path_points = []
-                    if route.get("route"):
-                        # 从路线步骤中提取路径点
+                    if route.get("path"):
+                        # 直接使用API返回的路径点列表
+                        path_points = route.get("path", [])
+                        logger.debug(f"从路线API获取到 {len(path_points)} 个路径点")
+                    elif route.get("route"):
+                        # 从路线步骤中提取路径点（备用方案）
                         for step in route.get("route", []):
                             if step.get("path"):
                                 for point in step["path"]:

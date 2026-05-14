@@ -63,7 +63,7 @@ interface AttractionsSectionProps {
   hotelCoordinates?: { lat: number; lng: number };
   planId?: number;
   dayDate?: string;
-  onRouteOptimized?: (segments: RouteSegment[]) => void;
+  onRouteOptimized?: (data: { date?: string; route_segments: RouteSegment[]; ordered_items?: any[] }) => void;
   onEditAttraction?: (index: number) => void;
   onDeleteAttraction?: (index: number) => void;
   onTogglePriority?: (index: number, priority: string) => void;
@@ -157,6 +157,7 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
       console.log('route_segments:', data.route_segments);
       console.log('route_segments长度:', data.route_segments?.length);
       console.log('success:', data.success);
+      console.log('ordered_items:', data.ordered_items);
 
       if (data.success && data.route_segments && data.route_segments.length > 0) {
         setRouteSegments(data.route_segments);
@@ -166,7 +167,12 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
         console.log('设置routeSegments后，当前routeSegments:', data.route_segments);
 
         if (onRouteOptimized) {
-          onRouteOptimized(data.route_segments);
+          // 传递完整的数据结构，包含日期、路径段和有序景点列表
+          onRouteOptimized({
+            date: dayDate,
+            route_segments: data.route_segments,
+            ordered_items: data.ordered_items
+          });
         }
       } else {
         console.log('没有route_segments或success为false');

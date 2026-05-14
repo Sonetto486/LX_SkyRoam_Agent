@@ -149,21 +149,36 @@ const MapComponent: React.FC<MapComponentProps> = ({
       const dayNum = parseInt(day);
       const isCurrentDay = viewMode === 'full' || dayNum === currentDay;
 
-      // 查找当天的路线段信息
-      const dayRouteSegments = routeSegments.find((seg: DayRouteData) =>
-        seg.date === day || seg.ordered_items?.some((item: any) =>
-          dayMarkers.some(m => m.id === item.id)
-        )
-      );
+      // 查找当天的路线段信息 - 改进匹配逻辑
+      // 1. 先尝试按日期字符串匹配
+      // 2. 如果没有匹配，尝试按景点ID匹配
+      const dayRouteSegments = routeSegments.find((seg: DayRouteData) => {
+        // 检查是否有ordered_items可以用于匹配
+        if (seg.ordered_items && seg.ordered_items.length > 0) {
+          return seg.ordered_items.some((item: any) =>
+            dayMarkers.some(m => m.id === item.id)
+          );
+        }
+        // 检查route_segments中的from_id/to_id是否匹配
+        if (seg.route_segments && seg.route_segments.length > 0) {
+          return seg.route_segments.some((segment: any) =>
+            dayMarkers.some(m => m.id === segment.from_id || m.id === segment.to_id)
+          );
+        }
+        return false;
+      });
 
       // 如果有后端返回的路径点，使用它们绘制路线
       if (dayRouteSegments && dayRouteSegments.route_segments) {
-        console.log('使用后端返回的路径点绘制路线');
+        console.log('使用后端返回的路径点绘制路线，路径段数量:', dayRouteSegments.route_segments.length);
+        console.log('路径段详情:', dayRouteSegments.route_segments);
 
         dayRouteSegments.route_segments.forEach((segment: any, segIndex: number) => {
+          console.log(`处理路径段 ${segIndex}:`, segment);
           if (segment.path && segment.path.length > 0) {
             // 使用后端返回的详细路径点
             const path = segment.path.map((point: any) => [point.lng, point.lat]);
+            console.log(`路径段 ${segIndex} 有 ${path.length} 个路径点`);
 
             const polyline = new window.AMap.Polyline({
               path: path,
@@ -216,8 +231,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
             }
           } else {
             // 如果没有路径点，使用直线连接相邻景点
-            const fromMarker = dayMarkers[segIndex];
-            const toMarker = dayMarkers[segIndex + 1];
+            console.log(`路径段 ${segIndex} 没有路径点，使用直线连接`);
+            const fromMarker = dayMarkers.find(m => m.id === segment.from_id);
+            const toMarker = dayMarkers.find(m => m.id === segment.to_id);
             if (fromMarker && toMarker) {
               drawStraightLine([fromMarker, toMarker], isCurrentDay);
             }
@@ -226,7 +242,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       } else {
         // 如果没有后端路径点，使用直线连接（前端驾车路线规划可能失败）
         if (isCurrentDay) {
-          console.log('使用直线连接景点，景点数量:', dayMarkers.length);
+          console.log('没有找到路线段数据，使用直线连接景点，景点数量:', dayMarkers.length);
           drawStraightLine(dayMarkers, isCurrentDay);
         }
       }
@@ -239,7 +255,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
       } catch (e) { }
     }
-  }, [markers, mapLoaded, viewMode, currentDay]);
+  }, [markers, mapLoaded, viewMode, currentDay, routeSegments]);
 
   // 更新地图中心点
   useEffect(() => {

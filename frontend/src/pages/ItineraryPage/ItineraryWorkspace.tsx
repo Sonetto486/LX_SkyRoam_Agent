@@ -452,6 +452,7 @@ const getDayActivities = (): DayActivity[] => {
           meals: dayRichData?.meals || [],
           // 景点列表（从items获取，这是关键！）
           attractions: items.filter(item => item.item_type === 'attraction').map(item => ({
+            id: item.id,  // 添加id字段，用于路线匹配
             name: item.title,
             address: item.address,
             coordinates: item.coordinates,
@@ -661,7 +662,7 @@ const getDayActivities = (): DayActivity[] => {
       day.attractions.forEach((attr: any) => {
         if (attr.coordinates && attr.coordinates.lat && attr.coordinates.lng) {
           markers.push({
-            id: attr.name,
+            id: attr.id || attr.name,  // 优先使用id，如果没有则使用name
             name: attr.name,
             position: attr.coordinates,
             address: attr.address || '',
@@ -1244,14 +1245,16 @@ const getDayActivities = (): DayActivity[] => {
                           hotelCoordinates={day.hotel?.coordinates}
                           planId={plan?.id}
                           dayDate={day.date}
-                          onRouteOptimized={(segments) => {
+                          onRouteOptimized={(data) => {
                             // Handle route segments for map display
+                            // data 包含 { date, route_segments, ordered_items }
+                            console.log('收到路线优化数据:', data);
                             setRouteSegments(prev => {
-                              const existing = prev.find(r => r.date === day.date);
+                              const existing = prev.find(r => r.date === data.date);
                               if (existing) {
-                                return prev.map(r => r.date === day.date ? { ...r, route_segments: segments } : r);
+                                return prev.map(r => r.date === data.date ? data : r);
                               }
-                              return [...prev, { date: day.date, route_segments: segments }];
+                              return [...prev, data];
                             });
                           }}
                           onEditAttraction={(index) => {

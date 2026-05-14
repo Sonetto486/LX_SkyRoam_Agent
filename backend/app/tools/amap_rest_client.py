@@ -338,7 +338,7 @@ class AmapRestClient:
         Args:
             origin: 起点坐标（格式：lng,lat）
             destination: 终点坐标（格式：lng,lat）
-            mode: 交通模式（transit/driving）
+            mode: 交通模式（transit/driving/walking）
             city: 城市名称（用于公交查询）
         """
         try:
@@ -347,7 +347,15 @@ class AmapRestClient:
                 return []
 
             # 根据模式选择 API
-            if mode == "transit":
+            if mode == "walking":
+                url = f"{AMAP_REST_API_BASE}/direction/walking"
+                params = {
+                    "key": self.api_key,
+                    "origin": origin,
+                    "destination": destination,
+                    "output": "json"
+                }
+            elif mode == "transit":
                 url = f"{AMAP_REST_API_BASE}/direction/transit/integrated"
                 params = {
                     "key": self.api_key,
@@ -383,12 +391,83 @@ class AmapRestClient:
             logger.error(f"高德地图路线规划失败: {e}")
             return []
 
+    def _parse_polyline(self, polyline_str: str) -> List[Dict[str, float]]:
+        """解析高德地图polyline字符串为坐标点列表
+
+        Args:
+            polyline_str: polyline字符串，格式为 "lng,lat;lng,lat;..."
+
+        Returns:
+            坐标点列表 [{"lng": 116.48, "lat": 39.98}, ...]
+        """
+        points = []
+        if not polyline_str:
+            return points
+
+        try:
+            for pair in polyline_str.split(';'):
+                if ',' in pair:
+                    parts = pair.split(',')
+                    if len(parts) >= 2:
+                        lng = float(parts[0].strip())
+                        lat = float(parts[1].strip())
+                        points.append({"lng": lng, "lat": lat})
+        except (ValueError, IndexError) as e:
+            logger.warning(f"解析polyline失败: {polyline_str[:50]}..., 错误: {e}")
+
+        return points
+
     def _parse_directions_response(self, result: Dict[str, Any], mode: str) -> List[Dict[str, Any]]:
         """解析路线规划响应"""
         transportation = []
 
         try:
-            if mode == "transit":
+            if mode == "walking":
+                # 步行路线
+                route = result.get("route", {})
+                paths = route.get("paths", [])
+
+                for i, path in enumerate(paths[:3]):
+                    distance = int(path.get("distance", 0))
+                    duration = int(path.get("duration", 0))
+
+                    # 提取完整路径点（从所有steps的polyline拼接）
+                    all_path_points = []
+                    steps = []
+                    for step in path.get("steps", []):
+                        polyline = step.get("polyline", "")
+                        if polyline:
+                            step_points = self._parse_polyline(polyline)
+                            all_path_points.extend(step_points)
+
+                        step_info = {
+                            "instruction": step.get("instruction", ""),
+                            "distance": int(step.get("distance", 0)),
+                            "duration": int(step.get("duration", 0)),
+                            "road": step.get("road", "")
+                        }
+                        steps.append(step_info)
+
+                    transport_item = {
+                        "id": f"amap_route_{i+1}",
+                        "type": "步行",
+                        "name": f"步行路线{i+1}",
+                        "description": "高德地图步行路线",
+                        "duration": duration // 60,
+                        "distance": distance // 1000,
+                        "price": 0,
+                        "currency": "CNY",
+                        "operating_hours": "随时",
+                        "frequency": "随时",
+                        "coverage": ["目的地"],
+                        "features": ["步行导航", "实际道路"],
+                        "route": steps,
+                        "path": all_path_points,  # 添加完整路径点
+                        "source": "高德地图"
+                    }
+                    transportation.append(transport_item)
+
+            elif mode == "transit":
                 # 公交路线
                 route = result.get("route", {})
                 transits = route.get("transits", [])
@@ -422,6 +501,7 @@ class AmapRestClient:
                         "coverage": ["目的地"],
                         "features": ["实时路况", "多方案选择"],
                         "route": steps,
+                        "path": [],  # 公交路线暂不提供详细路径点
                         "source": "高德地图"
                     }
                     transportation.append(transport_item)
@@ -434,8 +514,15 @@ class AmapRestClient:
                     distance = int(path.get("distance", 0))
                     duration = int(path.get("duration", 0))
 
+                    # 提取完整路径点（从所有steps的polyline拼接）
+                    all_path_points = []
                     steps = []
                     for step in path.get("steps", []):
+                        polyline = step.get("polyline", "")
+                        if polyline:
+                            step_points = self._parse_polyline(polyline)
+                            all_path_points.extend(step_points)
+
                         step_info = {
                             "instruction": step.get("instruction", ""),
                             "distance": int(step.get("distance", 0)),
@@ -456,13 +543,14 @@ class AmapRestClient:
                         "operating_hours": "24小时",
                         "frequency": "随时",
                         "coverage": ["目的地"],
-                        "features": ["实时路况", "多方案选择"],
+                        "features": ["实时路况", "多方案选择", "实际道路"],
                         "route": steps,
+                        "path": all_path_points,  # 添加完整路径点
                         "source": "高德地图"
                     }
                     transportation.append(transport_item)
 
-            logger.info(f"解析高德地图路线成功: {len(transportation)} 条路线")
+            logger.info(f"解析高德地图路线成功: {len(transportation)} 条路线，mode={mode}")
 
         except Exception as e:
             logger.error(f"解析高德地图路线响应失败: {e}")
