@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Spin, Typography, Tag, Space, Image, Collapse, Rate, message, Empty, Divider, Card } from 'antd';
+import { Modal, Button, Spin, Typography, Tag, Space, Image, Collapse, Rate, message, Empty, Divider, Card, Dropdown, Menu } from 'antd';
 import {
   EnvironmentOutlined,
   PhoneOutlined,
@@ -11,10 +11,13 @@ import {
   BulbOutlined,
   HomeOutlined,
   CoffeeOutlined,
-  CameraOutlined
+  CameraOutlined,
+  CompassOutlined,
+  CopyOutlined
 } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
 import { buildApiUrl } from '../../config/api';
+import { openAmapNavigation, openBaiduNavigation, copyAddress } from '../../utils/navigation';
 
 const { Text, Paragraph, Title } = Typography;
 const { Panel } = Collapse;
@@ -206,6 +209,51 @@ const DetailModal: React.FC<DetailModalProps> = ({
     }
   };
 
+  // 导航处理函数
+  const handleNavigation = (navType: string) => {
+    if (!detail) return;
+
+    const params = {
+      name: detail.name,
+      city: detail.city,
+      address: detail.address,
+      coordinates: detail.coordinates
+    };
+
+    switch (navType) {
+      case 'amap':
+        openAmapNavigation(params);
+        break;
+      case 'baidu':
+        openBaiduNavigation(params);
+        break;
+      case 'copy':
+        copyAddress(detail.name, detail.address, detail.city).then(fullAddress => {
+          if (fullAddress) {
+            message.success(`地址已复制: ${fullAddress}`);
+          }
+        });
+        break;
+    }
+  };
+
+  // 导航菜单
+  const navigationMenu = (
+    <Menu>
+      <Menu.Item key="amap" onClick={() => handleNavigation('amap')}>
+        高德地图
+      </Menu.Item>
+      <Menu.Item key="baidu" onClick={() => handleNavigation('baidu')}>
+        百度地图
+      </Menu.Item>
+      <Menu.Divider />
+      <Menu.Item key="copy" onClick={() => handleNavigation('copy')}>
+        <CopyOutlined style={{ marginRight: 8 }} />
+        拷贝地址
+      </Menu.Item>
+    </Menu>
+  );
+
   const renderPriceInfo = () => {
     if (!detail) return null;
 
@@ -279,6 +327,11 @@ const DetailModal: React.FC<DetailModalProps> = ({
         <Button key="close" onClick={onCancel}>
           关闭
         </Button>,
+        <Dropdown key="nav" overlay={navigationMenu} placement="topRight">
+          <Button icon={<CompassOutlined />}>
+            导航
+          </Button>
+        </Dropdown>,
         <Button
           key="enrich"
           type="primary"
