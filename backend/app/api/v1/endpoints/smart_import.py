@@ -42,6 +42,13 @@ class ParsedLocation(BaseModel):
     lat: Optional[float] = Field(default=None)
     lng: Optional[float] = Field(default=None)
     cost: float = Field(default=0.0)
+    # 地理编码详细信息
+    formatted_address: str = Field(default="")
+    province: str = Field(default="")
+    city: str = Field(default="")
+    district: str = Field(default="")
+    adcode: str = Field(default="")
+    level: str = Field(default="")
     
     @field_validator('cost', mode='before')
     @classmethod
@@ -152,6 +159,7 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
         - 严格输出纯JSON，不要包含```json等markdown标签，不加任何解释。
         - 所有的数字字段必须是纯数字，绝对禁止带有单位（如km、元等）。
         - 无对应信息时，字符串填"未知"或"无"，数字填0。
+        - 严禁输出 lat 和 lng 字段，坐标由后端服务根据地址自动获取。
         
         # 必须严格遵循以下JSON输出结构，必须包含所有字段：
         {{
@@ -182,21 +190,18 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
             "cost_breakdown": {{
                 "flights": 0, "hotels": 0, "food": 0, "transport_tickets": 0, "others": 0
             }},
-           "parsed_locations": [
-    {{
-        "id": 1,
-        "name": "提取出的具体地点",
-        "type": "必须是 景点/餐饮/酒店/交通 之一",
-        "address": "地址或未知",
-        "day": "Day 1",
-        "excerpt": "原文中对该地的描述或原话",
-        "selected": true,
-        "highlight": "亮点（推荐理由）",
-        "lat": 39.9042,
-        "lng": 116.4074,
-        "cost": 0
-    }}
-]
+            "parsed_locations": [
+                {{
+                    "id": 1,
+                    "name": "提取出的具体地点",
+                    "type": "必须是 景点/餐饮/酒店/交通 之一",
+                    "address": "尽量保留原文区域描述，如'上海站旁边''南京路'，确实无信息才填城市名",
+                    "day": "Day 1",
+                    "excerpt": "原文中对该地的描述或原话",
+                    "selected": true,
+                    "highlight": "亮点（推荐理由）",
+                    "cost": 0
+                }}
             ]
         }}
 
@@ -206,6 +211,8 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
         - day: 格式必须严格为 "Day 1", "Day 2", "Day 3" 这种格式
         - excerpt: 必须填入原文原话（如："超级喜欢，文艺古村"）
         - selected: 必须全部固定为 true
+        - address: 优先使用原文中的相对位置描述（如"地铁口旁边""外滩对面""XX路"），若原文无任何区域信息，才填写城市名，并且需在 excerpt 中注明"地址过于模糊，待确认"
+        - 严禁输出 lat 和 lng 字段，坐标由后端服务自动获取
 
         待处理文本：
         {text}
@@ -215,7 +222,7 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
         
         # 🔥 强行截取第一对 {} 之间的内容，避免 LLM 废话导致 JSONDecodeError
         json_str = raw_content.strip()
-        match = re.search(r'\{[\s\S]*\}', json_str)
+        match = re.search(r'\{{[\s\S]*\}}', json_str)
         if match:
             json_str = match.group(0)
 
@@ -375,20 +382,47 @@ async def import_travel_plan(
         if source_note and source_note not in extracted_info.notes: 
             extracted_info.notes.append(source_note)
             
-        # 4. 为地点添加图片信息
+        # ==========================================
+        # 4. 为地点添加图片与地理编码信息（修复版）
+        # ==========================================
         image_service = PlaceImageService()
         enriched_locations = []
+
+        # 【关键修复】从 AI 提取的核心目的地推断默认城市
+        default_city = extracted_info.destination if extracted_info.destination != "未知" else ""
+        # 去掉可能的"市"后缀，兼容高德API（上海 / 上海市 均可，但统一处理更稳）
+        if default_city and default_city.endswith("市"):
+            default_city = default_city[:-1]
+
+        logger.info(f"🗺️ 行程核心目的地推断为: {default_city or '未识别'}, 将用于约束所有地点搜索")
+
         for location in extracted_info.parsed_locations:
-            # 为每个地点添加图片
-            enriched_location = await image_service.enrich_location_with_image(location.model_dump())
+            loc_dict = location.model_dump()
+            
+            # 别名替换：将口语化名称转换为标准POI名称
+            original_name = loc_dict["name"]
+            if original_name in PlaceImageService.ALIAS_MAP:
+                loc_dict["name"] = PlaceImageService.ALIAS_MAP[original_name]
+                loc_dict["original_name"] = original_name  # 保留原名用于展示
+            
+            # 【关键修复】传入 default_city，强制所有地点在该城市范围内搜索
+            enriched_location = await image_service.enrich_location_with_image(
+                loc_dict, 
+                default_city=default_city
+            )
+            
+            # 如果用了别名，把 name 改回原名，但保留修正的坐标和地址
+            if "original_name" in enriched_location:
+                enriched_location["name"] = enriched_location.pop("original_name")
+            
             enriched_locations.append(ParsedLocation(**enriched_location))
-        
+
         extracted_info.parsed_locations = enriched_locations
         
         start_date = _safe_parse_date(extracted_info.start_date, datetime.now())
         end_date = _safe_parse_date(extracted_info.end_date, start_date + timedelta(days=extracted_info.duration_days))
 
-        # 4. 存入数据库 (状态设为 draft 草稿)
+        # 5. 存入数据库 (状态设为 draft 草稿)
         plan_data = {
             "title": f"{extracted_info.destination} 行程草案" if extracted_info.destination != "未知" else "未命名行程草案",
             "destination": extracted_info.destination,

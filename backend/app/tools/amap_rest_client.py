@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import re
 from typing import List, Dict, Any, Optional
 from loguru import logger
 import httpx
@@ -47,6 +48,10 @@ class AmapRestClient:
             if not self.api_key:
                 logger.warning("高德地图API密钥未配置，且无缓存可用")
                 return None
+
+            # 【防御性修改】空城市告警：对模糊名称极易产生歧义
+            if not city_norm:
+                logger.warning(f"⚠️ geocode 缺少城市参数，对模糊地址可能产生歧义: {addr_norm}")
 
             # 构建请求参数
             params = {
@@ -99,7 +104,7 @@ class AmapRestClient:
 
                 # 存入长期缓存
                 await set_cache(cache_key_str, geocode_result, ttl=GEOCODE_CACHE_TTL)
-                logger.info(f"地理编码成功: {addr_norm} -> {location}")
+                logger.info(f"地理编码成功: {addr_norm} ({city_norm or '无城市'}) -> {location}")
 
                 return geocode_result
 
@@ -126,11 +131,15 @@ class AmapRestClient:
                 logger.warning("高德地图API密钥未配置")
                 return []
 
+            # 【防御性修改】空城市强制告警：高德 API city 为空时会全国搜索，极易跨城误匹配
+            if not city or not str(city).strip():
+                logger.warning(f"⚠️ search_places 缺少城市参数，将触发全国搜索，极易产生跨城误匹配: query={query}")
+
             # 构建请求参数
             params = {
                 "key": self.api_key,
                 "keywords": query,
-                "city": city,
+                "city": city or "",
                 "types": self._get_place_type(category),
                 "output": "json",
                 "offset": 20,
@@ -151,7 +160,7 @@ class AmapRestClient:
                 return []
 
             pois = result.get("pois", [])
-            logger.info(f"高德地图地点搜索成功: {query} in {city}, 找到 {len(pois)} 个结果")
+            logger.info(f"高德地图地点搜索成功: {query} in {city or '全国'}, 找到 {len(pois)} 个结果")
 
             return self._parse_places_response(pois)
 
@@ -200,7 +209,7 @@ class AmapRestClient:
                 return []
 
             pois = result.get("pois", [])
-            logger.info(f"高德地图周边搜索成功: {keywords} @ {location}, 找到 {len(pois)} 个结果")
+            logger.info(f"高德地图周边搜索成功: {keywords or '(无关键词)'} @ {location}, 找到 {len(pois)} 个结果")
 
             return self._parse_places_response(pois)
 
@@ -267,6 +276,7 @@ class AmapRestClient:
 
             cost_value = self._parse_cost_value(cost)
 
+            # 【防御性修改】补充 pname（省份），供上层做省-市两级校验
             place_item = {
                 "id": f"amap_place_{poi.get('id', '')}",
                 "name": poi.get("name", ""),
@@ -281,8 +291,9 @@ class AmapRestClient:
                 "location": location_str,
                 "phone": poi.get("tel", ""),
                 "business_area": poi.get("business_area", ""),
-                "cityname": poi.get("cityname", ""),
-                "adname": poi.get("adname", ""),
+                "pname": poi.get("pname", ""),          # 省份
+                "cityname": poi.get("cityname", ""),    # 城市
+                "adname": poi.get("adname", ""),        # 区县
                 "tags": tags,
                 "photos": photos,
                 "typecode": poi.get("typecode", ""),
@@ -300,7 +311,6 @@ class AmapRestClient:
         if not cost:
             return None
         try:
-            import re
             match = re.search(r"(\d+(\.\d+)?)", cost)
             if match:
                 return float(match.group(1))

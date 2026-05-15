@@ -9,7 +9,7 @@ const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 
-// ✅ 更新地点数据结构，增加亮点、经纬度、花费
+// ✅ 更新地点数据结构，增加亮点、经纬度、花费、格式化地址
 interface ParsedLocation {
   id: number;
   name: string;
@@ -24,6 +24,10 @@ interface ParsedLocation {
   lat?: number;            // 纬度
   lng?: number;            // 经度
   cost?: number;           // 预估人均花费（元）
+  formatted_address?: string; // 格式化地址
+  province?: string;       // 省份
+  city?: string;           // 城市
+  district?: string;       // 区县
 }
 
 // localStorage keys
@@ -292,7 +296,7 @@ const SmartImportPage: React.FC = () => {
     }
   };
 
-  // ✅ 更新后的地点卡片组件，展示亮点、花费、经纬度
+  // ✅ 更新后的地点卡片组件，展示亮点、花费、经纬度和详细地址
   const LocationCard = ({ location }: { location: ParsedLocation }) => {
     const isChecked = checkedLocations[location.id] || false;
     const imageUrl = location.image_url
@@ -301,6 +305,16 @@ const SmartImportPage: React.FC = () => {
     const typeColorMap: {[key: string]: string} = {
       '景点': 'blue', '餐饮': 'orange', '酒店': 'green', '交通': 'cyan'
     };
+
+    // 获取显示地址（优先使用格式化地址，其次使用原始地址）
+    const displayAddress = location.formatted_address || location.address;
+    
+    // 获取省市区信息
+    const regionInfo = [];
+    if (location.province) regionInfo.push(location.province);
+    if (location.city) regionInfo.push(location.city);
+    if (location.district) regionInfo.push(location.district);
+    const regionText = regionInfo.join(' > ');
 
     return (
       <Card
@@ -328,23 +342,38 @@ const SmartImportPage: React.FC = () => {
               </Text>
             </div>
 
-            {/* 类型与地址 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            {/* 类型标签 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, marginTop: 8 }}>
               <Tag color={typeColorMap[location.type] || 'default'}>{location.type}</Tag>
-              <Text type="secondary" ellipsis style={{ fontSize: 12, maxWidth: '150px' }} title={location.address}>
-                {location.address}
-              </Text>
             </div>
 
+            {/* 省市区信息 */}
+            {regionText && (
+              <div style={{ marginBottom: 4 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  🏙️ {regionText}
+                </Text>
+              </div>
+            )}
+
+            {/* 详细地址 */}
+            {displayAddress && (
+              <div className="location-address">
+                <Text type="secondary" ellipsis style={{ fontSize: 12 }} title={displayAddress}>
+                  📮 {displayAddress}
+                </Text>
+              </div>
+            )}
+
             {/* 花费与经纬度 */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
               {location.cost != null && location.cost > 0 && (
                 <Tag color="green">💰 人均 ¥{location.cost}</Tag>
               )}
               {location.lat != null && location.lng != null && (
-                <Text type="secondary" style={{ fontSize: 11 }}>
+                <Tag color="purple" style={{ fontSize: 11 }}>
                   📍 {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
-                </Text>
+                </Tag>
               )}
             </div>
           </div>
