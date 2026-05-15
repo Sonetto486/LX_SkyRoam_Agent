@@ -4,8 +4,6 @@ import {
   CameraOutlined,
   EnvironmentOutlined,
   StarOutlined,
-  DownOutlined,
-  RightOutlined,
   CarOutlined,
   ClockCircleOutlined,
   DollarOutlined,
@@ -339,16 +337,6 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
                           <EnvironmentOutlined style={{ marginRight: 4 }} />
                           {attraction.address}
                         </Paragraph>
-                      )}
-
-                      {attraction.description && (
-                        <Collapse ghost>
-                          <Panel header="查看详情" key="1">
-                            <Paragraph style={{ margin: 0 }}>
-                              {attraction.description}
-                            </Paragraph>
-                          </Panel>
-                        </Collapse>
                       )}
                     </Space>
                   </div>

@@ -86,7 +86,7 @@ class RouteOptimizer:
         ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
 
         # 获取相邻景点间的路线信息
-        route_segments = await self._get_route_segments(ordered_attractions)
+        route_segments = await self._get_route_segments(ordered_attractions, plan.destination)
 
         # 更新数据库中的景点顺序
         if ordered_attractions:
@@ -233,7 +233,7 @@ class RouteOptimizer:
         ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
 
         # 获取相邻景点间的路线信息
-        route_segments = await self._get_route_segments(ordered_attractions)
+        route_segments = await self._get_route_segments(ordered_attractions, plan.destination if plan else None)
 
         # 计算总距离和时间
         total_distance = sum(seg.get("distance", 0) for seg in route_segments)
@@ -312,13 +312,15 @@ class RouteOptimizer:
 
     async def _get_route_segments(
         self,
-        ordered_attractions: List[TravelPlanItem]
+        ordered_attractions: List[TravelPlanItem],
+        city_name: str = None
     ) -> List[Dict[str, Any]]:
         """
         获取相邻景点间的路线信息（包含多种出行方案）
 
         Args:
             ordered_attractions: 排序后的景点列表
+            city_name: 城市名称（用于公交路线查询）
 
         Returns:
             路线段信息列表
@@ -357,7 +359,7 @@ class RouteOptimizer:
                 destination = f"{to_attr.coordinates['lng']},{to_attr.coordinates['lat']}"
 
                 # 为所有出行方式获取实际路线数据
-                all_modes_data = await self._get_all_modes_routes(origin, destination, straight_distance)
+                all_modes_data = await self._get_all_modes_routes(origin, destination, straight_distance, city_name)
 
                 # 使用主要出行方式的实际数据
                 primary_data = all_modes_data.get(mode, {})
@@ -388,19 +390,18 @@ class RouteOptimizer:
 
                     # 提取路线的详细路径点
                     path_points = []
-                    if primary_data.get("path"):
-                        # 直接使用API返回的路径点列表
+                    if primary_data.get("path") and len(primary_data.get("path")) > 0:
+                        # 直接使用主要出行方式的路径点
                         path_points = primary_data.get("path", [])
-                        logger.debug(f"从路线API获取到 {len(path_points)} 个路径点")
-                    elif primary_data.get("route"):
-                        # 从路线步骤中提取路径点（备用方案）
-                        for step in primary_data.get("route", []):
-                            if step.get("path"):
-                                for point in step["path"]:
-                                    path_points.append({
-                                        "lng": point.get("lng") or point[0],
-                                        "lat": point.get("lat") or point[1]
-                                    })
+                        logger.debug(f"从主要出行方式 {mode} 获取到 {len(path_points)} 个路径点")
+                    else:
+                        # 主要出行方式没有路径点（如公交），尝试从其他方式获取用于绘制路线
+                        for fallback_mode in ["driving", "walking"]:
+                            fallback_data = all_modes_data.get(fallback_mode, {})
+                            if fallback_data.get("path") and len(fallback_data.get("path")) > 0:
+                                path_points = fallback_data.get("path", [])
+                                logger.debug(f"从备用出行方式 {fallback_mode} 获取到 {len(path_points)} 个路径点")
+                                break
 
                     segments.append({
                         "from": from_attr.title,
@@ -454,7 +455,8 @@ class RouteOptimizer:
         self,
         origin: str,
         destination: str,
-        straight_distance: float
+        straight_distance: float,
+        city_name: str = None
     ) -> Dict[str, Dict[str, Any]]:
         """
         获取所有出行方式的实际路线数据
@@ -463,12 +465,12 @@ class RouteOptimizer:
             origin: 起点坐标（格式：lng,lat）
             destination: 终点坐标（格式：lng,lat）
             straight_distance: 直线距离（km），用于失败时的估算
+            city_name: 城市名称（用于公交路线查询）
 
         Returns:
             各出行方式的路线数据字典 {mode: {distance, duration, path}}
         """
         results = {}
-        city_name = "三亚"  # 默认城市
 
         # 获取步行路线
         try:
@@ -498,15 +500,18 @@ class RouteOptimizer:
 
         # 获取公交路线（需要城市参数）
         try:
-            # 尝试从景点地址中提取城市（这里简化处理，使用默认城市）
-            routes = await amap_rest_client.get_directions(origin, destination, "transit", city_name)
-            if routes and len(routes) > 0:
-                route = routes[0]
-                results["transit"] = {
-                    "distance": route.get("distance", straight_distance),
-                    "duration": route.get("duration", 0),
-                    "path": route.get("path", [])
-                }
+            # 使用传入的城市名称，如果为空则跳过公交路线查询
+            if city_name:
+                routes = await amap_rest_client.get_directions(origin, destination, "transit", city_name)
+                if routes and len(routes) > 0:
+                    route = routes[0]
+                    results["transit"] = {
+                        "distance": route.get("distance", straight_distance),
+                        "duration": route.get("duration", 0),
+                        "path": route.get("path", [])
+                    }
+            else:
+                logger.debug("未提供城市名称，跳过公交路线查询")
         except Exception as e:
             logger.debug(f"获取公交路线失败: {e}")
 
