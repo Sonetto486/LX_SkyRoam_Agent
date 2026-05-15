@@ -15,7 +15,8 @@ import {
   DeleteOutlined,
   StarFilled,
   UpOutlined,
-  DownOutlined as MoveDownOutlined
+  DownOutlined as MoveDownOutlined,
+  EyeOutlined
 } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
 import { buildApiUrl } from '../../config/api';
@@ -68,6 +69,7 @@ interface AttractionsSectionProps {
   onDeleteAttraction?: (index: number) => void;
   onTogglePriority?: (index: number, priority: string) => void;
   onMoveAttraction?: (index: number, direction: 'up' | 'down') => void;
+  onViewDetail?: (index: number) => void;
 }
 
 const AttractionsSection: React.FC<AttractionsSectionProps> = ({
@@ -80,7 +82,8 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   onEditAttraction,
   onDeleteAttraction,
   onTogglePriority,
-  onMoveAttraction
+  onMoveAttraction,
+  onViewDetail
 }) => {
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -352,6 +355,17 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
 
                   {/* 操作按钮（hover显示） */}
                   <div className={`attraction-actions ${hoveredIndex === index ? 'visible' : ''}`}>
+                    {/* 查看详情 */}
+                    {onViewDetail && (
+                      <Tooltip title="查看详情">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={() => onViewDetail(index)}
+                        />
+                      </Tooltip>
+                    )}
                     {/* 上移按钮 */}
                     {onMoveAttraction && index > 0 && (
                       <Tooltip title="上移">

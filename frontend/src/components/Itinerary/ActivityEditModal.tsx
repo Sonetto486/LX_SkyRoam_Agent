@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Select, DatePicker, TimePicker, message, Tabs, Tag, Switch, Row, Col } from 'antd';
-import { EnvironmentOutlined, CalendarOutlined, PhoneOutlined, GlobalOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Modal, Form, Input, Select, DatePicker, TimePicker, message, Tag, Row, Col } from 'antd';
+import { EnvironmentOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import LocationSearch from './LocationSearch';
 import './ActivityEditModal.css';
@@ -26,11 +26,6 @@ const PRIORITY_OPTIONS = [
   { value: 'backup', label: '备选', color: 'default' },
 ];
 
-// 服务设施选项
-const FACILITY_OPTIONS = [
-  '停车场', '餐厅', 'WiFi', '洗手间', '母婴室', '无障碍设施', '行李寄存', '充电站'
-];
-
 interface Activity {
   id?: number | string;
   title: string;
@@ -43,10 +38,6 @@ interface Activity {
   coordinates?: { lat: number; lng: number };
   details?: any;
   images?: string[];
-  opening_hours?: { weekday?: string; weekend?: string };
-  phone?: string;
-  website?: string;
-  facilities?: string[];
   priority?: string;
 }
 
@@ -71,8 +62,6 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('basic');
-  const [selectedFacilities, setSelectedFacilities] = useState<string[]>([]);
 
   // 初始化表单
   useEffect(() => {
@@ -101,23 +90,8 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
           date: activityDate ? dayjs(activityDate) : undefined,
           start_time: startTime,
           end_time: endTime,
-          phone: activity.phone,
-          website: activity.website,
           priority: activity.priority || 'optional',
         });
-
-        // 设置开放时间
-        if (activity.opening_hours) {
-          form.setFieldsValue({
-            weekday_open: activity.opening_hours.weekday,
-            weekend_open: activity.opening_hours.weekend,
-          });
-        }
-
-        // 设置服务设施
-        if (activity.facilities) {
-          setSelectedFacilities(activity.facilities);
-        }
       } else {
         form.resetFields();
         form.setFieldsValue({
@@ -125,9 +99,7 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
           date: date ? dayjs(date) : (startDate ? dayjs(startDate) : undefined),
           priority: 'optional',
         });
-        setSelectedFacilities([]);
       }
-      setActiveTab('basic');
     }
   }, [visible, activity, form, date, startDate]);
 
@@ -153,12 +125,6 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
         }
       }
 
-      // 构建开放时间对象
-      const opening_hours = {
-        weekday: values.weekday_open,
-        weekend: values.weekend_open,
-      };
-
       const activityData: Activity = {
         id: activity?.id,
         title: values.title,
@@ -168,11 +134,7 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
         address: values.address,
         start_time,
         end_time,
-        phone: values.phone,
-        website: values.website,
-        facilities: selectedFacilities,
         priority: values.priority,
-        opening_hours: opening_hours.weekday || opening_hours.weekend ? opening_hours : undefined,
       };
 
       await onOk(activityData);
@@ -203,7 +165,6 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
     form.setFieldsValue({
       location: location.name,
       address: location.address,
-      phone: location.tel,
     });
     // 可以存储坐标信息
     if (location.location) {
@@ -218,15 +179,6 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
     }
   };
 
-  // 切换设施选择
-  const toggleFacility = (facility: string) => {
-    setSelectedFacilities(prev =>
-      prev.includes(facility)
-        ? prev.filter(f => f !== facility)
-        : [...prev, facility]
-    );
-  };
-
   return (
     <Modal
       title={activity ? '编辑活动' : '添加活动'}
@@ -234,185 +186,121 @@ const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
       onCancel={onCancel}
       onOk={handleSubmit}
       confirmLoading={loading}
-      width={700}
+      width={600}
       destroyOnClose
       className="activity-edit-modal"
     >
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={[
-          {
-            key: 'basic',
-            label: '基本信息',
-            children: (
-              <Form
-                form={form}
-                layout="vertical"
-                initialValues={{ item_type: 'attraction', priority: 'optional' }}
-              >
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name="title"
-                      label="活动名称"
-                      rules={[{ required: true, message: '请输入活动名称' }]}
-                    >
-                      <Input placeholder="请输入活动名称" maxLength={100} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item
-                      name="item_type"
-                      label="活动类型"
-                      rules={[{ required: true, message: '请选择活动类型' }]}
-                    >
-                      <Select placeholder="请选择活动类型">
-                        {ACTIVITY_TYPES.map(type => (
-                          <Option key={type.value} value={type.value}>{type.label}</Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                </Row>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ item_type: 'attraction', priority: 'optional' }}
+      >
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name="title"
+              label="活动名称"
+              rules={[{ required: true, message: '请输入活动名称' }]}
+            >
+              <Input placeholder="请输入活动名称" maxLength={100} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              name="item_type"
+              label="活动类型"
+              rules={[{ required: true, message: '请选择活动类型' }]}
+            >
+              <Select placeholder="请选择活动类型">
+                {ACTIVITY_TYPES.map(type => (
+                  <Option key={type.value} value={type.value}>{type.label}</Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Col>
+        </Row>
 
-                <Form.Item name="description" label="活动描述">
-                  <TextArea
-                    placeholder="请输入活动描述"
-                    rows={3}
-                    maxLength={500}
-                    showCount
+        <Form.Item name="description" label="活动描述">
+          <TextArea
+            placeholder="请输入活动描述"
+            rows={3}
+            maxLength={500}
+            showCount
+          />
+        </Form.Item>
+
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="location" label="地点名称">
+              <Input placeholder="请输入地点名称" prefix={<EnvironmentOutlined />} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="address" label="详细地址">
+              <Input placeholder="请输入详细地址" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name="date"
+              label="活动日期"
+              rules={[{ required: true, message: '请选择活动日期' }]}
+            >
+              <DatePicker
+                style={{ width: '100%' }}
+                placeholder="请选择活动日期"
+                prefix={<CalendarOutlined />}
+                disabledDate={disabledDate}
+                format="YYYY-MM-DD"
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item label="活动时间（可选）">
+              <Input.Group compact>
+                <Form.Item name="start_time" noStyle>
+                  <TimePicker
+                    format="HH:mm"
+                    placeholder="开始时间"
+                    style={{ width: '45%' }}
                   />
                 </Form.Item>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="location" label="地点名称">
-                      <Input placeholder="请输入地点名称" prefix={<EnvironmentOutlined />} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="address" label="详细地址">
-                      <Input placeholder="请输入详细地址" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item
-                      name="date"
-                      label="活动日期"
-                      rules={[{ required: true, message: '请选择活动日期' }]}
-                    >
-                      <DatePicker
-                        style={{ width: '100%' }}
-                        placeholder="请选择活动日期"
-                        prefix={<CalendarOutlined />}
-                        disabledDate={disabledDate}
-                        format="YYYY-MM-DD"
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item label="活动时间（可选）">
-                      <Input.Group compact>
-                        <Form.Item name="start_time" noStyle>
-                          <TimePicker
-                            format="HH:mm"
-                            placeholder="开始时间"
-                            style={{ width: '45%' }}
-                          />
-                        </Form.Item>
-                        <span style={{ display: 'inline-block', width: '10%', textAlign: 'center', lineHeight: '32px' }}>-</span>
-                        <Form.Item name="end_time" noStyle>
-                          <TimePicker
-                            format="HH:mm"
-                            placeholder="结束时间"
-                            style={{ width: '45%' }}
-                          />
-                        </Form.Item>
-                      </Input.Group>
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Form.Item name="priority" label="优先级">
-                  <Select placeholder="请选择优先级">
-                    {PRIORITY_OPTIONS.map(opt => (
-                      <Option key={opt.value} value={opt.value}>
-                        <Tag color={opt.color}>{opt.label}</Tag>
-                      </Option>
-                    ))}
-                  </Select>
+                <span style={{ display: 'inline-block', width: '10%', textAlign: 'center', lineHeight: '32px' }}>-</span>
+                <Form.Item name="end_time" noStyle>
+                  <TimePicker
+                    format="HH:mm"
+                    placeholder="结束时间"
+                    style={{ width: '45%' }}
+                  />
                 </Form.Item>
-              </Form>
-            ),
-          },
-          {
-            key: 'details',
-            label: '详细信息',
-            children: (
-              <Form form={form} layout="vertical">
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <Form.Item name="phone" label="联系电话">
-                      <Input placeholder="请输入联系电话" prefix={<PhoneOutlined />} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="website" label="网址">
-                      <Input placeholder="请输入网址" prefix={<GlobalOutlined />} />
-                    </Form.Item>
-                  </Col>
-                </Row>
+              </Input.Group>
+            </Form.Item>
+          </Col>
+        </Row>
 
-                <Form.Item label="开放时间">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name="weekday_open" noStyle>
-                        <Input placeholder="工作日时间，如 09:00-18:00" prefix={<ClockCircleOutlined />} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name="weekend_open" noStyle>
-                        <Input placeholder="周末时间，如 10:00-20:00" prefix={<ClockCircleOutlined />} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </Form.Item>
+        <Form.Item name="priority" label="优先级">
+          <Select placeholder="请选择优先级">
+            {PRIORITY_OPTIONS.map(opt => (
+              <Option key={opt.value} value={opt.value}>
+                <Tag color={opt.color}>{opt.label}</Tag>
+              </Option>
+            ))}
+          </Select>
+        </Form.Item>
 
-                <Form.Item label="服务设施">
-                  <div className="facilities-tags">
-                    {FACILITY_OPTIONS.map(facility => (
-                      <Tag
-                        key={facility}
-                        color={selectedFacilities.includes(facility) ? 'blue' : 'default'}
-                        style={{ cursor: 'pointer', marginBottom: 8 }}
-                        onClick={() => toggleFacility(facility)}
-                      >
-                        {facility}
-                      </Tag>
-                    ))}
-                  </div>
-                </Form.Item>
-              </Form>
-            ),
-          },
-          {
-            key: 'search',
-            label: '地点搜索',
-            children: (
-              <div style={{ maxHeight: 400, overflow: 'auto' }}>
-                <LocationSearch
-                  onSelect={handleLocationSelect}
-                  showFavorites={true}
-                />
-              </div>
-            ),
-          },
-        ]}
-      />
+        {/* 地点搜索（简化版，直接显示在表单底部） */}
+        <Form.Item label="搜索地点">
+          <div style={{ maxHeight: 200, overflow: 'auto' }}>
+            <LocationSearch
+              onSelect={handleLocationSelect}
+              showFavorites={false}
+            />
+          </div>
+        </Form.Item>
+      </Form>
     </Modal>
   );
 };

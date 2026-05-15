@@ -81,32 +81,16 @@ class RouteOptimizer:
                 "route_segments": []
             }
 
-        # 使用最近邻算法排序（保持第一个景点不变）
-        # 如果提供了自定义起点，使用它作为起点；否则使用列表第一个景点
-        if start_point and start_point.get("coordinates"):
-            # 创建虚拟起点
-            start_attraction = TravelPlanItem(
-                id=-1,  # 临时ID
-                title=start_point.get("name", "起点"),
-                coordinates=start_point["coordinates"],
-                item_type="attraction"
-            )
-            # 将虚拟起点添加到列表开头
-            all_attractions = [start_attraction] + valid_attractions
-        else:
-            # 使用列表第一个景点作为起点
-            all_attractions = valid_attractions
-
         # 使用最近邻算法排序
-        ordered_attractions = self._nearest_neighbor_algorithm(all_attractions)
+        # 第一个景点固定作为起点，其他景点按距离排序
+        ordered_attractions = self._nearest_neighbor_algorithm(valid_attractions)
 
         # 获取相邻景点间的路线信息
         route_segments = await self._get_route_segments(ordered_attractions)
 
-        # 更新数据库中的景点顺序（排除虚拟起点）
-        actual_attractions = [a for a in ordered_attractions if a.id != -1]
-        if actual_attractions:
-            await self._update_attractions_order(actual_attractions, date_str)
+        # 更新数据库中的景点顺序
+        if ordered_attractions:
+            await self._update_attractions_order(ordered_attractions, date_str)
 
         # 同步景点顺序到JSON字段
         await self._sync_attractions_order_to_json(plan, date_str, ordered_attractions)
@@ -128,7 +112,7 @@ class RouteOptimizer:
                     "title": item.title,
                     "coordinates": item.coordinates
                 }
-                for item in ordered_attractions if item.id != -1
+                for item in ordered_attractions
             ]
         }
 

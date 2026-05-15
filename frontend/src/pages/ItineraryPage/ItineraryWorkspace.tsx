@@ -31,6 +31,7 @@ import {
 import MapComponent from '../../components/MapComponent/MapComponent';
 import WeatherCard from '../../components/Itinerary/WeatherCard';
 import ActivityEditModal from '../../components/Itinerary/ActivityEditModal';
+import DetailModal from '../../components/Itinerary/DetailModal';
 import DateRangeEditor from '../../components/Itinerary/DateRangeEditor';
 import RouteSegment from '../../components/Itinerary/RouteSegment';
 import EnhancedActivityCard from '../../components/Itinerary/EnhancedActivityCard';
@@ -160,6 +161,36 @@ const ItineraryWorkspace: React.FC = () => {
   const [routeSegments, setRouteSegments] = useState<any[]>([]); // 路线段信息
   const [fitRouteTrigger, setFitRouteTrigger] = useState(0); // 用于触发地图视野调整
 
+  // 详情模态框状态
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [detailType, setDetailType] = useState<'attraction' | 'hotel' | 'meal'>('attraction');
+  const [detailData, setDetailData] = useState<any>(null);
+  const [detailItemId, setDetailItemId] = useState<number | string | undefined>(undefined);
+
+  // 详情缓存（按 type + name + city 作为key）
+  const [detailCache, setDetailCache] = useState<Map<string, any>>(new Map());
+
+  // 生成缓存key
+  const getDetailCacheKey = (type: string, name: string, city?: string) => {
+    return `${type}:${name}:${city || ''}`;
+  };
+
+  // 保存详情到缓存
+  const saveDetailToCache = (type: string, name: string, city: string | undefined, detail: any) => {
+    const key = getDetailCacheKey(type, name, city);
+    setDetailCache(prev => {
+      const newCache = new Map(prev);
+      newCache.set(key, detail);
+      return newCache;
+    });
+  };
+
+  // 从缓存获取详情
+  const getDetailFromCache = (type: string, name: string, city?: string): any | undefined => {
+    const key = getDetailCacheKey(type, name, city);
+    return detailCache.get(key);
+  };
+
   // 获取行程详情
   const fetchPlan = useCallback(async () => {
     if (!id) return;
@@ -224,6 +255,54 @@ const ItineraryWorkspace: React.FC = () => {
   const openActivityModal = (activity?: TravelPlanItem | ActivityEditData) => {
     setEditingActivity(activity || null);
     setActivityModalVisible(true);
+  };
+
+  // 打开详情模态框
+  const openDetailModal = (type: 'attraction' | 'hotel' | 'meal', data: any, itemId?: number | string) => {
+    // 检查缓存
+    const name = data.name || data.title || data.restaurant_name || '';
+    const city = data.city || plan?.destination;
+    const cachedDetail = getDetailFromCache(type, name, city);
+
+    // 如果有缓存，合并到数据中
+    if (cachedDetail) {
+      setDetailData({ ...data, ...cachedDetail, _fromCache: true });
+    } else {
+      setDetailData(data);
+    }
+
+    setDetailType(type);
+    setDetailItemId(itemId);
+    setDetailModalVisible(true);
+  };
+
+  // 打开景点详情
+  const openAttractionDetail = (index: number) => {
+    const dayActivities = getDayActivities();
+    if (dayActivities.length === 0 || activeDay >= dayActivities.length) return;
+    const day = dayActivities[activeDay];
+    if (!day.attractions || index >= day.attractions.length) return;
+    const attraction = day.attractions[index];
+    openDetailModal('attraction', attraction, attraction.id);
+  };
+
+  // 打开酒店详情
+  const openHotelDetail = () => {
+    const dayActivities = getDayActivities();
+    if (dayActivities.length === 0 || activeDay >= dayActivities.length) return;
+    const day = dayActivities[activeDay];
+    if (!day.hotel) return;
+    openDetailModal('hotel', day.hotel);
+  };
+
+  // 打开餐饮详情
+  const openMealDetail = (index: number) => {
+    const dayActivities = getDayActivities();
+    if (dayActivities.length === 0 || activeDay >= dayActivities.length) return;
+    const day = dayActivities[activeDay];
+    if (!day.meals || index >= day.meals.length) return;
+    const meal = day.meals[index];
+    openDetailModal('meal', meal);
   };
 
   // 保存活动
@@ -460,6 +539,7 @@ const getDayActivities = (): DayActivity[] => {
             type: item.details?.type,
             score: item.details?.score,
             description: item.description,
+            city: plan.destination,  // 添加城市字段
           })),
           // 每日提示（从richData获取）
           daily_tips: dayRichData?.daily_tips || [],
@@ -521,6 +601,7 @@ const getDayActivities = (): DayActivity[] => {
         name: item.title,
         address: item.address,
         coordinates: item.coordinates,
+        city: plan.destination,  // 添加城市字段
       })),
       daily_tips: [],
       estimated_cost: 0,
@@ -633,6 +714,7 @@ const getDayActivities = (): DayActivity[] => {
       return {
         ...attr,
         inSchedule: existsInSchedule, // 标记是否已在日程中
+        city: attr.city || plan?.destination,  // 确保有城市字段
       };
     });
   };
@@ -1367,6 +1449,7 @@ const getDayActivities = (): DayActivity[] => {
                               }
                             }
                           }}
+                          onViewDetail={openAttractionDetail}
                         />
                       ) : (
                         <Empty description="暂无景点安排" style={{ padding: '40px 0' }} />
@@ -1385,7 +1468,7 @@ const getDayActivities = (): DayActivity[] => {
                       }
                     >
                       {day.hotel ? (
-                        <HotelSection hotel={day.hotel} />
+                        <HotelSection hotel={day.hotel} onViewDetail={openHotelDetail} />
                       ) : (
                         <Empty description="暂无住宿推荐" style={{ padding: '40px 0' }} />
                       )}
@@ -1423,7 +1506,7 @@ const getDayActivities = (): DayActivity[] => {
                       }
                     >
                       {day.meals && day.meals.length > 0 ? (
-                        <MealsSection meals={day.meals} />
+                        <MealsSection meals={day.meals} onViewDetail={openMealDetail} />
                       ) : (
                         <Empty description="暂无餐饮推荐" style={{ padding: '40px 0' }} />
                       )}
@@ -1515,6 +1598,26 @@ const getDayActivities = (): DayActivity[] => {
           setEditingActivity(null);
         }}
         onOk={handleSaveActivity}
+      />
+
+      {/* 详情查看弹窗 */}
+      <DetailModal
+        visible={detailModalVisible}
+        type={detailType}
+        data={detailData}
+        planId={plan?.id}
+        itemId={detailItemId}
+        onCancel={() => {
+          setDetailModalVisible(false);
+          setDetailData(null);
+          setDetailItemId(undefined);
+        }}
+        onDetailUpdated={(detail) => {
+          // 保存详情到缓存
+          const name = detail.name || detailData?.name || '';
+          const city = detail.city || detailData?.city || plan?.destination;
+          saveDetailToCache(detailType, name, city, detail);
+        }}
       />
 
       {/* 日期编辑弹窗 */}

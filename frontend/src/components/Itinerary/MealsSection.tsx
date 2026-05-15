@@ -7,7 +7,8 @@ import {
   PhoneOutlined,
   BulbOutlined,
   DownOutlined,
-  RightOutlined
+  RightOutlined,
+  EyeOutlined
 } from '@ant-design/icons';
 
 const { Text, Paragraph } = Typography;
@@ -26,9 +27,10 @@ interface Meal {
 
 interface MealsSectionProps {
   meals: Meal[];
+  onViewDetail?: (index: number) => void;
 }
 
-const MealsSection: React.FC<MealsSectionProps> = ({ meals }) => {
+const MealsSection: React.FC<MealsSectionProps> = ({ meals, onViewDetail }) => {
   const [expanded, setExpanded] = useState(false);
 
   if (!meals || meals.length === 0) return null;
@@ -54,16 +56,28 @@ const MealsSection: React.FC<MealsSectionProps> = ({ meals }) => {
     >
       <List
         dataSource={displayMeals}
-        renderItem={(meal) => (
+        renderItem={(meal, index) => (
           <List.Item style={{ border: 'none', padding: '8px 0' }}>
             <Card
               size="small"
               style={{ width: '100%', borderLeft: '4px solid #fa8c16' }}
             >
               <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <Space>
-                  <Tag color="orange">{meal.type}</Tag>
-                  <Text strong>{meal.restaurant_name}</Text>
+                <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <Space>
+                    <Tag color="orange">{meal.type}</Tag>
+                    <Text strong>{meal.restaurant_name}</Text>
+                  </Space>
+                  {onViewDetail && (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => onViewDetail(index)}
+                    >
+                      详情
+                    </Button>
+                  )}
                 </Space>
 
                 {meal.time && (

@@ -5,7 +5,8 @@ import {
   EnvironmentOutlined,
   DollarOutlined,
   PhoneOutlined,
-  StarOutlined
+  StarOutlined,
+  EyeOutlined
 } from '@ant-design/icons';
 
 const { Text, Paragraph } = Typography;
@@ -29,9 +30,10 @@ interface Hotel {
 
 interface HotelSectionProps {
   hotel: Hotel;
+  onViewDetail?: () => void;
 }
 
-const HotelSection: React.FC<HotelSectionProps> = ({ hotel }) => {
+const HotelSection: React.FC<HotelSectionProps> = ({ hotel, onViewDetail }) => {
   if (!hotel) return null;
 
   const starRating = hotel.star_rating || hotel.star || 5;
@@ -42,16 +44,28 @@ const HotelSection: React.FC<HotelSectionProps> = ({ hotel }) => {
     <Card
       title="🏨 住宿推荐"
       extra={
-        hotel.phone && (
-          <Button
-            type="link"
-            size="small"
-            icon={<PhoneOutlined />}
-            href={`tel:${hotel.phone}`}
-          >
-            联系酒店
-          </Button>
-        )
+        <Space>
+          {onViewDetail && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={onViewDetail}
+            >
+              查看详情
+            </Button>
+          )}
+          {hotel.phone && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PhoneOutlined />}
+              href={`tel:${hotel.phone}`}
+            >
+              联系酒店
+            </Button>
+          )}
+        </Space>
       }
       style={{ marginBottom: 16 }}
     >

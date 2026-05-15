@@ -1135,3 +1135,177 @@ async def optimize_travel_route(
         raise HTTPException(status_code=500, detail=result.get("message", "路线优化失败"))
 
     return result
+
+
+# =============== 详情获取相关端点 ===============
+from app.services.detail_enrichment_service import detail_enrichment_service
+
+
+class EnrichDetailRequest(BaseModel):
+    """详情获取请求"""
+    name: str  # 名称
+    city: Optional[str] = None  # 城市（可选，如果未提供则从行程目的地获取）
+    address: Optional[str] = None  # 地址
+    coordinates: Optional[Dict[str, float]] = None  # 坐标
+    cuisine: Optional[str] = None  # 菜系（仅餐厅）
+
+
+@router.post("/{plan_id}/items/{item_id}/enrich-detail")
+async def enrich_item_detail(
+    plan_id: int,
+    item_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取行程项目详情（景点/餐厅/酒店）"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+
+    # 获取行程项目
+    item = await service.get_item(plan_id, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="行程项目不存在")
+
+    # 根据类型获取详情
+    item_type = item.item_type or "attraction"
+    name = item.title or item.location or ""
+    city = plan.destination or ""
+    address = item.address
+    coordinates = item.coordinates
+
+    if item_type == "attraction":
+        detail = await detail_enrichment_service.enrich_attraction_detail(
+            name=name,
+            city=city,
+            address=address,
+            coordinates=coordinates
+        )
+    elif item_type == "hotel":
+        detail = await detail_enrichment_service.enrich_hotel_detail(
+            name=name,
+            city=city,
+            address=address,
+            coordinates=coordinates
+        )
+    elif item_type == "restaurant":
+        cuisine = item.details.get("cuisine") if item.details else None
+        detail = await detail_enrichment_service.enrich_meal_detail(
+            name=name,
+            city=city,
+            cuisine=cuisine,
+            address=address,
+            coordinates=coordinates
+        )
+    else:
+        # 默认按景点处理
+        detail = await detail_enrichment_service.enrich_attraction_detail(
+            name=name,
+            city=city,
+            address=address,
+            coordinates=coordinates
+        )
+
+    return {
+        "success": True,
+        "item_id": item_id,
+        "item_type": item_type,
+        "detail": detail
+    }
+
+
+@router.post("/{plan_id}/enrich-attraction-detail")
+async def enrich_attraction_detail(
+    plan_id: int,
+    request: EnrichDetailRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取景点详情"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+
+    # 如果请求中没有city，从plan.destination获取
+    city = request.city or plan.destination or ""
+
+    detail = await detail_enrichment_service.enrich_attraction_detail(
+        name=request.name,
+        city=city,
+        address=request.address,
+        coordinates=request.coordinates
+    )
+
+    return {
+        "success": True,
+        "detail": detail
+    }
+
+
+@router.post("/{plan_id}/enrich-hotel-detail")
+async def enrich_hotel_detail(
+    plan_id: int,
+    request: EnrichDetailRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取住宿详情"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+
+    # 如果请求中没有city，从plan.destination获取
+    city = request.city or plan.destination or ""
+
+    detail = await detail_enrichment_service.enrich_hotel_detail(
+        name=request.name,
+        city=city,
+        address=request.address,
+        coordinates=request.coordinates
+    )
+
+    return {
+        "success": True,
+        "detail": detail
+    }
+
+
+@router.post("/{plan_id}/enrich-meal-detail")
+async def enrich_meal_detail(
+    plan_id: int,
+    request: EnrichDetailRequest,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取餐饮详情"""
+    service = TravelPlanService(db)
+    plan = await service.get_travel_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="旅行计划不存在")
+    if not (is_admin(current_user) or plan.user_id == current_user.id):
+        raise HTTPException(status_code=403, detail="无权访问该计划")
+
+    # 如果请求中没有city，从plan.destination获取
+    city = request.city or plan.destination or ""
+
+    detail = await detail_enrichment_service.enrich_meal_detail(
+        name=request.name,
+        city=city,
+        cuisine=request.cuisine,
+        address=request.address,
+        coordinates=request.coordinates
+    )
+
+    return {
+        "success": True,
+        "detail": detail
+    }

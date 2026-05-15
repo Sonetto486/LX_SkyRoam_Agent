@@ -75,7 +75,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
   // 获取收藏列表
   const fetchFavorites = useCallback(async () => {
     try {
-      const response = await authFetch('/api/v1/locations/favorites');
+      const response = await authFetch('/locations/favorites');
       if (response.ok) {
         const data = await response.json();
         setFavorites(data);
@@ -101,7 +101,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
 
     setLoading(true);
     try {
-      const response = await authFetch('/api/v1/locations/search', {
+      const response = await authFetch('/locations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,7 +133,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
   // 添加收藏
   const addFavorite = async (location: LocationResult) => {
     try {
-      const response = await authFetch('/api/v1/locations/favorites', {
+      const response = await authFetch('/locations/favorites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,7 +164,7 @@ const LocationSearch: React.FC<LocationSearchProps> = ({
   // 删除收藏
   const removeFavorite = async (favoriteId: number) => {
     try {
-      const response = await authFetch(`/api/v1/locations/favorites/${favoriteId}`, {
+      const response = await authFetch(`/locations/favorites/${favoriteId}`, {
         method: 'DELETE',
       });
 
