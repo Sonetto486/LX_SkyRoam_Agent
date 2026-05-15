@@ -167,13 +167,12 @@ class ItineraryOptimizer:
 
     async def balance_schedule(self, plan: TravelPlan) -> Dict[str, Any]:
         """
-        均衡每日行程 - 优化版本，让景点分布更均匀
+        均衡每日行程 - 优化版本
 
-        Args:
-            plan: 旅行计划对象
-
-        Returns:
-            均衡统计
+        新增功能：
+        1. 分离同一天的重复景点
+        2. 聚类距离近的景点到同一天
+        3. 数量均衡
         """
         # 按日期分组景点
         items_by_date = await self._group_items_by_date(plan)
@@ -188,6 +187,229 @@ class ItineraryOptimizer:
         if total_days <= 1:
             return {"items_moved": 0, "days_balanced": False, "message": "只有一天行程，无需均衡"}
 
+        moved_count = 0
+
+        # 1. 分离同一天的重复景点
+        logger.info("步骤1: 分离同一天的重复景点")
+        separated = await self._separate_duplicate_attractions(items_by_date)
+        moved_count += separated
+        logger.info(f"分离了 {separated} 个重复景点")
+
+        # 2. 聚类距离近的景点到同一天
+        logger.info("步骤2: 聚类距离近的景点")
+        clustered = await self._cluster_nearby_attractions(items_by_date)
+        moved_count += clustered
+        logger.info(f"聚类了 {clustered} 个景点")
+
+        # 3. 执行原有的数量均衡逻辑
+        logger.info("步骤3: 数量均衡")
+        balanced = await self._balance_by_count(items_by_date, plan)
+        moved_count += balanced
+
+        # 4. 再次检查重复景点（均衡后可能产生新的重复）
+        logger.info("步骤4: 最终检查重复景点")
+        final_separated = await self._separate_duplicate_attractions(items_by_date)
+        moved_count += final_separated
+
+        if moved_count > 0:
+            await self.db.commit()
+            logger.info(f"行程均衡完成，共移动 {moved_count} 个景点")
+
+            # 打印最终分布
+            final_distribution = {
+                date: len(items) for date, items in items_by_date.items()
+            }
+            logger.info(f"最终分布: {final_distribution}")
+
+        return {
+            "items_moved": moved_count,
+            "days_balanced": True,
+            "message": f"已优化行程：分离重复景点、聚类附近景点、均衡分布"
+        }
+
+    async def _separate_duplicate_attractions(
+        self,
+        items_by_date: Dict[str, List[TravelPlanItem]]
+    ) -> int:
+        """
+        分离同一天的重复景点（相同名称）
+
+        Args:
+            items_by_date: 按日期分组的景点（会被修改）
+
+        Returns:
+            移动的景点数量
+        """
+        moved_count = 0
+        all_dates = sorted(items_by_date.keys())
+
+        for date_str in all_dates:
+            items = items_by_date[date_str]
+
+            # 检测重复景点名称
+            name_count = {}
+            for item in items:
+                name = item.title.strip()
+                if name not in name_count:
+                    name_count[name] = []
+                name_count[name].append(item)
+
+            # 对于重复的景点，保留一个，移动其他的
+            for name, duplicates in name_count.items():
+                if len(duplicates) > 1:
+                    # 保留第一个，移动其余的
+                    for item in duplicates[1:]:
+                        # 找到没有该景点的最近日期
+                        target_date = self._find_date_without_attraction(
+                            date_str, name, items_by_date, all_dates
+                        )
+                        if target_date:
+                            await self._move_item_to_date(item, target_date)
+                            items_by_date[date_str].remove(item)
+                            items_by_date[target_date].append(item)
+                            moved_count += 1
+                            logger.info(f"分离重复景点: {name} 从 {date_str} 到 {target_date}")
+
+        return moved_count
+
+    def _find_date_without_attraction(
+        self,
+        source_date: str,
+        attraction_name: str,
+        items_by_date: Dict[str, List[TravelPlanItem]],
+        all_dates: List[str]
+    ) -> Optional[str]:
+        """
+        找到没有指定景点的最近日期
+
+        Args:
+            source_date: 源日期
+            attraction_name: 景点名称
+            items_by_date: 按日期分组的景点
+            all_dates: 所有日期列表
+
+        Returns:
+            目标日期，如果没有找到返回 None
+        """
+        source_dt = datetime.strptime(source_date, '%Y-%m-%d')
+
+        # 按距离源日期的远近排序
+        dates_by_distance = sorted(
+            all_dates,
+            key=lambda d: abs((datetime.strptime(d, '%Y-%m-%d') - source_dt).days)
+        )
+
+        for target_date in dates_by_distance:
+            if target_date == source_date:
+                continue
+
+            # 检查目标日期是否已有该景点
+            target_items = items_by_date.get(target_date, [])
+            target_names = {item.title.strip() for item in target_items}
+
+            if attraction_name not in target_names:
+                return target_date
+
+        return None
+
+    async def _cluster_nearby_attractions(
+        self,
+        items_by_date: Dict[str, List[TravelPlanItem]],
+        cluster_radius_km: float = 5.0
+    ) -> int:
+        """
+        将距离近的景点聚类到同一天
+
+        Args:
+            items_by_date: 按日期分组的景点（会被修改）
+            cluster_radius_km: 聚类半径（公里），默认5公里
+
+        Returns:
+            移动的景点数量
+        """
+        moved_count = 0
+        all_dates = sorted(items_by_date.keys())
+
+        # 收集所有有坐标的景点
+        all_items_with_coords = []
+        for date_str, items in items_by_date.items():
+            for item in items:
+                if item.coordinates and item.coordinates.get('lat'):
+                    all_items_with_coords.append((date_str, item))
+
+        if len(all_items_with_coords) < 2:
+            return 0
+
+        # 对于每个景点，找到距离近的其他景点
+        # 使用简单的聚类算法：找到距离近的景点对，尝试将它们安排到同一天
+        moved_items = set()  # 记录已移动的景点，避免重复移动
+
+        for i, (date_i, item_i) in enumerate(all_items_with_coords):
+            if item_i.id in moved_items:
+                continue
+
+            nearby_items = []
+
+            for j, (date_j, item_j) in enumerate(all_items_with_coords):
+                if i == j:
+                    continue
+
+                distance = self._calculate_distance(
+                    item_i.coordinates['lat'], item_i.coordinates['lng'],
+                    item_j.coordinates['lat'], item_j.coordinates['lng']
+                )
+
+                if distance <= cluster_radius_km:
+                    nearby_items.append((date_j, item_j, distance))
+
+            # 如果有距离近的景点，且它们不在同一天
+            if nearby_items:
+                # 找出大多数附近景点所在的日期
+                date_counts = {}
+                for date_j, item_j, dist in nearby_items:
+                    if date_j != date_i:
+                        date_counts[date_j] = date_counts.get(date_j, 0) + 1
+
+                if date_counts:
+                    # 选择附近景点最多的日期作为目标
+                    target_date = max(date_counts.items(), key=lambda x: x[1])[0]
+
+                    # 检查移动是否合理（不会导致目标日期过载）
+                    target_count = len(items_by_date[target_date])
+                    source_count = len(items_by_date[date_i])
+
+                    # 只有当目标日期景点数较少时才移动
+                    if target_count < source_count - 1:
+                        # 检查目标日期是否已有同名景点
+                        target_names = {item.title.strip() for item in items_by_date[target_date]}
+                        if item_i.title.strip() not in target_names:
+                            await self._move_item_to_date(item_i, target_date)
+                            items_by_date[date_i].remove(item_i)
+                            items_by_date[target_date].append(item_i)
+                            moved_items.add(item_i.id)
+                            moved_count += 1
+                            logger.info(f"聚类景点: {item_i.title} 从 {date_i} 到 {target_date}")
+
+        return moved_count
+
+    async def _balance_by_count(
+        self,
+        items_by_date: Dict[str, List[TravelPlanItem]],
+        plan: TravelPlan
+    ) -> int:
+        """
+        按数量均衡每日行程
+
+        Args:
+            items_by_date: 按日期分组的景点（会被修改）
+            plan: 旅行计划对象
+
+        Returns:
+            移动的景点数量
+        """
+        total_items = sum(len(items) for items in items_by_date.values())
+        total_days = len(items_by_date)
+
         # 计算理想每天景点数
         ideal_per_day = total_items / total_days
 
@@ -197,7 +419,7 @@ class ItineraryOptimizer:
         # 下限：理想值向下取整（至少为1）
         threshold_low = max(1, math.floor(ideal_per_day))
 
-        logger.info(f"行程均衡: 总景点={total_items}, 总天数={total_days}, 理想每天={ideal_per_day:.1f}, 上限={threshold_high}, 下限={threshold_low}")
+        logger.info(f"数量均衡: 总景点={total_items}, 总天数={total_days}, 理想每天={ideal_per_day:.1f}, 上限={threshold_high}, 下限={threshold_low}")
 
         moved_count = 0
         max_iterations = total_items * 2  # 防止无限循环
@@ -216,7 +438,7 @@ class ItineraryOptimizer:
 
             # 如果分布已经足够均匀（最多和最少相差不超过1），则停止
             if max_count - min_count <= 1:
-                logger.info("行程已均衡，分布均匀")
+                logger.info("数量均衡完成，分布均匀")
                 break
 
             # 找出过载天（景点数 > threshold_high）
@@ -272,6 +494,22 @@ class ItineraryOptimizer:
                     if target_date:
                         item_to_move = movable_items[i]
 
+                        # 检查目标日期是否已有同名景点
+                        target_names = {item.title.strip() for item in items_by_date[target_date]}
+                        if item_to_move.title.strip() in target_names:
+                            # 如果目标日期已有同名景点，找另一个空闲天
+                            for alt_date, alt_items in underloaded_dates:
+                                if alt_date != target_date:
+                                    alt_names = {item.title.strip() for item in items_by_date[alt_date]}
+                                    if item_to_move.title.strip() not in alt_names:
+                                        target_date = alt_date
+                                        break
+
+                        # 再次检查目标日期是否有同名景点
+                        target_names = {item.title.strip() for item in items_by_date[target_date]}
+                        if item_to_move.title.strip() in target_names:
+                            continue  # 跳过，不移动
+
                         # 更新项目的日期
                         await self._move_item_to_date(item_to_move, target_date)
                         moved_count += 1
@@ -294,21 +532,7 @@ class ItineraryOptimizer:
             if not moved_this_round:
                 break
 
-        if moved_count > 0:
-            await self.db.commit()
-            logger.info(f"行程均衡完成，共移动 {moved_count} 个景点")
-
-            # 打印最终分布
-            final_distribution = {
-                date: len(items) for date, items in items_by_date.items()
-            }
-            logger.info(f"最终分布: {final_distribution}")
-
-        return {
-            "items_moved": moved_count,
-            "days_balanced": True,
-            "message": f"已移动 {moved_count} 个景点，行程分布更均衡"
-        }
+        return moved_count
 
     async def _get_plan(self, plan_id: int) -> Optional[TravelPlan]:
         """获取旅行计划"""

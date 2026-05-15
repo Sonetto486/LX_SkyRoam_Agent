@@ -364,47 +364,53 @@ class RouteOptimizer:
             # 根据距离确定主要出行方式
             mode = self._determine_travel_mode(straight_distance)
 
-            # 计算多种出行方案
-            alternatives = self._calculate_all_travel_modes(straight_distance)
+            # 计算多种出行方案（先初始化为空，后面填充实际数据）
+            alternatives = []
 
             # 尝试调用地图API获取实际路线
             try:
                 origin = f"{from_attr.coordinates['lng']},{from_attr.coordinates['lat']}"
                 destination = f"{to_attr.coordinates['lng']},{to_attr.coordinates['lat']}"
 
-                # 根据距离选择合适的API
-                if mode == "walking":
-                    # 步行模式
-                    routes = await amap_rest_client.get_directions(origin, destination, "walking")
-                elif mode == "driving":
-                    # 驾车模式
-                    routes = await amap_rest_client.get_directions(origin, destination, "driving")
-                else:
-                    # 公交模式 - 需要城市参数
-                    city_name = "三亚"  # 默认城市
-                    # 尝试从景点地址中提取城市
-                    if from_attr.address:
-                        for known_city in ["三亚", "北京", "上海", "广州", "深圳", "成都", "杭州", "西安", "重庆", "武汉"]:
-                            if known_city in from_attr.address:
-                                city_name = known_city
-                                break
-                    routes = await amap_rest_client.get_directions(origin, destination, "transit", city_name)
+                # 为所有出行方式获取实际路线数据
+                all_modes_data = await self._get_all_modes_routes(origin, destination, straight_distance)
 
-                if routes and len(routes) > 0:
+                # 使用主要出行方式的实际数据
+                primary_data = all_modes_data.get(mode, {})
+
+                # 构建alternatives数组（包含所有出行方式的实际数据）
+                for travel_mode in ["walking", "transit", "driving"]:
+                    mode_data = all_modes_data.get(travel_mode, {})
+                    if mode_data:
+                        alternatives.append({
+                            "mode": travel_mode,
+                            "mode_label": self._get_mode_label(travel_mode),
+                            "duration": mode_data.get("duration", self._estimate_duration(straight_distance, travel_mode)),
+                            "distance": mode_data.get("distance", round(straight_distance, 2))
+                        })
+                    else:
+                        # 如果没有获取到数据，使用估算值
+                        alternatives.append({
+                            "mode": travel_mode,
+                            "mode_label": self._get_mode_label(travel_mode),
+                            "duration": self._estimate_duration(straight_distance, travel_mode),
+                            "distance": round(straight_distance, 2)
+                        })
+
+                if primary_data:
                     # 使用API返回的实际距离和时间
-                    route = routes[0]
-                    actual_distance = route.get("distance", straight_distance)
-                    actual_duration = route.get("duration", 0)
+                    actual_distance = primary_data.get("distance", straight_distance)
+                    actual_duration = primary_data.get("duration", 0)
 
                     # 提取路线的详细路径点
                     path_points = []
-                    if route.get("path"):
+                    if primary_data.get("path"):
                         # 直接使用API返回的路径点列表
-                        path_points = route.get("path", [])
+                        path_points = primary_data.get("path", [])
                         logger.debug(f"从路线API获取到 {len(path_points)} 个路径点")
-                    elif route.get("route"):
+                    elif primary_data.get("route"):
                         # 从路线步骤中提取路径点（备用方案）
-                        for step in route.get("route", []):
+                        for step in primary_data.get("route", []):
                             if step.get("path"):
                                 for point in step["path"]:
                                     path_points.append({
@@ -442,6 +448,8 @@ class RouteOptimizer:
 
             except Exception as e:
                 logger.warning(f"获取路线信息失败: {e}, 使用估算值")
+                # 失败时使用估算值构建alternatives
+                alternatives = self._calculate_all_travel_modes(straight_distance)
                 estimated_duration = self._estimate_duration(straight_distance, mode)
                 segments.append({
                     "from": from_attr.title,
@@ -457,6 +465,68 @@ class RouteOptimizer:
                 })
 
         return segments
+
+    async def _get_all_modes_routes(
+        self,
+        origin: str,
+        destination: str,
+        straight_distance: float
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        获取所有出行方式的实际路线数据
+
+        Args:
+            origin: 起点坐标（格式：lng,lat）
+            destination: 终点坐标（格式：lng,lat）
+            straight_distance: 直线距离（km），用于失败时的估算
+
+        Returns:
+            各出行方式的路线数据字典 {mode: {distance, duration, path}}
+        """
+        results = {}
+        city_name = "三亚"  # 默认城市
+
+        # 获取步行路线
+        try:
+            routes = await amap_rest_client.get_directions(origin, destination, "walking")
+            if routes and len(routes) > 0:
+                route = routes[0]
+                results["walking"] = {
+                    "distance": route.get("distance", straight_distance),
+                    "duration": route.get("duration", 0),
+                    "path": route.get("path", [])
+                }
+        except Exception as e:
+            logger.debug(f"获取步行路线失败: {e}")
+
+        # 获取驾车路线
+        try:
+            routes = await amap_rest_client.get_directions(origin, destination, "driving")
+            if routes and len(routes) > 0:
+                route = routes[0]
+                results["driving"] = {
+                    "distance": route.get("distance", straight_distance),
+                    "duration": route.get("duration", 0),
+                    "path": route.get("path", [])
+                }
+        except Exception as e:
+            logger.debug(f"获取驾车路线失败: {e}")
+
+        # 获取公交路线（需要城市参数）
+        try:
+            # 尝试从景点地址中提取城市（这里简化处理，使用默认城市）
+            routes = await amap_rest_client.get_directions(origin, destination, "transit", city_name)
+            if routes and len(routes) > 0:
+                route = routes[0]
+                results["transit"] = {
+                    "distance": route.get("distance", straight_distance),
+                    "duration": route.get("duration", 0),
+                    "path": route.get("path", [])
+                }
+        except Exception as e:
+            logger.debug(f"获取公交路线失败: {e}")
+
+        return results
 
     def _calculate_all_travel_modes(self, distance: float) -> List[Dict[str, Any]]:
         """

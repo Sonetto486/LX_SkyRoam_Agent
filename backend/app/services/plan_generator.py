@@ -2622,11 +2622,25 @@ class PlanGenerator:
 请返回JSON对象，字段与示例一致，estimated_cost根据已知信息估算：{{
   "day": {day},
   "date": "{date_str}",
-  "schedule": [...],
+  "schedule": [
+    {{
+      "time": "09:00-12:00",
+      "activity": "简短活动标题（不超过20字，如：上午游览芙蓉广场）",
+      "location": "景点或地点名称",
+      "description": "详细描述（包含交通、特色、建议等详细信息）",
+      "cost": 50,
+      "tips": "实用提示"
+    }}
+  ],
   "attractions": [...],
   "estimated_cost": 100,
   "daily_tips": [...]
 }}
+
+重要提示：
+1. schedule中的activity字段必须是简短标题（不超过20字），详细内容放在description字段中
+2. 不要在activity字段中写入完整的描述性文字，保持简洁
+3. description字段应包含交通方式、景点特色、游览建议等详细信息
 务必使用提供的景点数据中的景点，并给出实用游览建议。"""
                 return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1200), 0.6
 
@@ -2635,6 +2649,26 @@ class PlanGenerator:
                 entry.setdefault("attractions", [])
                 entry.setdefault("daily_tips", [])
                 entry.setdefault("estimated_cost", 0)
+
+                # 规范化schedule数据，确保activity字段简短
+                for item in entry.get("schedule", []):
+                    activity = item.get("activity", "")
+                    description = item.get("description", "")
+
+                    # 如果activity过长且没有description，自动分割
+                    if len(activity) > 50 and not description:
+                        # 按句号分割，第一句作为标题
+                        sentences = activity.split("。")
+                        if len(sentences) > 1 and sentences[0]:
+                            item["activity"] = sentences[0] + "。"
+                            item["description"] = "。".join(sentences[1:])
+                        else:
+                            # 按逗号分割
+                            parts = activity.split("，")
+                            if len(parts) > 1 and len(parts[0]) > 0:
+                                item["activity"] = parts[0]
+                                item["description"] = "，".join(parts[1:])
+
                 return entry
 
             return await generate_daily_entries(

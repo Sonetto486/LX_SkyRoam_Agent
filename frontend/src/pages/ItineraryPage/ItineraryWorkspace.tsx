@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Layout, Tabs, Card, Button, Space, Tooltip, Empty, Spin, Typography, Tag, message, Popconfirm, Modal, Dropdown, Menu, Input, InputNumber, DatePicker, Select, Image } from 'antd';
+import { Layout, Tabs, Card, Button, Space, Tooltip, Empty, Spin, Typography, Tag, message, Popconfirm, Modal, Dropdown, Menu, Input, InputNumber, DatePicker, Select, Image, Collapse } from 'antd';
 import {
   EditOutlined,
   SyncOutlined,
@@ -1765,11 +1765,26 @@ const getDayActivities = (): DayActivity[] => {
                     {day.schedule && day.schedule.length > 0 && (
                       <div>
                         <Text type="secondary">日程：</Text>
-                        {day.schedule.map((item, idx) => (
-                          <Tag key={idx} style={{ marginBottom: 4 }}>
-                            {item.activity}
-                          </Tag>
-                        ))}
+                        {day.schedule.map((item, idx) => {
+                          // 智能分割activity字段，只显示简短标题
+                          const title = (() => {
+                            const activity = item.activity || "";
+
+                            // 如果activity过长，只显示第一句
+                            if (activity.length > 50) {
+                              const sentences = activity.split("。");
+                              return sentences[0] + (sentences[0].length > 0 ? "。" : "");
+                            }
+
+                            return activity;
+                          })();
+
+                          return (
+                            <Tag key={idx} style={{ marginBottom: 4 }}>
+                              {title}
+                            </Tag>
+                          );
+                        })}
                       </div>
                     )}
                     {/* 显示景点 */}
