@@ -17,6 +17,10 @@ interface Marker {
   date?: string;  // 日期字符串，用于路线匹配
   time?: string;
   isHotel?: boolean;  // 标记为酒店，不参与路线绘制
+  // 景点指标字段
+  score?: number;      // 评分
+  type?: string;       // 景点类型
+  price?: number;      // 门票价格
 }
 
 interface RouteSegment {
@@ -66,16 +70,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const updateMarkers = useCallback(() => {
     if (!mapLoaded || !mapInstanceRef.current || !isMountedRef.current) return;
 
-    // 清除旧标记
-    markersRef.current.forEach(marker => {
-      try { mapInstanceRef.current.remove(marker); } catch (e) { }
-    });
+    // 清除所有旧标记 - 使用 clearMap() 确保完全清理
+    try {
+      mapInstanceRef.current.clearMap();
+      console.log('地图已完全清理');
+    } catch (e) {
+      console.error('清除地图失败:', e);
+    }
     markersRef.current = [];
-
-    // 清除旧路线
-    polylineRef.current.forEach(polyline => {
-      try { mapInstanceRef.current.remove(polyline); } catch (e) { }
-    });
     polylineRef.current = [];
 
     // 绘制直线（辅助函数）
@@ -120,6 +122,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
               </h4>
               <p style="margin:0 0 4px 0;color:#666;">${marker.address}</p>
               ${marker.isHotel ? '<p style="margin:0;color:#722ed1;">住宿推荐</p>' : ''}
+              ${marker.score ? `<p style="margin:0 0 4px 0;color:#faad14;">⭐ ${marker.score} 分</p>` : ''}
+              ${marker.type ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.type}</p>` : ''}
+              ${marker.price ? `<p style="margin:0 0 4px 0;color:#ff4d4f;">💰 ¥${marker.price}</p>` : ''}
               ${marker.time ? `<p style="margin:0;color:#999;">时间: ${marker.time}</p>` : ''}
               ${marker.day ? `<p style="margin:0;color:#999;">第 ${marker.day} 天</p>` : ''}
             </div>
