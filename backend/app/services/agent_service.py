@@ -16,13 +16,14 @@ from app.services.data_collector import DataCollector
 from app.services.data_processor import DataProcessor
 from app.services.plan_generator import PlanGenerator
 from app.services.plan_scorer import PlanScorer
+from app.services.pre_plan_matcher import pre_plan_matcher
 from app.tools.mcp_client import MCPClient
 from app.tools.openai_client import openai_client
 
 
 class AgentService:
     """AI Agent服务"""
-    
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.data_collector = DataCollector()
@@ -31,21 +32,83 @@ class AgentService:
         self.plan_scorer = PlanScorer()
         self.mcp_client = MCPClient()
         self.openai_client = openai_client
-    
+
+    async def try_pre_generated_match(
+        self,
+        destination: str,
+        duration_days: int,
+        budget: Optional[float] = None,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        尝试匹配预生成方案（混合策略）
+
+        Returns:
+            匹配结果，包含 source, match_score, plan, can_customize 等字段
+        """
+        if not settings.PRE_GENERATION_ENABLED:
+            return {"source": "real_time", "match_score": 0.0, "plan": None}
+
+        plan_data, score = await pre_plan_matcher.find_best_match(
+            self.db, destination, duration_days, budget, preferences
+        )
+
+        match_level = pre_plan_matcher.get_match_level(score)
+
+        if match_level == "perfect":
+            # 完美匹配，直接返回
+            return {
+                "source": "pre_generated",
+                "match_score": score,
+                "plan": plan_data,
+                "can_customize": False,
+            }
+
+        elif match_level == "good":
+            # 良好匹配，返回但提示可自定义
+            return {
+                "source": "pre_generated",
+                "match_score": score,
+                "plan": plan_data,
+                "can_customize": True,
+                "suggestion": "此方案基于您的偏好预生成，您可以进一步自定义",
+            }
+
+        elif match_level == "acceptable":
+            # 可接受匹配，使用混合策略
+            return {
+                "source": "hybrid",
+                "match_score": score,
+                "plan": plan_data,
+                "can_customize": True,
+                "suggestion": "将基于预生成方案框架，补充您的个性化需求",
+            }
+
+        else:
+            # 匹配不足，触发实时生成
+            return {
+                "source": "real_time",
+                "match_score": score,
+                "plan": None,
+                "message": "正在为您生成专属方案",
+            }
+
     async def generate_travel_plans(
-        self, 
-        plan_id: int, 
+        self,
+        plan_id: int,
         preferences: Optional[Dict[str, Any]] = None,
-        requirements: Optional[Dict[str, Any]] = None
+        requirements: Optional[Dict[str, Any]] = None,
+        use_pre_generated: bool = True
     ) -> bool:
         """
         生成旅行方案的主流程
-        
+
         Args:
             plan_id: 旅行计划ID
             preferences: 用户偏好
             requirements: 特殊要求
-            
+            use_pre_generated: 是否尝试使用预生成方案
+
         Returns:
             bool: 是否成功生成
         """

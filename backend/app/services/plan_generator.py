@@ -617,15 +617,14 @@ class PlanGenerator:
                     day["attractions"] = unique
                 logger.info(f"景点充足({total_unique}个唯一景点，需要{required_total}个)，已严格去重")
             else:
-                # 景点不足，使用智能去重策略
-                logger.info(f"景点不足({total_unique}个唯一景点，需要{required_total}个)，启用智能去重策略")
-                
-                # 记录每个景点的使用次数
-                usage_count: Dict[str, int] = {}
-                # 建立景点对象到名称的映射
-                attr_to_name: Dict[int, str] = {}  # 使用id(attr)作为key
-                
-                # 第一遍：优先保留未使用的景点，统计使用次数
+                # 景点不足，使用动态调整策略
+                logger.info(f"景点不足({total_unique}个唯一景点，需要{required_total}个)，启用动态调整策略")
+
+                # 计算实际可分配的每天景点数
+                actual_per_day = max(1, total_unique // total_days)
+                logger.info(f"动态调整为每天最多{actual_per_day}个景点，无重复")
+
+                # 严格去重：每个景点只出现一次
                 seen: Set[str] = set()
                 for day in daily_itineraries:
                     attractions = day.get("attractions") or []
@@ -639,62 +638,18 @@ class PlanGenerator:
                         elif isinstance(attr, str):
                             name = attr
                         normalized = self._normalize_resource_name(name)
-                        
+
                         if not normalized:
                             # 没有名字的，直接保留
                             unique.append(attr)
                         elif normalized not in seen:
-                            # 未使用过的，优先保留
+                            # 未使用过的，保留
                             unique.append(attr)
                             seen.add(normalized)
-                            usage_count[normalized] = 1
-                            attr_to_name[id(attr)] = normalized
-                        else:
-                            # 已使用过的，记录使用次数，稍后处理
-                            usage_count[normalized] = usage_count.get(normalized, 0) + 1
-                            attr_to_name[id(attr)] = normalized
-                    
+
                     day["attractions"] = unique
-                
-                # 第二遍：如果某天景点数不足，从已使用的景点中补充（优先选择使用次数最少的）
-                for day in daily_itineraries:
-                    attractions = day.get("attractions") or []
-                    if not isinstance(attractions, list):
-                        continue
-                    
-                    current_count = len([a for a in attractions if self._normalize_resource_name(
-                        a.get("name") if isinstance(a, dict) else (a if isinstance(a, str) else None)
-                    )])
-                    
-                    # 如果当前景点数少于最少要求，需要补充
-                    if current_count < min_per_day:
-                        needed = min_per_day - current_count
-                        
-                        # 找出所有已使用的景点，按使用次数排序（使用次数少的优先）
-                        available_attrs = [
-                            (norm, count) for norm, count in usage_count.items()
-                            if norm in seen  # 只考虑已使用过的
-                        ]
-                        available_attrs.sort(key=lambda x: x[1])  # 按使用次数升序
-                        
-                        # 从使用次数最少的景点中选择补充
-                        for norm, _ in available_attrs[:needed]:
-                            # 从原始数据中找到对应的景点对象
-                            for orig_attr, orig_norm in all_attractions:
-                                if orig_norm == norm:
-                                    # 创建副本，避免引用问题
-                                    if isinstance(orig_attr, dict):
-                                        attr_copy = copy.deepcopy(orig_attr)
-                                    else:
-                                        attr_copy = orig_attr
-                                    attractions.append(attr_copy)
-                                    usage_count[norm] = usage_count.get(norm, 0) + 1
-                                    break
-                        
-                        day["attractions"] = attractions
-                        logger.debug(f"第{day.get('day', '?')}天补充了{needed}个景点，当前共{len(attractions)}个")
-                
-                logger.info(f"智能去重完成，部分景点允许重复使用以填满每天最少{min_per_day}个景点的要求")
+
+                logger.info(f"动态调整完成，每天景点数根据实际数据分配，无重复景点")
                 
         except Exception as e:  # 防御性，任何异常不影响主流程
             logger.warning(f"去重每日景点失败: {e}")

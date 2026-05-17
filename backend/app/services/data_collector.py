@@ -70,7 +70,7 @@ class DataCollector:
         # 基于行程天数动态控制原始数据量的参数（全部可通过 settings / 环境变量覆盖）
         # 这些只是"期望值"，不会强行按天精确匹配，而是用于估算需要多久的数据量
         self.plan_min_attractions_per_day = int(
-            getattr(settings, "PLAN_MIN_ATTRACTIONS_PER_DAY", 2)
+            getattr(settings, "PLAN_MIN_ATTRACTIONS_PER_DAY", 3)
         )
         self.plan_min_meals_per_day = int(
             getattr(settings, "PLAN_MIN_MEALS_PER_DAY", 3)
@@ -467,6 +467,11 @@ class DataCollector:
                         logger.info(f"高德API补充实时信息完成，{len(enriched_attractions)} 个景点")
                         attraction_data = await self._convert_poi_to_attraction_format(enriched_attractions)
 
+                        # 按评分排序（高分优先）
+                        if attraction_data:
+                            attraction_data.sort(key=lambda x: float(x.get("rating", 0) or 0), reverse=True)
+                            logger.info(f"按评分排序完成，最高评分景点: {attraction_data[0].get('name')} (评分: {attraction_data[0].get('rating')})")
+
                         # 缓存结果
                         await set_cache(cache_key_str, attraction_data, ttl=300)
                         logger.info(f"========== POI检索成功，返回 {len(attraction_data)} 个景点 ==========")
@@ -537,6 +542,13 @@ class DataCollector:
                     attraction_data.append(attraction_item)
 
                 logger.info(f"从统一地图服务获取到 {len(attraction_data)} 条景点数据")
+
+                # 按评分排序（高分优先）
+                if attraction_data:
+                    attraction_data.sort(key=lambda x: float(x.get("rating", 0) or 0), reverse=True)
+                    top_rated = attraction_data[0] if attraction_data else None
+                    if top_rated:
+                        logger.info(f"按评分排序完成，最高评分: {top_rated.get('name')} (评分: {top_rated.get('rating')})")
             else:
                 logger.warning(f"无法获取 {destination} 的坐标，跳过周边搜索")
 

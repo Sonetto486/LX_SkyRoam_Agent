@@ -111,17 +111,20 @@ class POIRetriever:
             _ensure_pgvector_registered(conn)
             cursor = conn.cursor()
 
-            # 构建SQL查询 - 使用向量相似度搜索
-            # 注意：params 列表顺序必须与 SQL 中 %s 占位符顺序一致
+            # 构建SQL查询 - 使用热度排名优先排序
+            # 优先使用 attraction_popularity 表的热度排名，其次使用相似度
             sql = """
                 SELECT
                     a.id, a.poi_id, a.name_zh, a.name_en,
                     a.city_zh, a.city_en, a.latitude, a.longitude,
-                    a.label_zh, a.label_en,
+                    a.label_zh, a.label_en, a.rating, a.popularity_score,
                     c.chunk_text,
-                    c.embedding <=> %s::vector AS distance
+                    c.embedding <=> %s::vector AS distance,
+                    COALESCE(p.popularity_rank, 9999) AS popularity_rank,
+                    COALESCE(p.popularity_score, 0) AS external_popularity
                 FROM poi_attractions a
                 JOIN poi_attraction_chunks c ON a.id = c.attraction_id
+                LEFT JOIN attraction_popularity p ON a.id = p.attraction_id
                 WHERE 1=1
             """
             params = [query_embedding]
@@ -136,18 +139,27 @@ class POIRetriever:
                 sql += " AND a.label_zh ILIKE %s"
                 params.append(f"%{label_filter}%")
 
-            # 按相似度排序（不需要再添加向量参数，直接用距离列排序）
-            sql += " ORDER BY distance ASC LIMIT %s"
+            # 按热度排名优先排序（排名越小越热门），然后是相似度
+            sql += " ORDER BY popularity_rank ASC, distance ASC LIMIT %s"
             params.append(top_k)
 
             cursor.execute(sql, params)
             results = cursor.fetchall()
 
             # 转换结果格式
+            # 列顺序: id, poi_id, name_zh, name_en, city_zh, city_en, latitude, longitude,
+            #         label_zh, label_en, rating, popularity_score, chunk_text, distance, popularity_rank, external_popularity
             attractions = []
             for row in results:
-                distance = float(row[11]) if row[11] else 1.0
+                distance = float(row[13]) if row[13] else 1.0
                 similarity = 1 - distance
+                rating = float(row[10]) if row[10] else 0.0
+                popularity_score = float(row[11]) if row[11] else 0.0
+                popularity_rank = int(row[14]) if row[14] else 9999
+                external_popularity = float(row[15]) if row[15] else 0.0
+
+                # 使用外部热度评分（如果有）
+                final_popularity = external_popularity if external_popularity > 0 else popularity_score
 
                 if similarity >= self.similarity_threshold:
                     attractions.append({
@@ -161,14 +173,17 @@ class POIRetriever:
                         "longitude": float(row[7]) if row[7] else None,
                         "labels": row[8].split(";") if row[8] else [],
                         "labels_en": row[9].split(";") if row[9] else [],
-                        "description": row[10],
+                        "rating": rating,
+                        "popularity_score": final_popularity,
+                        "popularity_rank": popularity_rank,
+                        "description": row[12],
                         "similarity": round(similarity, 4)
                     })
 
             cursor.close()
             conn.close()
 
-            logger.info(f"POI检索完成: 目的地='{destination}', 返回{len(attractions)}条结果")
+            logger.info(f"POI检索完成: 目的地='{destination}', 返回{len(attractions)}条结果, 热度排名范围: {attractions[0].get('popularity_rank', 9999) if attractions else 'N/A'}-{attractions[-1].get('popularity_rank', 9999) if attractions else 'N/A'}")
             return attractions
 
         except Exception as e:
@@ -283,15 +298,16 @@ class POIRetriever:
                 logger.warning("高德 API Key 未配置，跳过信息增强")
                 return attraction
 
-            # 调用高德 POI 搜索
+            # 调用高德 POI 搜索 - 改进匹配精度
             url = "https://restapi.amap.com/v3/place/text"
             params = {
                 "key": self.amap_api_key,
                 "keywords": attraction["name"],
                 "city": attraction.get("city", ""),
+                "citylimit": "true",  # 强制限定城市范围，提高匹配精度
                 "types": "110000",  # 风景名胜
                 "output": "json",
-                "offset": 1,
+                "offset": 5,  # 增加返回数量，便于匹配
                 "page": 1,
                 "extensions": "all"
             }
@@ -302,17 +318,51 @@ class POIRetriever:
                 result = response.json()
 
             if result.get("status") == "1" and result.get("pois"):
-                poi = result["pois"][0]
+                # 改进匹配逻辑：优先匹配名称完全一致或包含的结果
+                matched_poi = None
+                attraction_name = attraction["name"]
+
+                for poi in result["pois"]:
+                    poi_name = poi.get("name", "")
+                    # 名称完全匹配
+                    if poi_name == attraction_name:
+                        matched_poi = poi
+                        logger.debug(f"景点 '{attraction_name}' 完全匹配到 '{poi_name}'")
+                        break
+                    # 景点名称包含在POI名称中（如"外滩"匹配"上海外滩"）
+                    if attraction_name in poi_name or poi_name in attraction_name:
+                        matched_poi = poi
+                        logger.debug(f"景点 '{attraction_name}' 包含匹配到 '{poi_name}'")
+                        break
+
+                # 如果没有匹配，使用第一个结果
+                if not matched_poi:
+                    matched_poi = result["pois"][0]
+                    logger.warning(f"景点 '{attraction_name}' 未精确匹配，使用第一个结果 '{matched_poi.get('name')}'")
 
                 # 补充信息
-                attraction["amap_id"] = poi.get("id")
-                attraction["address"] = poi.get("address", "")
-                attraction["phone"] = poi.get("tel", "")
-                attraction["rating"] = self._parse_rating(poi.get("biz_ext", {}).get("rating"))
-                attraction["cost"] = poi.get("biz_ext", {}).get("cost", "")
-                attraction["opening_hours"] = poi.get("biz_ext", {}).get("opening", "")
-                attraction["photos"] = [p.get("url") for p in poi.get("photos", [])[:3] if p.get("url")]
+                attraction["amap_id"] = matched_poi.get("id")
+                attraction["address"] = matched_poi.get("address", "")
+                attraction["phone"] = matched_poi.get("tel", "")
+                rating = self._parse_rating(matched_poi.get("biz_ext", {}).get("rating"))
+                if rating:
+                    attraction["rating"] = rating
+                    attraction["popularity_score"] = rating * 20  # 转换为0-100分
+                else:
+                    # 保留数据库中已有的评分（如果存在）
+                    db_rating = attraction.get("rating", 0)
+                    attraction["rating"] = db_rating if db_rating > 0 else 0.0
+                    attraction["popularity_score"] = db_rating * 20 if db_rating > 0 else 0.0
+                attraction["cost"] = matched_poi.get("biz_ext", {}).get("cost", "")
+                attraction["opening_hours"] = matched_poi.get("biz_ext", {}).get("opening", "")
+                attraction["photos"] = [p.get("url") for p in matched_poi.get("photos", [])[:3] if p.get("url")]
                 attraction["source"] = "向量数据库 + 高德地图"
+
+                # 更新数据库中的热度字段
+                if rating:
+                    await self._update_popularity_in_db(attraction["id"], rating)
+
+                logger.info(f"景点 '{attraction_name}' 高德匹配完成: 评分={attraction['rating']}, 匹配POI='{matched_poi.get('name')}'")
 
             return attraction
 
@@ -332,6 +382,32 @@ class POIRetriever:
         except:
             pass
         return None
+
+    async def _update_popularity_in_db(self, attraction_id: int, rating: Optional[float]):
+        """更新数据库中的热度字段"""
+        if not rating or not attraction_id:
+            return
+
+        try:
+            conn = psycopg2.connect(**self.db_config)
+            cursor = conn.cursor()
+
+            popularity_score = rating * 20  # 转换为0-100分
+
+            sql = """
+                UPDATE poi_attractions
+                SET rating = %s, popularity_score = %s
+                WHERE id = %s
+            """
+            cursor.execute(sql, (rating, popularity_score, attraction_id))
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+            logger.debug(f"更新景点热度: id={attraction_id}, rating={rating}, popularity={popularity_score}")
+
+        except Exception as e:
+            logger.warning(f"更新景点热度失败: {e}")
 
     def build_poi_context(
         self,

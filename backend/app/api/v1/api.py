@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
     image_import,
     xiaohongshu,
     weather,
+    pre_generation,
 )
 
 
@@ -127,4 +128,10 @@ api_router.include_router(
     weather.router,
     prefix="/weather",
     tags=["weather"],
+)
+
+api_router.include_router(
+    pre_generation.router,
+    prefix="/pre-generation",
+    tags=["pre-generation"],
 )
