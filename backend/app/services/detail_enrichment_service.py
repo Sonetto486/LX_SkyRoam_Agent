@@ -340,7 +340,7 @@ class DetailEnrichmentService:
                 context += f"\n评分：{amap_data.get('rating', '未知')}"
                 context += f"\n类型：{amap_data.get('category', '')}"
 
-            prompt = f"""请为以下景点生成一段详细的介绍（200-300字），包含以下内容：
+            prompt = f"""请为以下景点生成一段详细的介绍（300-400字），包含以下内容：
 
 {context}
 
@@ -350,11 +350,12 @@ class DetailEnrichmentService:
 3. 描述景点的主要看点或必游之处
 4. 语言生动优美，适合游客阅读
 5. 不要包含具体门票价格和开放时间（这些信息会单独显示）
-6. 内容要真实可信，避免过度夸张"""
+6. 内容要真实可信，避免过度夸张
+7. 不要包含坐标信息（纬度、经度）"""
 
             description = await self.llm_client.generate_text(
                 prompt=prompt,
-                max_tokens=500,
+                max_tokens=600,
                 temperature=0.7
             )
 
@@ -544,7 +545,7 @@ class DetailEnrichmentService:
                 context += f"\n地址：{amap_data.get('address', '')}"
                 context += f"\n评分：{amap_data.get('rating', '未知')}"
 
-            prompt = f"""请为以下酒店生成一段详细的介绍（150-250字），包含以下内容：
+            prompt = f"""请为以下酒店生成一段详细的介绍（250-350字），包含以下内容：
 
 {context}
 
@@ -553,11 +554,12 @@ class DetailEnrichmentService:
 2. 介绍酒店的地理位置优势（如靠近景点、交通便利等）
 3. 描述酒店的服务特色和设施亮点
 4. 语言简洁专业，适合游客阅读
-5. 内容要真实可信"""
+5. 内容要真实可信
+6. 不要包含坐标信息"""
 
             description = await self.llm_client.generate_text(
                 prompt=prompt,
-                max_tokens=400,
+                max_tokens=500,
                 temperature=0.7
             )
 
@@ -706,7 +708,7 @@ class DetailEnrichmentService:
                 context += f"\n地址：{amap_data.get('address', '')}"
                 context += f"\n评分：{amap_data.get('rating', '未知')}"
 
-            prompt = f"""请为以下餐厅生成一段详细的介绍（150-250字），包含以下内容：
+            prompt = f"""请为以下餐厅生成一段详细的介绍（250-350字），包含以下内容：
 
 {context}
 
@@ -715,11 +717,12 @@ class DetailEnrichmentService:
 2. 介绍餐厅的菜品特色和口味风格
 3. 描述餐厅的环境氛围和服务特点
 4. 语言生动诱人，适合食客阅读
-5. 内容要真实可信"""
+5. 内容要真实可信
+6. 不要包含坐标信息"""
 
             description = await self.llm_client.generate_text(
                 prompt=prompt,
-                max_tokens=400,
+                max_tokens=500,
                 temperature=0.7
             )
 

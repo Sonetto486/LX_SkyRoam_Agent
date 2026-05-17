@@ -97,7 +97,19 @@ const PlanGeneratorPage: React.FC = () => {
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [celeryTaskId, setCeleryTaskId] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 39.9042, lng: 116.4074 }); // 默认北京
+  const [previewActiveDay, setPreviewActiveDay] = useState(0); // 预览时选中的天数
   const navigate = useNavigate();
+
+  // 切换天数时更新地图中心点
+  useEffect(() => {
+    if (showPreview && generatedPlan) {
+      const markers = getPlanMarkers();
+      if (markers.length > 0) {
+        setMapCenter(markers[0].position);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewActiveDay, showPreview]);
 
   // 地理编码 - 通过后端 API 获取目的地坐标
   const geocodeDestination = async (destination: string): Promise<{ lat: number; lng: number } | null> => {
@@ -160,7 +172,7 @@ const PlanGeneratorPage: React.FC = () => {
 
   const checkCeleryWorker = async (): Promise<boolean> => {
     try {
-      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8001/api/v1';
+      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
       const baseUrl = apiUrl.replace(/\/api\/v1\/?$/, '');
       const res = await fetch(`${baseUrl}/health/celery`);
       if (res.ok) {
@@ -323,6 +335,7 @@ const PlanGeneratorPage: React.FC = () => {
 
       setGenerationProgress(100);
       setGenerationStatus('生成完成！');
+      setPreviewActiveDay(0); // 重置为第 1 天
       setGeneratedPlan(planDetail);
       setCeleryTaskId(null);
       setShowGeneratingModal(false);
@@ -491,6 +504,63 @@ const PlanGeneratorPage: React.FC = () => {
     return people ? (people === '10+' ? '十人及以上' : `${people}人`) : '未设置';
   };
 
+  // 从生成方案中提取地图标记数据（只返回当前选中天数的景点）
+  const getPlanMarkers = () => {
+    if (!generatedPlan) return [];
+
+    const plans = generatedPlan.generated_plans;
+    const dailyItineraries = plans?.[0]?.daily_itineraries || [];
+
+    // 只返回当前选中天数的景点
+    const currentDayData = dailyItineraries[previewActiveDay];
+    if (!currentDayData) return [];
+
+    console.log('getPlanMarkers called:', {
+      previewActiveDay,
+      date: currentDayData.date,
+      attractionsCount: currentDayData.attractions?.length,
+      attractionsNames: currentDayData.attractions?.map((a: any) => a.name),
+      allAttractions: currentDayData.attractions
+    });
+
+    const markers: any[] = [];
+
+    // 添加当天景点
+    if (currentDayData.attractions) {
+      currentDayData.attractions.forEach((attraction: any, index: number) => {
+        // 检查是否有坐标数据（支持多种格式）
+        let position = null;
+
+        // 格式1: coordinates 对象
+        if (attraction.coordinates && attraction.coordinates.lat && attraction.coordinates.lng) {
+          position = { lat: attraction.coordinates.lat, lng: attraction.coordinates.lng };
+        }
+        // 格式2: latitude/longitude 字段
+        else if (attraction.latitude && attraction.longitude) {
+          position = { lat: attraction.latitude, lng: attraction.longitude };
+        }
+
+        if (position) {
+          markers.push({
+            id: attraction.name,
+            name: attraction.name,
+            position: position,
+            address: attraction.address || '',
+            day: previewActiveDay + 1,
+            date: currentDayData.date,
+            // 景点指标数据
+            score: attraction.rating || attraction.score,
+            type: attraction.category || attraction.type,
+            price: attraction.price,
+          });
+        }
+      });
+    }
+
+    console.log('最终 markers 数量:', markers.length, '景点名称:', markers.map(m => m.name));
+    return markers;
+  };
+
   const renderPlanPreview = () => {
     if (!generatedPlan) {
       return (
@@ -543,8 +613,31 @@ const PlanGeneratorPage: React.FC = () => {
             </div>
           </Col>
           <Col span={10}>
-            <div className="map-section" style={{ height: 400 }}>
-              <MapComponent markers={[]} center={mapCenter} zoom={11} />
+            {/* 天数选择 */}
+            <div style={{ marginBottom: 8 }}>
+              <Space>
+                {dailyItineraries.map((day: any, index: number) => (
+                  <Button
+                    key={index}
+                    type={previewActiveDay === index ? 'primary' : 'default'}
+                    size="small"
+                    onClick={() => setPreviewActiveDay(index)}
+                  >
+                    Day {day.day || index + 1}
+                  </Button>
+                ))}
+              </Space>
+            </div>
+            {/* 地图 */}
+            <div className="map-section" style={{ height: 360 }}>
+              <MapComponent
+                key={`map-${planId}-${previewActiveDay}`}
+                markers={getPlanMarkers()}
+                center={mapCenter}
+                zoom={11}
+                viewMode="day"
+                currentDay={previewActiveDay + 1}
+              />
             </div>
           </Col>
         </Row>
@@ -720,7 +813,10 @@ const PlanGeneratorPage: React.FC = () => {
       <Modal
         title={<div className="modal-title-success"><CheckOutlined className="success-icon" /><span>行程预览 - {generatedPlan?.title || '加载中...'}</span></div>}
         open={showPreview && generatedPlan !== null}
-        onCancel={() => setShowPreview(false)}
+        onCancel={() => {
+          setShowPreview(false);
+          setPreviewActiveDay(0);
+        }}
         footer={null}
         width={1000}
         className="plan-preview-modal"

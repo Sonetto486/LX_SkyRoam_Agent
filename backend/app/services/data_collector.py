@@ -24,6 +24,7 @@ from app.tools.baidu_maps_integration import (
 # from app.services.web_scraper import WebScraper  # 已移除爬虫功能
 from app.services.xhs_api_client import XHSAPIClient
 from app.core.redis import get_cache, set_cache, cache_key
+from app.tools.openai_client import openai_client
 
 
 def clean_address(address: str) -> str:
@@ -464,7 +465,7 @@ class DataCollector:
 
                     if enriched_attractions:
                         logger.info(f"高德API补充实时信息完成，{len(enriched_attractions)} 个景点")
-                        attraction_data = self._convert_poi_to_attraction_format(enriched_attractions)
+                        attraction_data = await self._convert_poi_to_attraction_format(enriched_attractions)
 
                         # 缓存结果
                         await set_cache(cache_key_str, attraction_data, ttl=300)
@@ -600,7 +601,46 @@ class DataCollector:
             logger.error(f"收集景点数据失败: {e}")
             return []
 
-    def _convert_poi_to_attraction_format(self, poi_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _generate_attraction_description_from_poi(self, name: str, city: str, category: str) -> str:
+        """
+        使用LLM生成景点描述
+
+        Args:
+            name: 景点名称
+            city: 城市
+            category: 类别
+
+        Returns:
+            生成的描述文本
+        """
+        try:
+            prompt = f"""请为以下景点生成一段简洁的介绍（50-80字）：
+
+景点名称：{name}
+城市：{city}
+类型：{category}
+
+要求：
+1. 用一句话概括景点的核心特色
+2. 简要介绍景点的主要看点或特色
+3. 语言简洁优美，适合游客阅读
+4. 不要包含具体地址、门票价格和开放时间
+5. 不要包含坐标信息"""
+
+            description = await openai_client.generate_text(
+                prompt=prompt,
+                max_tokens=150,
+                temperature=0.7
+            )
+
+            return description.strip()
+
+        except Exception as e:
+            logger.warning(f"生成景点描述失败: {e}")
+            # 降级方案：返回简单描述，不包含坐标
+            return f"{name}是{city}的一处{category}，拥有独特的景观特色，是游客游览的好去处。"
+
+    async def _convert_poi_to_attraction_format(self, poi_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         将 POI 数据格式转换为景点数据格式
 
@@ -616,11 +656,22 @@ class DataCollector:
             labels = poi.get("labels", [])
             category = labels[0] if labels else "风景名胜"
 
+            # 如果POI已有描述，直接使用；否则使用LLM生成
+            if poi.get("description"):
+                description = poi.get("description")
+            else:
+                # 使用LLM生成描述
+                description = await self._generate_attraction_description_from_poi(
+                    name=poi.get("name", "景点"),
+                    city=poi.get("city", ""),
+                    category=category
+                )
+
             attraction_item = {
                 "id": f"poi_{poi.get('id', '')}",
                 "name": poi.get("name", "景点"),
                 "category": category,
-                "description": poi.get("description", f"{poi.get('name', '景点')}位于{poi.get('city', '')}，是一个{category}类型的景点"),
+                "description": description,
                 "price": poi.get("cost", "价格未知"),
                 "rating": poi.get("rating", 4.5),
                 "address": poi.get("address", ""),

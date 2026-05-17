@@ -389,6 +389,18 @@ class LocationSearchResult(BaseModel):
     cost: Optional[float] = Field(None, description="人均消费")
     type: Optional[str] = Field(None, description="类型编码")
 
+    @field_validator('tel', mode='before')
+    @classmethod
+    def parse_tel(cls, v):
+        """处理电话字段，高德API可能返回空列表[]"""
+        if isinstance(v, list):
+            # 如果是空列表，返回None
+            if not v:
+                return None
+            # 如果列表中有值，取第一个
+            return v[0] if v[0] else None
+        return v
+
 
 class LocationSearchResponse(BaseModel):
     """地点搜索响应"""
