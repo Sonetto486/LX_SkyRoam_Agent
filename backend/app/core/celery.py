@@ -42,7 +42,8 @@ celery_app = Celery(
     include=[
         "app.tasks.travel_plan_tasks",
         "app.tasks.data_collection_tasks",
-        "app.tasks.background_tasks"
+        "app.tasks.background_tasks",
+        "app.tasks.pre_generation_tasks"
     ]
 )
 
@@ -91,11 +92,27 @@ celery_app.conf.beat_schedule = {
         "schedule": 86400.0,  # 每天执行一次
     },
     "cache-cleanup-task": {
-        "task": "app.tasks.background_tasks.cache_cleanup_task", 
+        "task": "app.tasks.background_tasks.cache_cleanup_task",
         "schedule": 3600.0,  # 每小时执行一次
     },
     "health-check-task": {
         "task": "app.tasks.background_tasks.health_check_task",
         "schedule": 600.0,  # 每10分钟执行一次
+    },
+    # 预生成任务：每周一凌晨2点执行
+    "pre-generate-plans-weekly": {
+        "task": "app.tasks.pre_generation_tasks.pre_generate_plans_task",
+        "schedule": 604800.0,  # 每周执行一次（7天）
+        "kwargs": {"destination_name": None, "force": False},
+    },
+    # 过期清理：每天凌晨4点执行
+    "cleanup-expired-pre-plans": {
+        "task": "app.tasks.pre_generation_tasks.cleanup_expired_pre_plans_task",
+        "schedule": 86400.0,  # 每天执行一次
+    },
+    # 统计更新：每小时执行
+    "update-pre-plan-statistics": {
+        "task": "app.tasks.pre_generation_tasks.update_pre_plan_statistics_task",
+        "schedule": 3600.0,
     },
 }

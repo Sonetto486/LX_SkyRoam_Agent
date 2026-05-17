@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS poi_attractions (
     label_zh VARCHAR(500),                 -- 中文标签 (如：博物馆;公园)
     label_en VARCHAR(500),                 -- 英文标签
     source VARCHAR(50) DEFAULT 'POIs_V2',  -- 数据来源
+    rating FLOAT DEFAULT 0.0,              -- 景点评分 (0-5分，来自高德API)
+    popularity_score FLOAT DEFAULT 0.0,    -- 热度评分 (0-100分)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -45,6 +47,18 @@ ON poi_attractions(city_zh);
 -- 6. 为景点ID创建唯一索引 (防止重复导入)
 CREATE UNIQUE INDEX IF NOT EXISTS poi_attractions_poi_id_idx
 ON poi_attractions(poi_id);
+
+-- 7. 为热度字段创建索引 (加速热度排序)
+CREATE INDEX IF NOT EXISTS poi_attractions_rating_idx
+ON poi_attractions(rating DESC);
+
+CREATE INDEX IF NOT EXISTS poi_attractions_popularity_idx
+ON poi_attractions(popularity_score DESC);
+
+-- 8. 如果表已存在，添加热度字段（兼容已有数据）
+-- 注意：如果字段已存在会报错，可以忽略
+-- ALTER TABLE poi_attractions ADD COLUMN IF NOT EXISTS rating FLOAT DEFAULT 0.0;
+-- ALTER TABLE poi_attractions ADD COLUMN IF NOT EXISTS popularity_score FLOAT DEFAULT 0.0;
 
 -- ==============================================================================
 -- 使用说明:

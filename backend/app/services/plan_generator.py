@@ -617,15 +617,14 @@ class PlanGenerator:
                     day["attractions"] = unique
                 logger.info(f"景点充足({total_unique}个唯一景点，需要{required_total}个)，已严格去重")
             else:
-                # 景点不足，使用智能去重策略
-                logger.info(f"景点不足({total_unique}个唯一景点，需要{required_total}个)，启用智能去重策略")
-                
-                # 记录每个景点的使用次数
-                usage_count: Dict[str, int] = {}
-                # 建立景点对象到名称的映射
-                attr_to_name: Dict[int, str] = {}  # 使用id(attr)作为key
-                
-                # 第一遍：优先保留未使用的景点，统计使用次数
+                # 景点不足，使用动态调整策略
+                logger.info(f"景点不足({total_unique}个唯一景点，需要{required_total}个)，启用动态调整策略")
+
+                # 计算实际可分配的每天景点数
+                actual_per_day = max(1, total_unique // total_days)
+                logger.info(f"动态调整为每天最多{actual_per_day}个景点，无重复")
+
+                # 严格去重：每个景点只出现一次
                 seen: Set[str] = set()
                 for day in daily_itineraries:
                     attractions = day.get("attractions") or []
@@ -639,63 +638,46 @@ class PlanGenerator:
                         elif isinstance(attr, str):
                             name = attr
                         normalized = self._normalize_resource_name(name)
-                        
+
                         if not normalized:
                             # 没有名字的，直接保留
                             unique.append(attr)
                         elif normalized not in seen:
-                            # 未使用过的，优先保留
+                            # 未使用过的，保留
                             unique.append(attr)
                             seen.add(normalized)
-                            usage_count[normalized] = 1
-                            attr_to_name[id(attr)] = normalized
-                        else:
-                            # 已使用过的，记录使用次数，稍后处理
-                            usage_count[normalized] = usage_count.get(normalized, 0) + 1
-                            attr_to_name[id(attr)] = normalized
-                    
+
                     day["attractions"] = unique
-                
-                # 第二遍：如果某天景点数不足，从已使用的景点中补充（优先选择使用次数最少的）
+
+                logger.info(f"动态调整完成，每天景点数根据实际数据分配，无重复景点")
+
+            # 保护全天景点：如果某天包含全天景点，移除该天的其他景点
+            full_day_attractions = self._identify_full_day_attractions(
+                [attr for attr, _ in all_attractions if isinstance(attr, dict)]
+            )
+
+            if full_day_attractions:
                 for day in daily_itineraries:
                     attractions = day.get("attractions") or []
                     if not isinstance(attractions, list):
                         continue
-                    
-                    current_count = len([a for a in attractions if self._normalize_resource_name(
-                        a.get("name") if isinstance(a, dict) else (a if isinstance(a, str) else None)
-                    )])
-                    
-                    # 如果当前景点数少于最少要求，需要补充
-                    if current_count < min_per_day:
-                        needed = min_per_day - current_count
-                        
-                        # 找出所有已使用的景点，按使用次数排序（使用次数少的优先）
-                        available_attrs = [
-                            (norm, count) for norm, count in usage_count.items()
-                            if norm in seen  # 只考虑已使用过的
+
+                    # 检查是否包含全天景点
+                    has_full_day = False
+                    for attr in attractions:
+                        name = attr.get("name", "") if isinstance(attr, dict) else str(attr)
+                        if name in full_day_attractions:
+                            has_full_day = True
+                            break
+
+                    # 如果有全天景点且当天有多个景点，只保留全天景点
+                    if has_full_day and len(attractions) > 1:
+                        day["attractions"] = [
+                            attr for attr in attractions
+                            if (attr.get("name", "") if isinstance(attr, dict) else str(attr)) in full_day_attractions
                         ]
-                        available_attrs.sort(key=lambda x: x[1])  # 按使用次数升序
-                        
-                        # 从使用次数最少的景点中选择补充
-                        for norm, _ in available_attrs[:needed]:
-                            # 从原始数据中找到对应的景点对象
-                            for orig_attr, orig_norm in all_attractions:
-                                if orig_norm == norm:
-                                    # 创建副本，避免引用问题
-                                    if isinstance(orig_attr, dict):
-                                        attr_copy = copy.deepcopy(orig_attr)
-                                    else:
-                                        attr_copy = orig_attr
-                                    attractions.append(attr_copy)
-                                    usage_count[norm] = usage_count.get(norm, 0) + 1
-                                    break
-                        
-                        day["attractions"] = attractions
-                        logger.debug(f"第{day.get('day', '?')}天补充了{needed}个景点，当前共{len(attractions)}个")
-                
-                logger.info(f"智能去重完成，部分景点允许重复使用以填满每天最少{min_per_day}个景点的要求")
-                
+                        logger.info(f"第{day.get('day', '?')}天包含全天景点，已移除其他景点")
+
         except Exception as e:  # 防御性，任何异常不影响主流程
             logger.warning(f"去重每日景点失败: {e}")
             import traceback
@@ -2522,6 +2504,50 @@ class PlanGenerator:
             logger.error(f"生成交通方案失败: {e}")
             return []
 
+    def _identify_full_day_attractions(self, attractions_data: List[Dict[str, Any]]) -> List[str]:
+        """识别需要单独安排一天的景点
+
+        基于以下规则判断：
+        1. 名称包含关键词：迪士尼、欢乐谷、长隆、主题乐园、游乐园等
+        2. 标签包含：主题乐园、游乐园、野生动物园等
+        3. visit_duration 为"全天"或超过6小时
+        """
+        full_day_keywords = getattr(settings, "PLAN_FULL_DAY_ATTRACTION_KEYWORDS", [
+            "迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+            "野生动物园", "海洋公园", "环球影城", "方特"
+        ])
+        full_day_duration_patterns = getattr(settings, "PLAN_FULL_DAY_DURATION_PATTERNS", [
+            "全天", "6小时", "8小时", "一天"
+        ])
+
+        full_day_attractions = []
+        for attr in attractions_data:
+            name = attr.get("name", "")
+            visit_duration = str(attr.get("visit_duration", ""))
+            tags = attr.get("tags", [])
+
+            is_full_day = False
+
+            # 检查名称
+            if any(kw in name for kw in full_day_keywords):
+                is_full_day = True
+
+            # 检查标签
+            if not is_full_day and tags:
+                tags_str = ','.join(tags) if isinstance(tags, list) else str(tags)
+                if any(kw in tags_str for kw in full_day_keywords):
+                    is_full_day = True
+
+            # 检查游览时长
+            if not is_full_day and visit_duration:
+                if any(pattern in visit_duration for pattern in full_day_duration_patterns):
+                    is_full_day = True
+
+            if is_full_day:
+                full_day_attractions.append(name)
+
+        return full_day_attractions
+
     @retry_with_backoff(max_retries=3, base_delay=2.0)
     async def _generate_attraction_plans(
         self,
@@ -2582,11 +2608,21 @@ class PlanGenerator:
                     "具体要求：\n"
                     "1. 【最重要】优先使用提供的景点数据中的景点，这些景点来自全国景点基础库或地图搜索，信息真实可靠；\n"
                     "2. 如果景点数据提供了实时信息（评分、门票、开放时间等），请在行程中体现；\n"
-                    "3. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
-                    "4. 对于相距较远、需要长时间通勤的景点，当天安排的景点数量要减少，并在行程中明确写出长途通勤时间；\n"
-                    "5. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
-                    "6. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
-                    "7. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源。"
+                    "3. 【景点数量规则】每天安排3-4个景点（除非当天有特殊景点需要全天游览）；\n"
+                    "4. 【特殊景点识别】以下景点类型需要单独安排一天，当天不再安排其他景点：\n"
+                    "   - 主题乐园/游乐园（如迪士尼、欢乐谷、长隆等）\n"
+                    "   - 大型动物园/野生动物园\n"
+                    "   - 建议游览时间为'全天'或'6小时以上'的景点\n"
+                    "5. 【游览时间参考】请参考每个景点的'建议游览时间'字段：\n"
+                    "   - 1-2小时：适合半天游览，可搭配其他景点\n"
+                    "   - 2-4小时：适合半天游览，当天可安排2-3个景点\n"
+                    "   - 4-6小时：需要半天以上，当天最多安排1-2个景点\n"
+                    "   - 全天/6小时以上：单独安排一天\n"
+                    "6. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
+                    "7. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
+                    "8. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
+                    "9. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源；\n"
+                    "10. 【热门景点优先】优先选择热度排名靠前、评分高的景点，这些景点更受游客欢迎。"
                 )
                 # 构建RAG上下文部分
                 rag_section = ""
@@ -2598,6 +2634,12 @@ class PlanGenerator:
                 if attractions_data:
                     attractions_section = f"【主要数据源 - 景点数据】：\n{self.data_processor.format_data_for_llm(attractions_data, 'attraction')}\n"
 
+                # 识别特殊景点（需要单独一天）
+                special_attractions_hint = ""
+                full_day_attractions = self._identify_full_day_attractions(attractions_data)
+                if full_day_attractions:
+                    special_attractions_hint = f"\n【特殊景点提示】以下景点需要单独安排一天：{', '.join(full_day_attractions)}\n请将这些景点安排在单独的一天，当天不再安排其他景点。\n"
+
                 user_prompt = f"""
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
 - 目的地：{plan.destination}
@@ -2608,7 +2650,7 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
-{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
+{special_attractions_hint}{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
 {notes_str}
 
 {intl_hint}
@@ -2679,7 +2721,9 @@ class PlanGenerator:
                 build_prompts=build_prompts,
                 llm_requester=self._request_llm_json,
                 fallback_builder=lambda d, date: build_simple_attraction_plan(
-                    d, date, attractions_data
+                    d, date, attractions_data,
+                    min_attractions=self.min_attractions_per_day,
+                    max_attractions=self.max_attractions_per_day
                 ),
                 post_process=post_process,
             )

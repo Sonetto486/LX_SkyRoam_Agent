@@ -12,7 +12,7 @@
  Target Server Version : 180003 (180003)
  File Encoding         : 65001
 
- Date: 15/05/2026 17:03:41
+ Date: 17/05/2026 18:08:08
 */
 
 
@@ -92,6 +92,17 @@ START 1
 CACHE 1;
 
 -- ----------------------------
+-- Sequence structure for attraction_popularity_id_seq
+-- ----------------------------
+DROP SEQUENCE IF EXISTS "public"."attraction_popularity_id_seq";
+CREATE SEQUENCE "public"."attraction_popularity_id_seq" 
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 2147483647
+START 1
+CACHE 1;
+
+-- ----------------------------
 -- Sequence structure for destination_search_search_id_seq
 -- ----------------------------
 DROP SEQUENCE IF EXISTS "public"."destination_search_search_id_seq";
@@ -125,6 +136,17 @@ START 1
 CACHE 1;
 
 -- ----------------------------
+-- Sequence structure for hot_destinations_id_seq
+-- ----------------------------
+DROP SEQUENCE IF EXISTS "public"."hot_destinations_id_seq";
+CREATE SEQUENCE "public"."hot_destinations_id_seq" 
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 2147483647
+START 1
+CACHE 1;
+
+-- ----------------------------
 -- Sequence structure for location_location_id_seq
 -- ----------------------------
 DROP SEQUENCE IF EXISTS "public"."location_location_id_seq";
@@ -151,6 +173,17 @@ CACHE 1;
 -- ----------------------------
 DROP SEQUENCE IF EXISTS "public"."poi_attractions_id_seq";
 CREATE SEQUENCE "public"."poi_attractions_id_seq" 
+INCREMENT 1
+MINVALUE  1
+MAXVALUE 2147483647
+START 1
+CACHE 1;
+
+-- ----------------------------
+-- Sequence structure for pre_generated_plans_id_seq
+-- ----------------------------
+DROP SEQUENCE IF EXISTS "public"."pre_generated_plans_id_seq";
+CREATE SEQUENCE "public"."pre_generated_plans_id_seq" 
 INCREMENT 1
 MINVALUE  1
 MAXVALUE 2147483647
@@ -324,6 +357,25 @@ CREATE TABLE "public"."attraction_details" (
 ;
 
 -- ----------------------------
+-- Table structure for attraction_popularity
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."attraction_popularity";
+CREATE TABLE "public"."attraction_popularity" (
+  "id" int4 NOT NULL DEFAULT nextval('attraction_popularity_id_seq'::regclass),
+  "attraction_id" int4,
+  "name_zh" varchar(200) COLLATE "pg_catalog"."default" NOT NULL,
+  "city_zh" varchar(100) COLLATE "pg_catalog"."default" NOT NULL,
+  "popularity_rank" int4 DEFAULT 9999,
+  "popularity_score" float8 DEFAULT 0.0,
+  "source" varchar(50) COLLATE "pg_catalog"."default" DEFAULT 'manual'::character varying,
+  "monthly_visitors" int4 DEFAULT 0,
+  "tags" varchar(500) COLLATE "pg_catalog"."default",
+  "created_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP
+)
+;
+
+-- ----------------------------
 -- Table structure for destination_search
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."destination_search";
@@ -385,6 +437,31 @@ CREATE TABLE "public"."favorite_locations" (
 ;
 
 -- ----------------------------
+-- Table structure for hot_destinations
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."hot_destinations";
+CREATE TABLE "public"."hot_destinations" (
+  "city_name" varchar(100) COLLATE "pg_catalog"."default" NOT NULL,
+  "province" varchar(50) COLLATE "pg_catalog"."default",
+  "region" varchar(50) COLLATE "pg_catalog"."default",
+  "popularity_score" float8,
+  "monthly_visitors" int4,
+  "search_volume" int4,
+  "priority" int4,
+  "is_enabled" bool,
+  "pre_generated_count" int4,
+  "last_pre_generated_at" timestamp(6),
+  "latitude" float8,
+  "longitude" float8,
+  "tags" varchar(200) COLLATE "pg_catalog"."default",
+  "id" int4 NOT NULL DEFAULT nextval('hot_destinations_id_seq'::regclass),
+  "created_at" timestamp(6) NOT NULL,
+  "updated_at" timestamp(6) NOT NULL,
+  "is_active" bool NOT NULL
+)
+;
+
+-- ----------------------------
 -- Table structure for location
 -- ----------------------------
 DROP TABLE IF EXISTS "public"."location";
@@ -437,6 +514,36 @@ CREATE TABLE "public"."poi_attractions" (
   "label_en" text COLLATE "pg_catalog"."default",
   "source" varchar(50) COLLATE "pg_catalog"."default" DEFAULT 'POIs_V2'::character varying,
   "created_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP
+)
+;
+
+-- ----------------------------
+-- Table structure for pre_generated_plans
+-- ----------------------------
+DROP TABLE IF EXISTS "public"."pre_generated_plans";
+CREATE TABLE "public"."pre_generated_plans" (
+  "destination_id" int4,
+  "destination_name" varchar(100) COLLATE "pg_catalog"."default" NOT NULL,
+  "plan_template" jsonb NOT NULL,
+  "duration_days" int4 NOT NULL,
+  "budget_level" varchar(20) COLLATE "pg_catalog"."default" NOT NULL,
+  "travel_preferences" jsonb,
+  "age_groups" jsonb,
+  "food_preferences" jsonb,
+  "transportation_mode" varchar(50) COLLATE "pg_catalog"."default",
+  "popularity_score" float8,
+  "generation_version" varchar(20) COLLATE "pg_catalog"."default",
+  "data_sources" jsonb,
+  "status" varchar(20) COLLATE "pg_catalog"."default",
+  "last_updated_at" timestamp(6),
+  "expires_at" timestamp(6),
+  "match_count" int4,
+  "usage_count" int4,
+  "avg_rating" float8,
+  "id" int4 NOT NULL DEFAULT nextval('pre_generated_plans_id_seq'::regclass),
+  "created_at" timestamp(6) NOT NULL,
+  "updated_at" timestamp(6) NOT NULL,
+  "is_active" bool NOT NULL
 )
 ;
 
@@ -2087,6 +2194,13 @@ SELECT setval('"public"."attraction_details_id_seq"', 1, false);
 -- ----------------------------
 -- Alter sequences owned by
 -- ----------------------------
+ALTER SEQUENCE "public"."attraction_popularity_id_seq"
+OWNED BY "public"."attraction_popularity"."id";
+SELECT setval('"public"."attraction_popularity_id_seq"', 160, true);
+
+-- ----------------------------
+-- Alter sequences owned by
+-- ----------------------------
 ALTER SEQUENCE "public"."destination_search_search_id_seq"
 OWNED BY "public"."destination_search"."search_id";
 SELECT setval('"public"."destination_search_search_id_seq"', 1, false);
@@ -2108,6 +2222,13 @@ SELECT setval('"public"."favorite_locations_id_seq"', 1, false);
 -- ----------------------------
 -- Alter sequences owned by
 -- ----------------------------
+ALTER SEQUENCE "public"."hot_destinations_id_seq"
+OWNED BY "public"."hot_destinations"."id";
+SELECT setval('"public"."hot_destinations_id_seq"', 1, false);
+
+-- ----------------------------
+-- Alter sequences owned by
+-- ----------------------------
 ALTER SEQUENCE "public"."location_location_id_seq"
 OWNED BY "public"."location"."location_id";
 SELECT setval('"public"."location_location_id_seq"', 1, false);
@@ -2125,6 +2246,13 @@ SELECT setval('"public"."poi_attraction_chunks_id_seq"', 23775, true);
 ALTER SEQUENCE "public"."poi_attractions_id_seq"
 OWNED BY "public"."poi_attractions"."id";
 SELECT setval('"public"."poi_attractions_id_seq"', 23775, true);
+
+-- ----------------------------
+-- Alter sequences owned by
+-- ----------------------------
+ALTER SEQUENCE "public"."pre_generated_plans_id_seq"
+OWNED BY "public"."pre_generated_plans"."id";
+SELECT setval('"public"."pre_generated_plans_id_seq"', 1, false);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -2152,7 +2280,7 @@ SELECT setval('"public"."transport_transport_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."travel_plan_items_id_seq"
 OWNED BY "public"."travel_plan_items"."id";
-SELECT setval('"public"."travel_plan_items_id_seq"', 391, true);
+SELECT setval('"public"."travel_plan_items_id_seq"', 437, true);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -2166,7 +2294,7 @@ SELECT setval('"public"."travel_plan_ratings_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."travel_plans_id_seq"
 OWNED BY "public"."travel_plans"."id";
-SELECT setval('"public"."travel_plans_id_seq"', 71, true);
+SELECT setval('"public"."travel_plans_id_seq"', 77, true);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -2232,6 +2360,28 @@ CREATE INDEX "ix_attraction_details_name" ON "public"."attraction_details" USING
 ALTER TABLE "public"."attraction_details" ADD CONSTRAINT "attraction_details_pkey" PRIMARY KEY ("id");
 
 -- ----------------------------
+-- Indexes structure for table attraction_popularity
+-- ----------------------------
+CREATE INDEX "idx_attraction_popularity_city" ON "public"."attraction_popularity" USING btree (
+  "city_zh" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "idx_attraction_popularity_rank" ON "public"."attraction_popularity" USING btree (
+  "popularity_rank" "pg_catalog"."int4_ops" ASC NULLS LAST
+);
+CREATE INDEX "idx_attraction_popularity_score" ON "public"."attraction_popularity" USING btree (
+  "popularity_score" "pg_catalog"."float8_ops" DESC NULLS FIRST
+);
+CREATE UNIQUE INDEX "idx_attraction_popularity_unique" ON "public"."attraction_popularity" USING btree (
+  "city_zh" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST,
+  "name_zh" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Primary Key structure for table attraction_popularity
+-- ----------------------------
+ALTER TABLE "public"."attraction_popularity" ADD CONSTRAINT "attraction_popularity_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
 -- Indexes structure for table destination_search
 -- ----------------------------
 CREATE INDEX "idx_search_keyword" ON "public"."destination_search" USING btree (
@@ -2277,6 +2427,21 @@ CREATE INDEX "ix_favorite_locations_id" ON "public"."favorite_locations" USING b
 ALTER TABLE "public"."favorite_locations" ADD CONSTRAINT "favorite_locations_pkey" PRIMARY KEY ("id");
 
 -- ----------------------------
+-- Indexes structure for table hot_destinations
+-- ----------------------------
+CREATE UNIQUE INDEX "ix_hot_destinations_city_name" ON "public"."hot_destinations" USING btree (
+  "city_name" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_hot_destinations_id" ON "public"."hot_destinations" USING btree (
+  "id" "pg_catalog"."int4_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Primary Key structure for table hot_destinations
+-- ----------------------------
+ALTER TABLE "public"."hot_destinations" ADD CONSTRAINT "hot_destinations_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
 -- Indexes structure for table location
 -- ----------------------------
 CREATE INDEX "idx_location_is_favorite" ON "public"."location" USING btree (
@@ -2320,6 +2485,33 @@ CREATE UNIQUE INDEX "poi_attractions_poi_id_idx" ON "public"."poi_attractions" U
 -- Primary Key structure for table poi_attractions
 -- ----------------------------
 ALTER TABLE "public"."poi_attractions" ADD CONSTRAINT "poi_attractions_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Indexes structure for table pre_generated_plans
+-- ----------------------------
+CREATE INDEX "ix_pre_generated_plans_budget_level" ON "public"."pre_generated_plans" USING btree (
+  "budget_level" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_pre_generated_plans_destination_name" ON "public"."pre_generated_plans" USING btree (
+  "destination_name" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_pre_generated_plans_duration_days" ON "public"."pre_generated_plans" USING btree (
+  "duration_days" "pg_catalog"."int4_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_pre_generated_plans_expires_at" ON "public"."pre_generated_plans" USING btree (
+  "expires_at" "pg_catalog"."timestamp_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_pre_generated_plans_id" ON "public"."pre_generated_plans" USING btree (
+  "id" "pg_catalog"."int4_ops" ASC NULLS LAST
+);
+CREATE INDEX "ix_pre_generated_plans_status" ON "public"."pre_generated_plans" USING btree (
+  "status" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
+);
+
+-- ----------------------------
+-- Primary Key structure for table pre_generated_plans
+-- ----------------------------
+ALTER TABLE "public"."pre_generated_plans" ADD CONSTRAINT "pre_generated_plans_pkey" PRIMARY KEY ("id");
 
 -- ----------------------------
 -- Indexes structure for table topic
@@ -2494,6 +2686,11 @@ ALTER TABLE "public"."xhs_note_chunks" ADD CONSTRAINT "xhs_note_chunks_pkey" PRI
 -- Primary Key structure for table xhs_notes
 -- ----------------------------
 ALTER TABLE "public"."xhs_notes" ADD CONSTRAINT "xhs_notes_pkey" PRIMARY KEY ("id");
+
+-- ----------------------------
+-- Foreign Keys structure for table attraction_popularity
+-- ----------------------------
+ALTER TABLE "public"."attraction_popularity" ADD CONSTRAINT "attraction_popularity_attraction_id_fkey" FOREIGN KEY ("attraction_id") REFERENCES "public"."poi_attractions" ("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 
 -- ----------------------------
 -- Foreign Keys structure for table destination_search

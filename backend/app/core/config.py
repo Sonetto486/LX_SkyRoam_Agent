@@ -212,8 +212,17 @@ class Settings(BaseSettings):
 
     # 旅行计划生成 - 按天动态控制相关参数（可通过环境变量覆盖）
     # 单日期望的最少景点数 / 最大景点数，用于控制行程密度和数据需求估算
-    PLAN_MIN_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MIN_ATTRACTIONS_PER_DAY", "2"))
+    PLAN_MIN_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MIN_ATTRACTIONS_PER_DAY", "3"))
     PLAN_MAX_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MAX_ATTRACTIONS_PER_DAY", "4"))
+
+    # 特殊景点关键词配置（需要单独安排一天的景点类型）
+    PLAN_FULL_DAY_ATTRACTION_KEYWORDS: List[str] = [
+        "迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+        "野生动物园", "海洋公园", "环球影城", "方特"
+    ]
+
+    # 全天游览时间标识
+    PLAN_FULL_DAY_DURATION_PATTERNS: List[str] = ["全天", "6小时", "8小时", "一天"]
 
     # 单日期望的用餐次数（用于估算需要多少餐厅数据，例如 3 = 早/中/晚）
     PLAN_MIN_MEALS_PER_DAY: int = int(os.getenv("PLAN_MIN_MEALS_PER_DAY", "3"))
@@ -248,6 +257,16 @@ class Settings(BaseSettings):
     RATE_LIMIT_WHITELIST: List[str] = os.getenv("RATE_LIMIT_WHITELIST", "").split(",") if os.getenv("RATE_LIMIT_WHITELIST") else []
     # 允许通过环境变量覆盖：逗号分隔的路径
     RATE_LIMIT_EXCLUDE_PATHS: List[str] = os.getenv("RATE_LIMIT_EXCLUDE_PATHS", "/docs,/redoc,/openapi.json").split(",")
+
+    # 预生成方案配置
+    PRE_GENERATION_ENABLED: bool = os.getenv("PRE_GENERATION_ENABLED", "true").lower() == "true"
+    PRE_GENERATION_EXPIRE_DAYS: int = int(os.getenv("PRE_GENERATION_EXPIRE_DAYS", "30"))
+    PRE_GENERATION_MIN_MATCH_SCORE: float = float(os.getenv("PRE_GENERATION_MIN_MATCH_SCORE", "3.0"))
+    PRE_GENERATION_PERFECT_MATCH_SCORE: float = float(os.getenv("PRE_GENERATION_PERFECT_MATCH_SCORE", "8.0"))
+    PRE_GENERATION_GOOD_MATCH_SCORE: float = float(os.getenv("PRE_GENERATION_GOOD_MATCH_SCORE", "5.0"))
+    PRE_GENERATION_BATCH_SIZE: int = int(os.getenv("PRE_GENERATION_BATCH_SIZE", "10"))  # 每批处理城市数
+    PRE_GENERATION_CONCURRENT_LIMIT: int = int(os.getenv("PRE_GENERATION_CONCURRENT_LIMIT", "3"))  # 并发生成数
+    PRE_GENERATION_DURATION_TOLERANCE: int = int(os.getenv("PRE_GENERATION_DURATION_TOLERANCE", "1"))  # 天数容差
 
 # 创建全局配置实例
 settings = Settings()
