@@ -17,7 +17,7 @@ interface Message {
 }
 
 // RAG API 端点
-const RAG_API_URL = 'http://localhost:8000/api/rag';
+const RAG_API_URL = 'http://localhost:8001/api/rag';
 
 // 实体类型配置
 const ENTITY_CONFIG = {
