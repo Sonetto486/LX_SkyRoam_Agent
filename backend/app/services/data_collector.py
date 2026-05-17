@@ -391,11 +391,13 @@ class DataCollector:
         destination: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        must_visit_attractions: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """收集景点数据
 
         优先从 POI 向量数据库检索景点，再调用高德 API 补充实时信息。
         如果 POI 检索失败，回退到高德地图 API 搜索。
+        如果有必去景点，优先搜索并确保包含在结果中。
         """
         try:
             cache_key_str = cache_key(
@@ -403,11 +405,12 @@ class DataCollector:
                 destination,
                 (start_date.date() if isinstance(start_date, datetime) else None),
                 (end_date.date() if isinstance(end_date, datetime) else None),
+                tuple(must_visit_attractions or []),
             )
 
-            # 检查缓存
+            # 检查缓存（如果有必去景点则跳过缓存，确保实时搜索）
             cached_data = await get_cache(cache_key_str)
-            if cached_data:
+            if cached_data and not must_visit_attractions:
                 logger.info(f"使用缓存的景点数据: {destination}，跳过POI检索")
                 # 检查缓存数据来源
                 if cached_data and len(cached_data) > 0:
@@ -417,6 +420,25 @@ class DataCollector:
                 return cached_data
 
             attraction_data: List[Dict[str, Any]] = []
+
+            # ========== 优先搜索必去景点 ==========
+            must_visit_found: List[Dict[str, Any]] = []
+            must_visit_missing: List[str] = []
+
+            if must_visit_attractions and len(must_visit_attractions) > 0:
+                logger.info(f"========== 开始搜索必去景点: {must_visit_attractions} ==========")
+                must_visit_found, must_visit_missing = await self._search_must_visit_attractions(
+                    must_visit_attractions, destination
+                )
+                logger.info(f"必去景点搜索完成: 找到 {len(must_visit_found)} 个，未找到 {len(must_visit_missing)} 个")
+                if must_visit_missing:
+                    logger.warning(f"以下必去景点未找到: {must_visit_missing}")
+
+                # 将找到的必去景点添加到结果列表，并标记为必去
+                for attr in must_visit_found:
+                    attr["is_must_visit"] = True
+                    attr["priority"] = 0  # 最高优先级
+                attraction_data.extend(must_visit_found)
 
             # 估算行程天数，用于决定"期望最少景点数量"
             days = None
@@ -465,16 +487,30 @@ class DataCollector:
 
                     if enriched_attractions:
                         logger.info(f"高德API补充实时信息完成，{len(enriched_attractions)} 个景点")
-                        attraction_data = await self._convert_poi_to_attraction_format(enriched_attractions)
+                        converted_attractions = await self._convert_poi_to_attraction_format(enriched_attractions)
 
-                        # 按热度排名排序（排名越小越热门）
+                        # 合并必去景点和POI检索结果，避免覆盖
+                        must_visit_names = {a.get("name") for a in attraction_data if a.get("is_must_visit")}
+                        logger.info(f"合并景点数据：已有必去景点 {must_visit_names}，POI检索 {len(converted_attractions)} 个")
+                        for attr in converted_attractions:
+                            # 避免重复添加已存在的必去景点
+                            if attr.get("name") not in must_visit_names:
+                                attraction_data.append(attr)
+
+                        # 按优先级排序：必去景点优先，其次按热度排名
+                        def sort_key(x):
+                            if x.get("is_must_visit"):
+                                return (0, 0)  # 必去景点排最前
+                            return (1, int(x.get("popularity_rank", 9999) or 9999))
+
+                        attraction_data.sort(key=sort_key)
                         if attraction_data:
-                            attraction_data.sort(key=lambda x: int(x.get("popularity_rank", 9999) or 9999))
-                            logger.info(f"按热度排名排序完成，最热门景点: {attraction_data[0].get('name')} (排名: {attraction_data[0].get('popularity_rank')})")
+                            top_attraction = attraction_data[0]
+                            logger.info(f"排序完成，最优先景点: {top_attraction.get('name')} (必去: {top_attraction.get('is_must_visit', False)})")
 
                         # 缓存结果
                         await set_cache(cache_key_str, attraction_data, ttl=300)
-                        logger.info(f"========== POI检索成功，返回 {len(attraction_data)} 个景点 ==========")
+                        logger.info(f"========== POI检索成功，返回 {len(attraction_data)} 个景点（含 {len(must_visit_names)} 个必去）==========")
                         return attraction_data
                     else:
                         logger.warning(f"高德API补充信息返回空，回退到高德地图")
@@ -612,6 +648,116 @@ class DataCollector:
         except Exception as e:
             logger.error(f"收集景点数据失败: {e}")
             return []
+
+    async def _search_must_visit_attractions(
+        self,
+        attraction_names: List[str],
+        destination: str
+    ) -> tuple[List[Dict[str, Any]], List[str]]:
+        """搜索用户指定的必去景点
+
+        Args:
+            attraction_names: 必去景点名称列表
+            destination: 目的地
+
+        Returns:
+            (找到的景点列表, 未找到的景点名称列表)
+        """
+        found_attractions: List[Dict[str, Any]] = []
+        missing_attractions: List[str] = []
+
+        for name in attraction_names:
+            if not name or not name.strip():
+                continue
+
+            name = name.strip()
+            logger.info(f"搜索必去景点: {name}")
+
+            try:
+                # 1. 先从POI库精确匹配
+                try:
+                    from app.services.poi_retriever import get_poi_retriever
+                    poi_retriever = get_poi_retriever()
+
+                    # 使用名称搜索
+                    poi_result = poi_retriever.search_by_name(name, destination)
+                    if poi_result:
+                        logger.info(f"从POI库找到必去景点: {name}")
+                        attraction = await self._convert_poi_to_attraction_format([poi_result])
+                        if attraction:
+                            found_attractions.extend(attraction)
+                            continue
+                except Exception as e:
+                    logger.warning(f"POI搜索必去景点失败: {e}")
+
+                # 2. 回退到高德API搜索
+                try:
+                    geocode_info = await self.get_destination_geocode_info(destination)
+                    if geocode_info:
+                        center_location = geocode_info['location_string']
+
+                        # 使用高德API搜索指定景点
+                        places = await self.unified_map_service.search_places_around(
+                            location=center_location,
+                            keywords=name,
+                            types="110000",  # 风景名胜
+                            radius=30000,    # 30公里半径
+                            count=5
+                        )
+
+                        if places:
+                            # 找到最匹配的景点
+                            for place in places:
+                                place_name = place.get("name", "")
+                                # 检查名称是否匹配（完全匹配或包含关系）
+                                if name in place_name or place_name in name:
+                                    logger.info(f"从高德API找到必去景点: {name} -> {place_name}")
+                                    attraction_item = {
+                                        "name": place_name,
+                                        "category": place.get("category", "风景名胜"),
+                                        "description": place.get("description", "用户指定必去景点"),
+                                        "price": place.get("price", "请查询"),
+                                        "rating": place.get("rating", 4.5),
+                                        "address": clean_address(place.get("address", "")),
+                                        "coordinates": place.get("coordinates", {}),
+                                        "opening_hours": place.get("opening_hours", "请查询"),
+                                        "source": place.get("source", "高德地图"),
+                                        "is_must_visit": True,
+                                        "priority": 0,
+                                    }
+                                    found_attractions.append(attraction_item)
+                                    break
+                            else:
+                                # 没有精确匹配，使用第一个结果
+                                place = places[0]
+                                logger.info(f"使用高德API第一个结果作为必去景点: {name} -> {place.get('name')}")
+                                attraction_item = {
+                                    "name": place.get("name", name),
+                                    "category": place.get("category", "风景名胜"),
+                                    "description": place.get("description", "用户指定必去景点"),
+                                    "price": place.get("price", "请查询"),
+                                    "rating": place.get("rating", 4.5),
+                                    "address": clean_address(place.get("address", "")),
+                                    "coordinates": place.get("coordinates", {}),
+                                    "opening_hours": place.get("opening_hours", "请查询"),
+                                    "source": place.get("source", "高德地图"),
+                                    "is_must_visit": True,
+                                    "priority": 0,
+                                }
+                                found_attractions.append(attraction_item)
+                                continue
+                except Exception as e:
+                    logger.warning(f"高德API搜索必去景点失败: {e}")
+
+                # 3. 都没找到，记录缺失
+                logger.warning(f"未找到必去景点: {name}")
+                missing_attractions.append(name)
+
+            except Exception as e:
+                logger.error(f"搜索必去景点 {name} 时出错: {e}")
+                missing_attractions.append(name)
+
+        return found_attractions, missing_attractions
 
     async def _generate_attraction_description_from_poi(self, name: str, city: str, category: str) -> str:
         """
@@ -1552,7 +1698,7 @@ class DataCollector:
         end_date: Optional[datetime] = None
     ) -> List[Dict[str, Any]]:
         """
-        收集小红书数据（通过API服务）
+        收集小红书数据（优先从数据库读取预导入数据，实时爬取作为备选）
 
         Args:
             destination: 目的地名称
@@ -1563,7 +1709,7 @@ class DataCollector:
             List[Dict[str, Any]]: 小红书笔记数据列表
         """
         try:
-            # 根据旅行天数自适应计算爬取数量
+            # 根据旅行天数自适应计算数量
             days = None
             if start_date and end_date:
                 try:
@@ -1574,19 +1720,59 @@ class DataCollector:
                     days = None
 
             if days is not None and days > 0:
-                # 每天2-3条笔记，最少3条，最多24条
                 limit = max(3, min(24, days * 2 + 1))
-                logger.info(f"🔍 开始收集小红书数据: {destination}，旅行天数: {days}天，检索数量: {limit}条，检索内容：{destination}旅游攻略")
             else:
-                # 默认12条
                 limit = 12
-                logger.info(f"🔍 开始收集小红书数据: {destination}，检索内容：{destination}旅游攻略（默认数量: {limit}条）")
 
-            # 使用小红书API客户端搜索笔记
+            # 优先从数据库读取预导入数据
+            try:
+                from app.core.database import async_session
+                from sqlalchemy import text
+
+                async with async_session() as db:
+                    result = await db.execute(
+                        text("""
+                            SELECT note_id, title, description as desc, img_urls, tag_list,
+                                   liked_count, location, relevance_score, url
+                            FROM xiaohongshu_notes
+                            WHERE destination ILIKE :destination
+                            ORDER BY relevance_score DESC, liked_count DESC
+                            LIMIT :limit
+                        """),
+                        {"destination": f"%{destination}%", "limit": limit}
+                    )
+                    rows = result.fetchall()
+
+                    if rows:
+                        notes_data = []
+                        for row in rows:
+                            note_dict = {
+                                "note_id": row[0] or "",
+                                "title": row[1] or "",
+                                "desc": row[2] or "",
+                                "img_urls": row[3] or [],
+                                "tag_list": row[4] or [],
+                                "liked_count": row[5] or 0,
+                                "location": row[6] or "",
+                                "relevance_score": row[7] or 0.0,
+                                "url": row[8] or ""
+                            }
+                            notes_data.append(note_dict)
+
+                        logger.info(f"✅ 从数据库读取到 {len(notes_data)} 条小红书数据: {destination}")
+                        return notes_data
+                    else:
+                        logger.info(f"数据库中没有 {destination} 的小红书数据，尝试实时爬取")
+
+            except Exception as e:
+                logger.warning(f"从数据库读取小红书数据失败: {e}，尝试实时爬取")
+
+            # 备选：实时爬取（仅在数据库无数据时）
+            logger.info(f"🔍 开始实时收集小红书数据: {destination}，检索数量: {limit}条")
             response = await self.xhs_client.search_notes(f"{destination}旅游攻略", limit=limit)
 
             if not response or response.get("status") != "success":
-                logger.error(f"❌ 小红书API调用失败: {response}")
+                logger.warning(f"小红书API调用失败: {response}")
                 return []
 
             # 解析API返回的笔记数据
@@ -1610,6 +1796,9 @@ class DataCollector:
                 except Exception as e:
                     logger.warning(f"⚠️ 解析笔记数据失败: {e}")
                     continue
+
+            logger.info(f"✅ 实时爬取到 {len(notes_data)} 条小红书数据: {destination}")
+            return notes_data
 
             logger.info(f"✅ 成功收集到 {len(notes_data)} 条小红书数据: {destination}")
             return notes_data

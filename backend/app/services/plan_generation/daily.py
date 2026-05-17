@@ -16,6 +16,28 @@ FallbackBuilder = Callable[[int, str], Dict[str, Any]]
 DayEntryExtractor = Callable[[Any, int, str], Optional[Dict[str, Any]]]
 
 
+def _ensure_attraction_description(attr: Dict[str, Any]) -> str:
+    """确保景点有有效的简介
+
+    POI 数据库没有 description 字段，chunk_text 可能是地址或其他文本。
+    此函数检查描述是否有效，如果无效则生成一个简单的简介。
+    """
+    desc = attr.get("description", "")
+    # 检查描述是否有效（长度>10且不是地址）
+    if desc and len(desc) > 10 and not desc.startswith("地址") and not desc.startswith("address"):
+        return desc
+
+    # 生成简介
+    name = attr.get("name", "景点")
+    city = attr.get("city", "")
+    labels = attr.get("labels", [])
+    label_str = labels[0] if labels else "风景名胜"
+
+    if city:
+        return f"{name}是{city}著名的{label_str}，值得一游。"
+    return f"{name}是热门的{label_str}景点，值得一游。"
+
+
 def calculate_date(start_date: Optional[Any], days_offset: int) -> str:
     """Return YYYY-MM-DD string for ``start_date`` plus ``days_offset`` days."""
     if not start_date:
@@ -142,6 +164,7 @@ def build_simple_attraction_plan(
     attractions_data: List[Dict[str, Any]],
     min_attractions: int = 3,
     max_attractions: int = 4,
+    must_visit_attractions: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Fallback attraction plan when the LLM response is unusable.
 
@@ -151,31 +174,97 @@ def build_simple_attraction_plan(
         attractions_data: List of attraction data
         min_attractions: Minimum attractions per day (default 3)
         max_attractions: Maximum attractions per day (default 4)
+        must_visit_attractions: List of must-visit attraction names
     """
+    # 全天景点关键词
+    full_day_keywords = ["迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+                         "野生动物园", "海洋公园", "环球影城", "方特"]
+
+    # 排除关键词：这些不是全天景点
+    exclude_keywords = ["豫园", "拙政园", "留园", "狮子林", "公园", "花园", "植物园", "盆景园"]
+
+    # 识别全天景点
+    full_day_attractions = []
+    for attr in attractions_data:
+        name = attr.get("name", "")
+        # 排除普通园林
+        if any(ex in name for ex in exclude_keywords):
+            continue
+        if any(kw in name for kw in full_day_keywords):
+            full_day_attractions.append(attr)
+
+    # 识别必去景点（非全天）
+    must_visit_non_full_day = []
+    for attr in attractions_data:
+        name = attr.get("name", "")
+        if attr.get("is_must_visit") or name in (must_visit_attractions or []):
+            if attr not in full_day_attractions:
+                must_visit_non_full_day.append(attr)
+
+    # 计算必去景点应该安排在哪一天
+    # 必去景点优先安排在第一个非全天景点日期
+    must_visit_day = len(full_day_attractions) + 1 if full_day_attractions else 1
+
+    # 如果当天是全天景点日期
+    for i, attr in enumerate(full_day_attractions):
+        assigned_day = i + 1
+        if assigned_day == day:
+            return _build_full_day_plan(day, date_str, attr)
+
+    # 获取非全天景点列表
+    non_full_day = [a for a in attractions_data if a not in full_day_attractions]
+
+    # 按热度排序（popularity_rank 越小越热门）
+    non_full_day_sorted = sorted(
+        non_full_day,
+        key=lambda x: x.get("popularity_rank", 9999)
+    )
+
     selection: List[Dict[str, Any]] = []
-    if attractions_data:
-        total_attractions = len(attractions_data)
-        start = (day - 1) * min_attractions
 
-        # 选择 min_attractions 个景点
-        end = min(start + min_attractions, total_attractions)
-        selection = attractions_data[start:end]
+    # 如果当天是必去景点日期，优先安排必去景点
+    if day == must_visit_day and must_visit_non_full_day:
+        selection.extend(must_visit_non_full_day)
 
-        # 如果不够，从头补充
-        if len(selection) < min_attractions and start > 0:
-            remaining_needed = min_attractions - len(selection)
-            additional = attractions_data[:remaining_needed]
-            selection = list(selection) + list(additional)
+    # 从非必去景点中选择，填充到 min_attractions
+    added_names = {a.get("name") for a in selection}
+    other_attractions = [a for a in non_full_day_sorted if a.get("name") not in added_names]
 
-        # 如果仍然不够，尝试用全部数据
-        if not selection:
-            selection = attractions_data[:min_attractions]
+    # 计算还需要多少景点
+    remaining_slots = max_attractions - len(selection)
+    if remaining_slots > 0 and other_attractions:
+        # 轮流分配：确保景点均匀分布到每一天
+        # 计算非全天景物的天数
+        non_full_day_count = max(1, 1)  # 至少1天
 
-        # 不超过 max_attractions
-        if len(selection) > max_attractions:
-            selection = selection[:max_attractions]
+        for i, attr in enumerate(other_attractions):
+            if len(selection) >= max_attractions:
+                break
+            # 计算这个景点应该分配到哪一天
+            # 使用热度排序后的索引，确保热门景点优先分配
+            assigned_day_for_attr = ((i + len(selection)) // min_attractions) + must_visit_day
+            if assigned_day_for_attr > day and len(selection) >= min_attractions:
+                # 已经有足够的景点，停止分配
+                break
+            if assigned_day_for_attr == day or len(selection) < min_attractions:
+                selection.append(attr)
+
+    # 如果景点数量不足 min_attractions，从所有非全天景点中补充
+    if len(selection) < min_attractions:
+        added_names = {a.get("name") for a in selection}
+        for attr in non_full_day_sorted:
+            if attr.get("name") not in added_names:
+                selection.append(attr)
+                added_names.add(attr.get("name"))
+                if len(selection) >= min_attractions:
+                    break
 
     selection = [copy.deepcopy(attr) for attr in selection]
+
+    # 确保每个景点都有有效的简介
+    for attr in selection:
+        if not attr.get("description") or len(attr.get("description", "")) <= 10:
+            attr["description"] = _ensure_attraction_description(attr)
 
     schedule: List[Dict[str, Any]] = []
     total_cost = 0.0
@@ -187,12 +276,14 @@ def build_simple_attraction_plan(
             total_cost += float(cost)
         except (TypeError, ValueError):
             pass
+        # 确保景点有有效的简介
+        description = _ensure_attraction_description(attr)
         schedule.append(
             {
                 "time": f"{start_hour:02d}:00-{end_hour:02d}:00",
                 "activity": "景点游览",
                 "location": attr.get("name", "景点"),
-                "description": attr.get("description", "探索当地特色景点"),
+                "description": description,
                 "cost": cost or 0,
                 "tips": "根据景点建议合理安排行程，提前预约可减少排队时间。",
             }
@@ -206,6 +297,29 @@ def build_simple_attraction_plan(
         "attractions": selection,
         "estimated_cost": total_cost,
         "daily_tips": daily_tips,
+    }
+
+
+def _build_full_day_plan(day: int, date_str: str, attraction: Dict[str, Any]) -> Dict[str, Any]:
+    """构建全天景点的单日方案"""
+    attr = copy.deepcopy(attraction)
+    # 确保景点有有效的简介
+    description = _ensure_attraction_description(attr)
+    attr["description"] = description
+    return {
+        "day": day,
+        "date": date_str,
+        "schedule": [{
+            "time": "09:00-18:00",
+            "activity": "全天游览",
+            "location": attr.get("name", "景点"),
+            "description": description,
+            "cost": attr.get("price") or 0,
+            "tips": "建议提前购票，合理安排游玩时间",
+        }],
+        "attractions": [attr],
+        "estimated_cost": attr.get("price") or 0,
+        "daily_tips": ["全天游览，建议早到晚归", "提前查看园区地图和演出时间"],
     }
 
 

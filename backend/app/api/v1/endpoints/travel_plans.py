@@ -438,6 +438,7 @@ async def generate_travel_plans(
         plan_id,
         request.preferences,
         request.requirements,
+        request.must_visit_attractions,
     )
     return {
         "message": "旅行方案生成任务已启动",
@@ -469,7 +470,7 @@ async def generate_travel_plans_sync(
     try:
         # 直接执行生成，不使用 Celery
         success = await agent_service.generate_travel_plans(
-            plan_id, request.preferences, request.requirements
+            plan_id, request.preferences, request.requirements, request.must_visit_attractions
         )
 
         if success:

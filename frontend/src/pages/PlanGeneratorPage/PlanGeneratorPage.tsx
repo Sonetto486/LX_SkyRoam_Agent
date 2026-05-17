@@ -187,14 +187,14 @@ const PlanGeneratorPage: React.FC = () => {
     }
   };
 
-  const generateSync = async (planId: number, preferences: any) => {
+  const generateSync = async (planId: number, preferences: any, mustVisitAttractions: string[] = []) => {
     setGenerationProgress(30);
     setGenerationStatus('正在生成方案（同步模式）...');
 
     const generateRes = await authFetch(buildApiUrl(`/travel-plans/${planId}/generate-sync`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preferences }),
+      body: JSON.stringify({ preferences, must_visit_attractions: mustVisitAttractions }),
     });
 
     if (!generateRes.ok) {
@@ -208,14 +208,14 @@ const PlanGeneratorPage: React.FC = () => {
     return result;
   };
 
-  const generateAsync = async (planId: number, preferences: any) => {
+  const generateAsync = async (planId: number, preferences: any, mustVisitAttractions: string[] = []) => {
     setGenerationProgress(30);
     setGenerationStatus('已提交生成任务，等待处理...');
 
     const generateRes = await authFetch(buildApiUrl(`/travel-plans/${planId}/generate`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preferences }),
+      body: JSON.stringify({ preferences, must_visit_attractions: mustVisitAttractions }),
     });
 
     if (!generateRes.ok) {
@@ -282,9 +282,16 @@ const PlanGeneratorPage: React.FC = () => {
     try {
       const durationDays = values.dateRange[1].diff(values.dateRange[0], 'days') + 1;
 
+      // 解析必去景点（支持逗号、顿号、换行分隔）
+      const mustVisitAttractions = values.must_visit_attractions
+        ? values.must_visit_attractions
+            .split(/[，,、\n]+/)
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : [];
+
       const createData = {
         title: values.title || `${values.destination} ${durationDays}天旅行计划`,
-        description: values.description,
         destination: values.destination,
         start_date: values.dateRange[0].format('YYYY-MM-DD'),
         end_date: values.dateRange[1].format('YYYY-MM-DD'),
@@ -294,6 +301,7 @@ const PlanGeneratorPage: React.FC = () => {
           travelers: typeof values.people === 'string' ? (values.people === '10+' ? 10 : parseInt(values.people) || 1) : values.people,
           interests: values.interests || [],
         },
+        must_visit_attractions: mustVisitAttractions,
       };
 
       setGenerationProgress(10);
@@ -321,8 +329,8 @@ const PlanGeneratorPage: React.FC = () => {
       };
 
       const planDetail = useSyncMode
-        ? await generateSync(newPlanId!, preferences)
-        : await generateAsync(newPlanId!, preferences);
+        ? await generateSync(newPlanId!, preferences, mustVisitAttractions)
+        : await generateAsync(newPlanId!, preferences, mustVisitAttractions);
 
       if (controller.signal.aborted) throw new Error('生成已中止');
 
@@ -743,8 +751,12 @@ const PlanGeneratorPage: React.FC = () => {
               </Select>
             </Form.Item>
 
-            <Form.Item name="description" label="行程描述（可选）">
-              <Input.TextArea placeholder="描述您的旅行期望和特殊需求" rows={3} maxLength={500} showCount />
+            <Form.Item
+              name="must_visit_attractions"
+              label="必去景点（可选）"
+              tooltip="输入您一定要去的景点，多个景点用逗号分隔"
+            >
+              <Input.TextArea placeholder="例如：故宫、长城、天坛" rows={2} maxLength={200} showCount />
             </Form.Item>
           </div>
 

@@ -11,31 +11,31 @@ from app.core.async_loop import run_coro
 
 
 @celery_app.task(bind=True)
-def generate_travel_plans_task(self, plan_id: int, preferences: dict = None, requirements: dict = None):
+def generate_travel_plans_task(self, plan_id: int, preferences: dict = None, requirements: dict = None, must_visit_attractions: list = None):
     """生成旅行方案任务"""
     try:
         logger.info(f"开始执行生成旅行方案任务，计划ID: {plan_id}")
-        
+
         # 更新任务状态
         self.update_state(
             state="PROGRESS",
             meta={"current": 0, "total": 100, "status": "开始生成方案..."}
         )
-        
+
         # 创建数据库会话
         async def run_generation():
             async with async_session() as db:
                 agent_service = AgentService(db)
-                
+
                 # 更新进度
                 self.update_state(
                     state="PROGRESS",
                     meta={"current": 20, "total": 100, "status": "收集数据中..."}
                 )
-                
+
                 # 生成方案
                 success = await agent_service.generate_travel_plans(
-                    plan_id, preferences, requirements
+                    plan_id, preferences, requirements, must_visit_attractions
                 )
                 
                 if success:

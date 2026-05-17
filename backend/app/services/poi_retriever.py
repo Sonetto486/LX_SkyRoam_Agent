@@ -190,6 +190,83 @@ class POIRetriever:
             logger.error(f"POI检索失败: {e}")
             return []
 
+    def search_by_name(
+        self,
+        name: str,
+        destination: str = None,
+        top_k: int = 5
+    ) -> Optional[Dict[str, Any]]:
+        """
+        根据景点名称精确搜索景点
+
+        Args:
+            name: 景点名称
+            destination: 目的地/城市（可选，用于缩小搜索范围）
+            top_k: 返回结果数量
+
+        Returns:
+            匹配的景点信息，如果未找到返回None
+        """
+        try:
+            conn = psycopg2.connect(**self.db_config)
+            cursor = conn.cursor()
+
+            # 构建SQL查询 - 使用名称模糊匹配
+            sql = """
+                SELECT
+                    a.id, a.poi_id, a.name_zh, a.name_en,
+                    a.city_zh, a.city_en, a.latitude, a.longitude,
+                    a.label_zh, a.label_en, a.rating, a.popularity_score,
+                    COALESCE(p.popularity_rank, 9999) AS popularity_rank
+                FROM poi_attractions a
+                LEFT JOIN attraction_popularity p ON a.id = p.attraction_id
+                WHERE a.name_zh ILIKE %s
+            """
+            params = [f"%{name}%"]
+
+            # 如果指定了目的地，添加城市过滤
+            if destination:
+                sql += " AND (a.city_zh ILIKE %s OR a.city_en ILIKE %s)"
+                params.extend([f"%{destination}%", f"%{destination}%"])
+
+            sql += " ORDER BY popularity_rank ASC LIMIT %s"
+            params.append(top_k)
+
+            cursor.execute(sql, params)
+            results = cursor.fetchall()
+
+            if results:
+                row = results[0]
+                attraction = {
+                    "id": row[0],
+                    "poi_id": row[1],
+                    "name": row[2],
+                    "name_en": row[3],
+                    "city": row[4],
+                    "city_en": row[5],
+                    "latitude": float(row[6]) if row[6] else None,
+                    "longitude": float(row[7]) if row[7] else None,
+                    "labels": row[8].split(";") if row[8] else [],
+                    "labels_en": row[9].split(";") if row[9] else [],
+                    "rating": float(row[10]) if row[10] else None,
+                    "popularity_score": float(row[11]) if row[11] else 0,
+                    "popularity_rank": int(row[12]) if row[12] else 9999,
+                    "source": "POI向量库"
+                }
+                logger.info(f"名称搜索找到景点: {name} -> {attraction.get('name')} ({attraction.get('city')})")
+                cursor.close()
+                conn.close()
+                return attraction
+
+            cursor.close()
+            conn.close()
+            logger.info(f"名称搜索未找到景点: {name}")
+            return None
+
+        except Exception as e:
+            logger.error(f"名称搜索失败: {e}")
+            return None
+
     def retrieve_by_coordinates(
         self,
         latitude: float,
