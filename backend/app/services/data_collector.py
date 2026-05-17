@@ -467,10 +467,10 @@ class DataCollector:
                         logger.info(f"高德API补充实时信息完成，{len(enriched_attractions)} 个景点")
                         attraction_data = await self._convert_poi_to_attraction_format(enriched_attractions)
 
-                        # 按评分排序（高分优先）
+                        # 按热度排名排序（排名越小越热门）
                         if attraction_data:
-                            attraction_data.sort(key=lambda x: float(x.get("rating", 0) or 0), reverse=True)
-                            logger.info(f"按评分排序完成，最高评分景点: {attraction_data[0].get('name')} (评分: {attraction_data[0].get('rating')})")
+                            attraction_data.sort(key=lambda x: int(x.get("popularity_rank", 9999) or 9999))
+                            logger.info(f"按热度排名排序完成，最热门景点: {attraction_data[0].get('name')} (排名: {attraction_data[0].get('popularity_rank')})")
 
                         # 缓存结果
                         await set_cache(cache_key_str, attraction_data, ttl=300)
@@ -686,11 +686,15 @@ class DataCollector:
                 "description": description,
                 "price": poi.get("cost", "价格未知"),
                 "rating": poi.get("rating", 4.5),
+                "popularity_rank": poi.get("popularity_rank", 9999),  # 热度排名
+                "popularity_score": poi.get("popularity_score", 0),    # 热度评分
                 "address": poi.get("address", ""),
                 "coordinates": {
                     "lat": poi.get("latitude"),
                     "lng": poi.get("longitude")
                 },
+                "latitude": poi.get("latitude"),  # 添加直接的 latitude 字段
+                "longitude": poi.get("longitude"),  # 添加直接的 longitude 字段
                 "opening_hours": poi.get("opening_hours", "全天开放"),
                 "phone": poi.get("phone", ""),
                 "photos": poi.get("photos", []),
@@ -1083,58 +1087,52 @@ class DataCollector:
         end_date: datetime,
         transportation_mode: Optional[str] = None
     ) -> Dict[str, Any]:
-        """收集所有类型的数据"""
-        logger.info(f"开始顺序收集 {destination} 的所有数据")
+        """收集所有类型的数据（并行优化版本）"""
+        logger.info(f"开始并行收集 {destination} 的所有数据")
         data = {}
 
-        interval_seconds = 1
+        # 并发收集所有数据（使用 asyncio.gather 实现真正的并行）
+        results = await asyncio.gather(
+            self.collect_flight_data(departure, destination, start_date, end_date),
+            self.collect_hotel_data(destination, start_date, end_date),
+            self.collect_attraction_data(destination),
+            self.collect_weather_data(destination, start_date, end_date),
+            self.collect_restaurant_data(destination),
+            self.collect_transportation_data(departure, destination, transportation_mode),
+            self.collect_xiaohongshu_data(destination, start_date, end_date),
+            return_exceptions=True  # 单个失败不影响整体
+        )
 
-        # 并发启动小红书数据收集任务（不受 MCP 并发限制）
-        xhs_task = asyncio.create_task(self.collect_xiaohongshu_data(destination, start_date, end_date))
+        # 处理结果
+        data["flights"] = results[0] if not isinstance(results[0], Exception) else []
+        if isinstance(results[0], Exception):
+            logger.warning(f"航班数据收集失败: {results[0]}")
 
-        try:
-            data["flights"] = await self.collect_flight_data(departure, destination, start_date, end_date)
-        except Exception as e:
-            logger.exception("航班数据失败")
-            data["flights"] = []
-        await asyncio.sleep(interval_seconds)
+        data["hotels"] = results[1] if not isinstance(results[1], Exception) else []
+        if isinstance(results[1], Exception):
+            logger.warning(f"酒店数据收集失败: {results[1]}")
 
-        try:
-            data["hotels"] = await self.collect_hotel_data(destination, start_date, end_date)
-        except Exception:
-            data["hotels"] = []
-        await asyncio.sleep(interval_seconds)
+        data["attractions"] = results[2] if not isinstance(results[2], Exception) else []
+        if isinstance(results[2], Exception):
+            logger.warning(f"景点数据收集失败: {results[2]}")
 
-        try:
-            data["attractions"] = await self.collect_attraction_data(destination)
-        except Exception:
-            data["attractions"] = []
-        await asyncio.sleep(interval_seconds)
+        data["weather"] = results[3] if not isinstance(results[3], Exception) else {}
+        if isinstance(results[3], Exception):
+            logger.warning(f"天气数据收集失败: {results[3]}")
 
-        try:
-            data["weather"] = await self.collect_weather_data(destination, start_date, end_date)
-        except Exception:
-            data["weather"] = {}
-        await asyncio.sleep(interval_seconds)
+        data["restaurants"] = results[4] if not isinstance(results[4], Exception) else []
+        if isinstance(results[4], Exception):
+            logger.warning(f"餐厅数据收集失败: {results[4]}")
 
-        try:
-            data["restaurants"] = await self.collect_restaurant_data(destination)
-        except Exception:
-            data["restaurants"] = []
-        await asyncio.sleep(interval_seconds)
+        data["transportation"] = results[5] if not isinstance(results[5], Exception) else []
+        if isinstance(results[5], Exception):
+            logger.warning(f"交通数据收集失败: {results[5]}")
 
-        try:
-            data["transportation"] = await self.collect_transportation_data(departure, destination, transportation_mode)
-        except Exception:
-            data["transportation"] = []
-        await asyncio.sleep(interval_seconds)
+        data["xiaohongshu_notes"] = results[6] if not isinstance(results[6], Exception) else []
+        if isinstance(results[6], Exception):
+            logger.warning(f"小红书数据收集失败: {results[6]}")
 
-        # 等待小红书并发任务完成
-        try:
-            data["xiaohongshu_notes"] = await xhs_task
-        except Exception as e:
-            logger.exception(f"小红书数据收集失败: {e}")
-            data["xiaohongshu_notes"] = []
+        logger.info(f"并行数据收集完成: 航班{len(data['flights'])}条, 酒店{len(data['hotels'])}条, 景点{len(data['attractions'])}条, 餐厅{len(data['restaurants'])}条")
 
         return data
 

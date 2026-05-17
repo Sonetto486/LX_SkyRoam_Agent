@@ -215,6 +215,15 @@ class Settings(BaseSettings):
     PLAN_MIN_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MIN_ATTRACTIONS_PER_DAY", "3"))
     PLAN_MAX_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MAX_ATTRACTIONS_PER_DAY", "4"))
 
+    # 特殊景点关键词配置（需要单独安排一天的景点类型）
+    PLAN_FULL_DAY_ATTRACTION_KEYWORDS: List[str] = [
+        "迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+        "野生动物园", "海洋公园", "环球影城", "方特"
+    ]
+
+    # 全天游览时间标识
+    PLAN_FULL_DAY_DURATION_PATTERNS: List[str] = ["全天", "6小时", "8小时", "一天"]
+
     # 单日期望的用餐次数（用于估算需要多少餐厅数据，例如 3 = 早/中/晚）
     PLAN_MIN_MEALS_PER_DAY: int = int(os.getenv("PLAN_MIN_MEALS_PER_DAY", "3"))
 

@@ -140,14 +140,41 @@ def build_simple_attraction_plan(
     day: int,
     date_str: str,
     attractions_data: List[Dict[str, Any]],
+    min_attractions: int = 3,
+    max_attractions: int = 4,
 ) -> Dict[str, Any]:
-    """Fallback attraction plan when the LLM response is unusable."""
+    """Fallback attraction plan when the LLM response is unusable.
+
+    Args:
+        day: Day number
+        date_str: Date string
+        attractions_data: List of attraction data
+        min_attractions: Minimum attractions per day (default 3)
+        max_attractions: Maximum attractions per day (default 4)
+    """
     selection: List[Dict[str, Any]] = []
     if attractions_data:
-        start = (day - 1) * 2
-        selection = attractions_data[start : start + 2]
+        total_attractions = len(attractions_data)
+        start = (day - 1) * min_attractions
+
+        # 选择 min_attractions 个景点
+        end = min(start + min_attractions, total_attractions)
+        selection = attractions_data[start:end]
+
+        # 如果不够，从头补充
+        if len(selection) < min_attractions and start > 0:
+            remaining_needed = min_attractions - len(selection)
+            additional = attractions_data[:remaining_needed]
+            selection = list(selection) + list(additional)
+
+        # 如果仍然不够，尝试用全部数据
         if not selection:
-            selection = attractions_data[:2]
+            selection = attractions_data[:min_attractions]
+
+        # 不超过 max_attractions
+        if len(selection) > max_attractions:
+            selection = selection[:max_attractions]
+
     selection = [copy.deepcopy(attr) for attr in selection]
 
     schedule: List[Dict[str, Any]] = []
