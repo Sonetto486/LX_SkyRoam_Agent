@@ -192,6 +192,9 @@ class Settings(BaseSettings):
     # 缓存配置
     CACHE_TTL: int = int(os.getenv("CACHE_TTL", "3600"))  # 1小时
     CACHE_MAX_SIZE: int = int(os.getenv("CACHE_MAX_SIZE", "1000"))
+    # POI缓存配置（景点信息变化不频繁，可缓存更长时间）
+    POI_CACHE_TTL: int = int(os.getenv("POI_CACHE_TTL", "604800"))  # 7天
+    GEOCODE_CACHE_TTL: int = int(os.getenv("GEOCODE_CACHE_TTL", "7776000"))  # 90天
 
     # 任务配置
     TASK_TIMEOUT: int = int(os.getenv("TASK_TIMEOUT", "300"))  # 5分钟

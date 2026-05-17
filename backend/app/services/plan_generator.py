@@ -2843,9 +2843,50 @@ class PlanGenerator:
                                 normalized_attractions = []
                                 for attr in raw_attractions:
                                     if isinstance(attr, dict):
+                                        # 补充图片数据：从attractions_data中匹配
+                                        attr_name = attr.get("name", "")
+                                        # 无论是否有photos，都尝试补充image_url和photos
+                                        matched_data = next(
+                                            (a for a in processed_data.get('attractions', [])
+                                             if a.get('name') == attr_name),
+                                            None
+                                        )
+                                        if matched_data:
+                                            # 图片处理优先级：
+                                            # 1. 使用已有的image_url（保留原有值）
+                                            # 2. 补充photos数组（来自高德API或数据库）
+                                            # 3. 若都无，则从photos[0]生成image_url
+                                            if not attr.get("image_url") and not attr.get("photos"):
+                                                # 完全没有图片信息，从matched_data补充
+                                                if matched_data.get("photos"):
+                                                    attr["photos"] = matched_data["photos"]
+                                                    attr["image_url"] = matched_data["photos"][0]
+                                            elif not attr.get("photos") and matched_data.get("photos"):
+                                                # 有image_url但没有photos数组，补充photos
+                                                attr["photos"] = matched_data["photos"]
+                                            
+                                            # 补充category和labels字段（用于地图标签显示）
+                                            if matched_data.get("category") and not attr.get("category"):
+                                                attr["category"] = matched_data["category"]
+                                            if matched_data.get("labels") and not attr.get("labels"):
+                                                attr["labels"] = matched_data["labels"]
                                         normalized_attractions.append(attr)
                                     elif attr not in (None, ""):
-                                        normalized_attractions.append({"name": attr})
+                                        # 字符串类型的景点名称，尝试匹配图片和详细信息
+                                        attr_dict = {"name": attr}
+                                        matched_data = next(
+                                            (a for a in processed_data.get('attractions', [])
+                                             if a.get('name') == attr),
+                                            None
+                                        )
+                                        if matched_data:
+                                            # 传输完整的photos数组（前端可使用轮播）
+                                            if matched_data.get("photos"):
+                                                attr_dict["photos"] = matched_data["photos"]
+                                                attr_dict["image_url"] = matched_data["photos"][0]
+                                            attr_dict["category"] = matched_data.get("category")
+                                            attr_dict["labels"] = matched_data.get("labels")
+                                        normalized_attractions.append(attr_dict)
                                 daily_plan["attractions"] = normalized_attractions
                             else:
                                 daily_plan["attractions"] = []

@@ -297,9 +297,11 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
         )
         details = result.scalars().all()
         if not details:
+            logger.info(f"未找到目的地 {destination} 的景点详细信息")
             return plan_data
 
         detail_map = {d.name.strip().lower(): d for d in details if d.name}
+        logger.info(f"已加载 {destination} 的 {len(detail_map)} 个景点详细信息")
 
         def merge_one(attraction: Any) -> Any:
             if attraction is None:
@@ -316,10 +318,12 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
                 return base
 
             detail = detail_map.get(name)
-            if not detail:
+            if detail:
+                logger.debug(f"成功匹配景点详情: {base.get('name')}")
+                return AttractionDetailService.merge_detail_into_attraction(base, detail)
+            else:
+                logger.debug(f"未找到景点详情匹配: {base.get('name')} (规范化: {name})")
                 return base
-
-            return AttractionDetailService.merge_detail_into_attraction(base, detail)
 
         # 遍历 generated_plans -> daily_itineraries -> attractions
         generated_plans = plan_data.get("generated_plans")
@@ -335,6 +339,10 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
                         continue
                     attractions = day.get("attractions")
                     if isinstance(attractions, list):
+                        # 日志：记录当天的景点名称
+                        attraction_names = [a.get("name") if isinstance(a, dict) else a for a in attractions]
+                        logger.debug(f"日期 {day.get('date')}: 处理景点 {attraction_names}")
+                        
                         merged = [merge_one(a) for a in attractions]
                         day["attractions"] = merged
 

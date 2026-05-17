@@ -572,10 +572,13 @@ const getDayActivities = (): DayActivity[] => {
             name: item.title,
             address: item.address,
             coordinates: item.coordinates,
-            type: item.details?.type,
-            score: item.details?.score,
+            type: item.details?.category || item.details?.labels?.[0] || item.details?.type,  // 优先使用category，其次labels[0]
+            score: item.details?.score || item.details?.rating,  // 支持score和rating两种字段
             description: item.description,
             city: plan.destination,  // 添加城市字段
+            image_url: item.details?.image_url || item.details?.photos?.[0],  // 单张图片URL
+            photos: item.details?.photos,  // 图片数组
+            images: item.details?.photos || item.details?.images || item.images,  // 兼容旧字段
           })),
           // 每日提示（从richData获取）
           daily_tips: dayRichData?.daily_tips || [],
@@ -788,6 +791,9 @@ const getDayActivities = (): DayActivity[] => {
             isHovered: false,
             day: activeDay + 1,  // 添加天数
             date: day.date,  // 添加日期字符串
+            score: attr.score,  // 添加评分
+            type: attr.type,  // 添加类型
+            category: attr.type,  // 使用type作为category
           });
         }
       });

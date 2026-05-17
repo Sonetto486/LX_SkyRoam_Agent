@@ -124,8 +124,20 @@ class AttractionDetailService:
                 attraction["email"] = detail.email
             if detail.wechat:
                 attraction["wechat"] = detail.wechat
-            if detail.image_url and not attraction.get("image_url"):
+            # 合并图片信息
+            # 优先级：数据库image_url > 原始photos数组的第一张
+            # 但同时保留完整的photos数组供前端轮播使用
+            if detail.image_url:
+                # 数据库维护的图片优先使用
                 attraction["image_url"] = detail.image_url
+                # 如果没有photos数组，从image_url创建单元素数组
+                if not attraction.get("photos"):
+                    attraction["photos"] = [detail.image_url]
+            elif attraction.get("photos"):
+                # 保留高德API返回的photos数组
+                # 若image_url为空，从photos[0]补充
+                if not attraction.get("image_url") and attraction["photos"]:
+                    attraction["image_url"] = attraction["photos"][0]
             
             # 合并价格信息（优先级：详细信息 > 原始数据）
             if detail.ticket_price is not None:

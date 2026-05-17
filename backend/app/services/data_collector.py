@@ -798,12 +798,13 @@ class DataCollector:
             # 降级方案：返回简单描述，不包含坐标
             return f"{name}是{city}的一处{category}，拥有独特的景观特色，是游客游览的好去处。"
 
-    async def _convert_poi_to_attraction_format(self, poi_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _convert_poi_to_attraction_format(self, poi_list: List[Dict[str, Any]], enrich_with_amap: bool = True) -> List[Dict[str, Any]]:
         """
         将 POI 数据格式转换为景点数据格式
 
         Args:
             poi_list: POI 检索返回的景点列表
+            enrich_with_amap: 是否使用高德API补充地址等信息
 
         Returns:
             转换后的景点数据列表，格式与高德地图 API 返回的数据一致
@@ -814,23 +815,27 @@ class DataCollector:
             labels = poi.get("labels", [])
             category = labels[0] if labels else "风景名胜"
 
-            # 如果POI已有描述，直接使用；否则使用LLM生成
-            if poi.get("description"):
-                description = poi.get("description")
-            else:
-                # 使用LLM生成描述
-                description = await self._generate_attraction_description_from_poi(
-                    name=poi.get("name", "景点"),
-                    city=poi.get("city", ""),
-                    category=category
-                )
+            # 如果需要高德补充且POI没有地址，调用高德API
+            if enrich_with_amap and not poi.get("address"):
+                try:
+                    from app.services.poi_retriever import get_poi_retriever
+                    poi_retriever = get_poi_retriever()
+                    # 使用异步方法补充高德信息
+                    enriched_poi = await poi_retriever._enrich_with_amap(poi)
+                    if enriched_poi:
+                        poi = enriched_poi
+                except Exception as e:
+                    logger.warning(f"高德API补充景点信息失败: {e}")
+
+            # 生成简洁的景点简介（不包含经纬度等）
+            description = self._generate_simple_description(poi)
 
             attraction_item = {
                 "id": f"poi_{poi.get('id', '')}",
                 "name": poi.get("name", "景点"),
                 "category": category,
                 "description": description,
-                "price": poi.get("cost", "价格未知"),
+                "price": poi.get("cost") or poi.get("price", "价格未知"),
                 "rating": poi.get("rating", 4.5),
                 "popularity_rank": poi.get("popularity_rank", 9999),  # 热度排名
                 "popularity_score": poi.get("popularity_score", 0),    # 热度评分
@@ -846,12 +851,42 @@ class DataCollector:
                 "photos": poi.get("photos", []),
                 "source": poi.get("source", "POI向量库+高德地图"),
                 "poi_id": poi.get("poi_id"),
-                "city": poi.get("city", "")
+                "city": poi.get("city", ""),
+                "labels": labels  # 添加标签字段
             }
             attractions.append(attraction_item)
 
         logger.info(f"转换 {len(attractions)} 个POI景点为景点数据格式")
         return attractions
+
+    def _generate_simple_description(self, poi: Dict[str, Any]) -> str:
+        """生成简洁的景点简介，使用准确的类别信息"""
+        name = poi.get("name", "景点")
+        city = poi.get("city", "")
+        category = poi.get("category", "")
+        labels = poi.get("labels", [])
+
+        # 如果有高德API返回的简介，检查是否有效
+        desc = poi.get("description", "")
+        if desc and len(desc) > 10:
+            # 过滤掉包含坐标的简介
+            if not any(kw in desc for kw in ["纬度", "经度", "坐标", "location", "latitude", "longitude"]):
+                return desc
+
+        # 确定景点类别（优先使用高德返回的category）
+        # 过滤掉不合适的默认类别
+        invalid_categories = ["风景名胜", "景点", "旅游", "观光", "风景区"]
+        if category and category not in invalid_categories:
+            label_str = category
+        else:
+            # 从标签中选择一个有效的（过滤掉项目名称类的长标签）
+            valid_labels = [l for l in labels if l and len(l) <= 10 and l not in invalid_categories]
+            label_str = valid_labels[0] if valid_labels else "景点"
+
+        # 生成简洁简介
+        if city:
+            return f"{name}位于{city}，是当地知名的{label_str}。"
+        return f"{name}是热门的{label_str}，值得一游。"
 
     async def collect_weather_data(
         self,

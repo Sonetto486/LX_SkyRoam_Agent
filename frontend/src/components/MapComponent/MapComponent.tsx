@@ -21,6 +21,7 @@ interface Marker {
   score?: number;      // 评分
   type?: string;       // 景点类型
   price?: number;      // 门票价格
+  category?: string;   // 景点类别（更准确的类型）
 }
 
 interface RouteSegment {
@@ -123,7 +124,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
               <p style="margin:0 0 4px 0;color:#666;">${marker.address}</p>
               ${marker.isHotel ? '<p style="margin:0;color:#722ed1;">住宿推荐</p>' : ''}
               ${marker.score ? `<p style="margin:0 0 4px 0;color:#faad14;">⭐ ${marker.score} 分</p>` : ''}
-              ${marker.type ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.type}</p>` : ''}
+              ${marker.category ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.category}</p>` : marker.type ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.type}</p>` : ''}
               ${marker.price ? `<p style="margin:0 0 4px 0;color:#ff4d4f;">💰 ¥${marker.price}</p>` : ''}
               ${marker.time ? `<p style="margin:0;color:#999;">时间: ${marker.time}</p>` : ''}
               ${marker.day ? `<p style="margin:0;color:#999;">第 ${marker.day} 天</p>` : ''}

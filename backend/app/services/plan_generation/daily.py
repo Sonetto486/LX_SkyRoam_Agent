@@ -17,17 +17,20 @@ DayEntryExtractor = Callable[[Any, int, str], Optional[Dict[str, Any]]]
 
 
 def _ensure_attraction_description(attr: Dict[str, Any]) -> str:
-    """确保景点有有效的简介
+    """确保景点有有效的简介，过滤经纬度等不必要信息
 
     POI 数据库没有 description 字段，chunk_text 可能是地址或其他文本。
     此函数检查描述是否有效，如果无效则生成一个简单的简介。
     """
     desc = attr.get("description", "")
-    # 检查描述是否有效（长度>10且不是地址）
-    if desc and len(desc) > 10 and not desc.startswith("地址") and not desc.startswith("address"):
-        return desc
+    # 检查描述是否有效（长度>10且不是地址且不包含坐标）
+    exclude_keywords = ["地址", "address", "纬度", "经度", "坐标", "location", "latitude", "longitude", "地理位置"]
+    if desc and len(desc) > 10:
+        # 过滤掉包含坐标等不必要信息的简介
+        if not any(kw in desc.lower() for kw in exclude_keywords):
+            return desc
 
-    # 生成简介
+    # 生成简洁简介
     name = attr.get("name", "景点")
     city = attr.get("city", "")
     labels = attr.get("labels", [])
