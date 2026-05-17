@@ -17,22 +17,26 @@ const featureList = [
   {
     icon: '✨',
     title: 'AI 智能规划',
-    description: '基于深度学习的推荐系统，为您生成最优旅行路线'
+    description: '基于深度学习的推荐系统，为您生成最优旅行路线',
+    color: 'mint'
   },
   {
     icon: '🗺️',
     title: '全球覆盖',
-    description: '覆盖 280+ 城市，随时随地规划你的目的地'
+    description: '覆盖 280+ 城市，随时随地规划你的目的地',
+    color: 'sky'
   },
   {
     icon: '⚡',
     title: '极速生成',
-    description: '先进引擎秒级响应，瞬间获取完整方案'
+    description: '先进引擎秒级响应，瞬间获取完整方案',
+    color: 'peach'
   },
   {
     icon: '💰',
     title: '智能省钱',
-    description: '动态价格分析，平均为你节省 20-40% 预算'
+    description: '动态价格分析，平均为你节省 20-40% 预算',
+    color: 'lavender'
   }
 ];
 
@@ -48,19 +52,22 @@ const workflowSteps = [
     number: '1',
     title: '说出你的梦想',
     description: '输入目的地、预算、天数与旅行风格',
-    emoji: '🎯'
+    emoji: '🎯',
+    color: 'yellow'
   },
   {
     number: '2',
     title: 'AI 智能规划',
     description: '自动生成吃住行娱一体化方案',
-    emoji: '🤖'
+    emoji: '🤖',
+    color: 'rose'
   },
   {
     number: '3',
     title: '一键调整分享',
     description: '可视化编辑，导出并分享给出行伙伴',
-    emoji: '🚀'
+    emoji: '🚀',
+    color: 'mint'
   }
 ];
 
@@ -149,7 +156,7 @@ const HomePage: React.FC = () => {
           <Row gutter={[24, 24]}>
             {featureList.map((feature) => (
               <Col xs={24} sm={12} md={6} key={feature.title}>
-                <div className="feature-card glass-card">
+                <div className={`feature-card ${feature.color}`}>
                   <div className="feature-icon">{feature.icon}</div>
                   <Title level={4}>{feature.title}</Title>
                   <Paragraph>{feature.description}</Paragraph>
@@ -190,7 +197,7 @@ const HomePage: React.FC = () => {
           <Row gutter={[32, 32]}>
             {workflowSteps.map((step, index) => (
               <Col xs={24} md={8} key={step.number}>
-                <div className="step-card">
+                <div className={`step-card ${step.color}`}>
                   <div className="step-header">
                     <div className="step-number">{step.number}</div>
                     <div className="step-emoji">{step.emoji}</div>
@@ -207,7 +214,7 @@ const HomePage: React.FC = () => {
 
       <section className="cta-section">
         <div className="container">
-          <div className="cta-card glass-card">
+          <div className="cta-card">
             <ThunderboltOutlined className="cta-icon" />
             <Title level={2}>准备好开启梦幻之旅了吗？</Title>
             <Paragraph>加入数万旅行者，用 AI 规划属于你的完美行程</Paragraph>
