@@ -70,12 +70,12 @@ class Settings(BaseSettings):
     CELERY_BACKEND_DB: int = int(os.getenv("CELERY_BACKEND_DB", "2"))
     
     # OpenAI配置
-    OPENAI_API_KEY: str = os.getenv("sk-6974f8470fa146edbe2244d7119135eb", "")
-    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "=https://dashscope.aliyuncs.com/compatible-mode/v1")  # 自定义API地址
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")  # 自定义API地址
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
     OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "openai")
-    DASHSCOPE_API_KEY: str = os.getenv("sk-6974f8470fa146edbe2244d7119135eb", "")
+    DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
     DASHSCOPE_EMBEDDING_MODEL: str = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v2")
     
     # OpenAI Token 限制配置

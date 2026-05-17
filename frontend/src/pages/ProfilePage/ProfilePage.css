@@ -4,10 +4,20 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: calc(100vh - 64px);
+  overflow: hidden;
+}
+
+/* ========== 顶部区域：个人信息 + 统计（横向） ========== */
+.profile-top-section {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
 }
 
 /* 个人信息卡片 */
 .profile-card {
+  flex: 0 0 280px;
   border-radius: 8px !important;
   background: var(--bg-soft) !important;
   border-color: var(--border) !important;
@@ -15,12 +25,14 @@
 
 .profile-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 32px;
+  text-align: center;
+  gap: 12px;
 }
 
 .profile-info {
-  flex: 1;
+  width: 100%;
 }
 
 .profile-email {
@@ -28,112 +40,294 @@
   font-size: 14px;
 }
 
-/* 统计卡片 */
+/* 统计卡片 - 横向排列 */
 .stats-card {
+  flex: 1;
   border-radius: 8px !important;
   background: var(--bg-soft) !important;
   border-color: var(--border) !important;
 }
 
-/* 地图卡片 */
-.map-card {
-  border-radius: 8px !important;
-  background: var(--bg-soft) !important;
-  border-color: var(--border) !important;
+.stats-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 100%;
 }
 
-.interactive-map {
-  height: 400px;
+.stat-item {
+  flex: 1;
+  text-align: center;
+  padding: 16px 8px;
+  border-right: 1px solid var(--border);
+  transition: background 0.2s;
+}
+
+.stat-item:last-child {
+  border-right: none;
+}
+
+.stat-item:hover {
+  background: var(--overlay);
   border-radius: 8px;
+}
+
+.stat-item .ant-statistic-title {
+  font-size: 13px !important;
+  color: var(--text-soft) !important;
+  margin-bottom: 4px !important;
+}
+
+.stat-item .ant-statistic-content {
+  font-size: 26px !important;
+  font-weight: 600;
+}
+
+/* ========== 地图区域 ========== */
+.map-section {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
-.map-placeholder {
-  width: 100%;
+.map-card {
   height: 100%;
-  background: var(--overlay);
+  border-radius: 8px !important;
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.map-card .ant-card-body {
+  flex: 1;
+  padding: 0 !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-card-header {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--text-soft);
-  padding: 40px 0;
+  justify-content: space-between;
+  padding: 12px 20px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.amap-container {
+.map-container-wrapper {
+  flex: 1;
+  position: relative;
   width: 100%;
-  height: 400px;
-  margin: 16px 0;
+  min-height: 300px;
 }
 
-/* 收藏和记录卡片 */
-.collection-card,
-.journal-card {
+.map-container-wrapper > div {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* ========== 底部区域 ========== */
+.bottom-section {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+  max-height: 280px;
+}
+
+.bottom-section .ant-card {
+  flex: 1;
   border-radius: 8px !important;
-  height: 100%;
   background: var(--bg-soft) !important;
   border-color: var(--border) !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.collection-item,
-.journal-item {
-  margin-bottom: 16px !important;
+.bottom-section .ant-card-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px !important;
+}
+
+/* 内部子卡片 */
+.inner-card {
+  margin-bottom: 8px;
   border-radius: 8px !important;
-  overflow: hidden;
   background: var(--bg-soft) !important;
   border-color: var(--border) !important;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
 }
 
-.collection-image,
-.journal-image {
-  height: 160px;
+.inner-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.inner-card .ant-card-body {
+  padding: 10px 12px !important;
+}
+
+.card-item-content {
+  display: flex;
+  gap: 12px;
+}
+
+.card-item-image {
+  width: 100px;
+  height: 66px;
+  border-radius: 6px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
-.collection-image img,
-.journal-image img {
+.card-item-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.collection-content,
-.journal-content {
-  padding: 16px;
+.card-item-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.journal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+.card-item-info h5 {
+  margin: 0 0 4px !important;
+  font-size: 14px !important;
 }
 
-/* 加载样式 */
+.card-item-info .ant-typography {
+  color: var(--text-soft) !important;
+  font-size: 12px !important;
+}
+
+/* ========== 加载和空状态 ========== */
 .loading-container {
   text-align: center;
   margin-top: 100px;
 }
 
-/* 响应式布局 */
-@media (max-width: 768px) {
-  .profile-header {
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.8);
+  z-index: 10;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--text-soft);
+}
+
+.empty-state .anticon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+/* ========== 兼容旧样式 ========== */
+.interactive-map {
+  height: 100%;
+}
+
+.amap-container {
+  width: 100%;
+  height: 100%;
+}
+
+.collection-card,
+.journal-card {
+  height: 100%;
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 992px) {
+  .profile-page {
+    height: auto;
+    overflow: auto;
+  }
+
+  .profile-top-section {
     flex-direction: column;
-    text-align: center;
-    gap: 16px;
   }
 
-  .profile-info {
-    width: 100%;
+  .profile-card {
+    flex: none;
   }
 
-  .interactive-map {
+  .map-section {
+    height: 400px;
+    flex: none;
+  }
+
+  .bottom-section {
+    flex-direction: column;
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    flex: 0 0 50%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-item:nth-child(3),
+  .stat-item:nth-child(4) {
+    border-bottom: none;
+  }
+
+  .stat-item .ant-statistic-content {
+    font-size: 22px !important;
+  }
+
+  .map-section {
     height: 300px;
   }
 
-  .collection-image,
-  .journal-image {
+  .card-item-content {
+    flex-direction: column;
+  }
+
+  .card-item-image {
+    width: 100%;
     height: 120px;
   }
 }

@@ -237,6 +237,42 @@ const ItineraryWorkspace: React.FC = () => {
     fetchPlan();
   }, [fetchPlan]);
 
+  // 响应来自 AI 助手的全局事件：打开景点详情 或 行程已更新（刷新当前计划）
+  useEffect(() => {
+    const onOpenAttraction = (e: any) => {
+      try {
+        const attraction = e?.detail?.attraction;
+        if (!attraction) return;
+        // 仅当当前页面展示某个行程工作区时才打开详情
+        if (!id) return;
+        openDetailModal('attraction', attraction);
+      } catch (err) {
+        console.warn('open-attraction handler error', err);
+      }
+    };
+
+    const onPlanUpdated = (e: any) => {
+      try {
+        const planId = e?.detail?.planId;
+        if (!planId) return;
+        if (!id) return;
+        if (String(planId) === String(id)) {
+          // 重新加载行程数据
+          fetchPlan();
+        }
+      } catch (err) {
+        console.warn('plan-updated handler error', err);
+      }
+    };
+
+    window.addEventListener('ai-assistant:open-attraction', onOpenAttraction as EventListener);
+    window.addEventListener('ai-assistant:plan-updated', onPlanUpdated as EventListener);
+    return () => {
+      window.removeEventListener('ai-assistant:open-attraction', onOpenAttraction as EventListener);
+      window.removeEventListener('ai-assistant:plan-updated', onPlanUpdated as EventListener);
+    };
+  }, [id, fetchPlan]);
+
   // 保存行程
   const handleSave = async () => {
     if (!plan) return;

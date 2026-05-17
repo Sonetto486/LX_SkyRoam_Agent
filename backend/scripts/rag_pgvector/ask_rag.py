@@ -1,7 +1,9 @@
 import argparse
+import asyncio
 import json
 import os
 import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any
@@ -90,6 +92,36 @@ def log_remote_config(config: RemoteModelConfig) -> None:
     print(f"Chat model={config.chat_model}")
 
 
+def extract_marked_entities(text: str):
+    entities = []
+
+    attraction_pattern = r'\[景点\](.*?)\[景点\]'
+    for match in re.findall(attraction_pattern, text):
+        entities.append({
+            'type': 'attraction',
+            'name': match.strip(),
+            'icon': '🏛️'
+        })
+
+    restaurant_pattern = r'\[餐馆\](.*?)\[餐馆\]'
+    for match in re.findall(restaurant_pattern, text):
+        entities.append({
+            'type': 'restaurant',
+            'name': match.strip(),
+            'icon': '🍜'
+        })
+
+    hotel_pattern = r'\[酒店\](.*?)\[酒店\]'
+    for match in re.findall(hotel_pattern, text):
+        entities.append({
+            'type': 'hotel',
+            'name': match.strip(),
+            'icon': '🏨'
+        })
+
+    return entities
+
+
 def embed_query(query: str, config: RemoteModelConfig) -> List[float]:
     if config.provider == "dashscope":
         dashscope.api_key = config.dashscope_api_key
@@ -147,7 +179,7 @@ def retrieve_context(collection, embedding: List[float], top_k: int) -> List[Dic
     return results
 
 
-def build_prompt(question: str, contexts: List[Dict[str, Any]]) -> str:
+def build_answer_prompt(question: str, contexts: List[Dict[str, Any]]) -> str:
     sources = []
     for idx, item in enumerate(contexts, start=1):
         title = item.get("title") or ""
@@ -161,8 +193,40 @@ def build_prompt(question: str, contexts: List[Dict[str, Any]]) -> str:
         "你是一个旅行规划助手。请基于资料回答问题，避免编造。\n\n"
         f"资料:\n{source_block}\n\n"
         f"问题: {question}\n"
+        "回答要求：\n"
+        "- 只输出自然语言答案\n"
+        "- 不要输出任何实体标记、JSON 或额外说明\n"
+        "- 用朋友聊天的口语风格回答\n"
         "回答:"
     )
+
+
+def build_entity_extraction_prompt(answer_text: str) -> str:
+    return f"""请从下面这段旅行回答中，提取所有被推荐的景点、餐馆、酒店。
+
+回答正文：
+{answer_text}
+
+提取规则：
+1. 只提取回答正文中明确推荐的地点名称
+2. 只输出 JSON 数组，不要输出任何解释文字
+3. 每个元素必须是对象，包含字段：type, name, icon
+4. type 只能是 attraction / restaurant / hotel
+5. icon 分别使用 🏛️ / 🍜 / 🏨
+6. 如果没有可提取实体，输出 []
+
+输出示例：
+[{"type":"attraction","name":"故宫","icon":"🏛️"},{"type":"restaurant","name":"四季民福烤鸭店","icon":"🍜"}]
+
+现在开始输出 JSON："""
+
+
+def strip_code_fences(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    return cleaned.strip()
 
 
 def generate_answer(prompt: str, config: RemoteModelConfig) -> str:
@@ -177,6 +241,69 @@ def generate_answer(prompt: str, config: RemoteModelConfig) -> str:
         temperature=config.temperature,
     )
     return response.choices[0].message.content.strip()
+
+
+def parse_entity_extraction_result(text: str):
+    if not text:
+        return []
+
+    cleaned = strip_code_fences(text)
+
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            data = data.get("entities", [])
+        if isinstance(data, list):
+            entities = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                entity_type = str(item.get("type", "")).strip().lower()
+                name = str(item.get("name", "")).strip()
+                if entity_type in {"attraction", "restaurant", "hotel"} and name:
+                    entities.append(
+                        {
+                            "type": entity_type,
+                            "name": name,
+                            "icon": item.get("icon") or ({"attraction": "🏛️", "restaurant": "🍜", "hotel": "🏨"}[entity_type]),
+                        }
+                    )
+            return entities
+    except Exception:
+        pass
+
+    return extract_marked_entities(cleaned)
+
+
+async def answer_question(question: str, contexts: List[Dict[str, Any]], config: RemoteModelConfig) -> Dict[str, Any]:
+    """先生成自然语言答案，再从答案中抽取实体。"""
+    prompt = build_answer_prompt(question, contexts)
+    raw_answer = generate_answer(prompt, config)
+    clean_answer = raw_answer.strip()
+
+    extraction_prompt = build_entity_extraction_prompt(clean_answer)
+    extraction_text = generate_answer(extraction_prompt, config)
+    entities = parse_entity_extraction_result(extraction_text)
+    if not entities:
+        entities = extract_marked_entities(clean_answer)
+
+    sources = []
+    for r in contexts[:5]:
+        sources.append(
+            {
+                "title": r.get("title", "小红书笔记"),
+                "content": (r.get("content", "") or "")[:200],
+                "score": r.get("score", 0),
+                "like_count": r.get("like_count", 0),
+            }
+        )
+
+    return {
+        "answer": clean_answer,
+        "raw_answer": raw_answer,
+        "entities": entities,
+        "sources": sources,
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -197,13 +324,12 @@ def main() -> None:
     collection = get_collection(chroma_config)
     embedding = embed_query(args.question, remote_config)
     contexts = retrieve_context(collection, embedding, args.top_k)
-    prompt = build_prompt(args.question, contexts)
-    answer = generate_answer(prompt, remote_config)
 
     if args.show_context:
         print(json.dumps(contexts, ensure_ascii=False, indent=2))
 
-    print(answer)
+    result = asyncio.run(answer_question(args.question, contexts, remote_config))
+    print(result["answer"])
 
 
 if __name__ == "__main__":

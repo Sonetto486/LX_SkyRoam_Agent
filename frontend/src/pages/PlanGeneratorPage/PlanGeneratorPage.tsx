@@ -174,7 +174,7 @@ const PlanGeneratorPage: React.FC = () => {
 
   const checkCeleryWorker = async (): Promise<boolean> => {
     try {
-      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8001/api/v1';
+      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
       const baseUrl = apiUrl.replace(/\/api\/v1\/?$/, '');
       const res = await fetch(`${baseUrl}/health/celery`);
       if (res.ok) {
