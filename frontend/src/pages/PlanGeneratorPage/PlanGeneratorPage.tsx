@@ -77,13 +77,6 @@ const CityInput: React.FC<CityInputProps> = ({ value, onChange, placeholder }) =
   );
 };
 
-// 预算映射
-const budgetMap: Record<string, number> = {
-  low: 3000,
-  medium: 6000,
-  high: 10000,
-};
-
 const PlanGeneratorPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -255,10 +248,6 @@ const PlanGeneratorPage: React.FC = () => {
       message.error('请选择出行人数');
       return;
     }
-    if (!values.budget) {
-      message.error('请选择预算范围');
-      return;
-    }
 
     const useSyncMode = !await checkCeleryWorker();
     if (useSyncMode) {
@@ -297,7 +286,6 @@ const PlanGeneratorPage: React.FC = () => {
         start_date: values.dateRange[0].format('YYYY-MM-DD'),
         end_date: values.dateRange[1].format('YYYY-MM-DD'),
         duration_days: durationDays,
-        budget: budgetMap[values.budget] || 5000,
         preferences: {
           travelers: typeof values.people === 'string' ? (values.people === '10+' ? 10 : parseInt(values.people) || 1) : values.people,
           interests: values.interests || [],
@@ -326,7 +314,6 @@ const PlanGeneratorPage: React.FC = () => {
       const preferences = {
         travelers: typeof values.people === 'string' ? (values.people === '10+' ? 10 : parseInt(values.people) || 1) : values.people,
         interests: values.interests || [],
-        budget: budgetMap[values.budget] || 5000,
       };
 
       const planDetail = useSyncMode
@@ -763,15 +750,6 @@ const PlanGeneratorPage: React.FC = () => {
                       <Option key={person} value={person}>{person}人</Option>
                     ))}
                     <Option value="10+">十人及以上</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="budget" label="预算范围" rules={[{ required: true, message: '请选择预算范围' }]}>
-                  <Select placeholder="选择预算范围" style={{ width: '100%' }}>
-                    <Option value="low">经济型（&lt; 3000元/人）</Option>
-                    <Option value="medium">舒适型（3000-8000元/人）</Option>
-                    <Option value="high">豪华型（&gt; 8000元/人）</Option>
                   </Select>
                 </Form.Item>
               </Col>
