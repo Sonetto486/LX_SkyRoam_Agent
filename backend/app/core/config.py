@@ -70,12 +70,12 @@ class Settings(BaseSettings):
     CELERY_BACKEND_DB: int = int(os.getenv("CELERY_BACKEND_DB", "2"))
     
     # OpenAI配置
-    OPENAI_API_KEY: str = os.getenv("sk-6974f8470fa146edbe2244d7119135eb", "")
-    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "=https://dashscope.aliyuncs.com/compatible-mode/v1")  # 自定义API地址
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")  # 自定义API地址
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
     OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "openai")
-    DASHSCOPE_API_KEY: str = os.getenv("sk-6974f8470fa146edbe2244d7119135eb", "")
+    DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
     DASHSCOPE_EMBEDDING_MODEL: str = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v2")
     
     # OpenAI Token 限制配置
@@ -192,6 +192,9 @@ class Settings(BaseSettings):
     # 缓存配置
     CACHE_TTL: int = int(os.getenv("CACHE_TTL", "3600"))  # 1小时
     CACHE_MAX_SIZE: int = int(os.getenv("CACHE_MAX_SIZE", "1000"))
+    # POI缓存配置（景点信息变化不频繁，可缓存更长时间）
+    POI_CACHE_TTL: int = int(os.getenv("POI_CACHE_TTL", "604800"))  # 7天
+    GEOCODE_CACHE_TTL: int = int(os.getenv("GEOCODE_CACHE_TTL", "7776000"))  # 90天
 
     # 任务配置
     TASK_TIMEOUT: int = int(os.getenv("TASK_TIMEOUT", "300"))  # 5分钟
@@ -214,6 +217,15 @@ class Settings(BaseSettings):
     # 单日期望的最少景点数 / 最大景点数，用于控制行程密度和数据需求估算
     PLAN_MIN_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MIN_ATTRACTIONS_PER_DAY", "3"))
     PLAN_MAX_ATTRACTIONS_PER_DAY: int = int(os.getenv("PLAN_MAX_ATTRACTIONS_PER_DAY", "4"))
+
+    # 特殊景点关键词配置（需要单独安排一天的景点类型）
+    PLAN_FULL_DAY_ATTRACTION_KEYWORDS: List[str] = [
+        "迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+        "野生动物园", "海洋公园", "环球影城", "方特"
+    ]
+
+    # 全天游览时间标识
+    PLAN_FULL_DAY_DURATION_PATTERNS: List[str] = ["全天", "6小时", "8小时", "一天"]
 
     # 单日期望的用餐次数（用于估算需要多少餐厅数据，例如 3 = 早/中/晚）
     PLAN_MIN_MEALS_PER_DAY: int = int(os.getenv("PLAN_MIN_MEALS_PER_DAY", "3"))

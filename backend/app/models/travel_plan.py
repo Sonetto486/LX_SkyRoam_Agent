@@ -47,6 +47,7 @@ class TravelPlan(BaseModel):
     packing_list = Column(JSON, nullable=True)  # 物品清单 [{"name": "护照", "category": "证件", "checked": false}]
     travel_mode = Column(String(50), nullable=True)  # 出行方式: flight, train, car, bus, self_drive
     tags = Column(JSON, nullable=True)  # 行程标签 ["蜜月", "亲子", "自驾"]
+    must_visit_attractions = Column(JSON, nullable=True)  # 必去景点列表 ["景点1", "景点2"]
 
     # 关联关系
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

@@ -1,0 +1,284 @@
+/**
+ * Notion Design System - 组件样式
+ */
+
+/* 按钮组件 */
+.btn-primary {
+  background-color: var(--primary) !important;
+  color: var(--on-primary) !important;
+  border: none !important;
+  border-radius: var(--rounded-md) !important;
+  padding: 10px 18px !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-pressed) !important;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: transparent !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--hairline-strong) !important;
+  border-radius: var(--rounded-md) !important;
+  padding: 10px 18px !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+}
+
+.btn-secondary:hover {
+  border-color: var(--ink) !important;
+  background-color: var(--surface) !important;
+}
+
+.btn-on-dark {
+  background-color: var(--on-dark) !important;
+  color: var(--ink) !important;
+  border: none !important;
+  border-radius: var(--rounded-md) !important;
+  padding: 10px 18px !important;
+  font-weight: 500 !important;
+}
+
+.btn-secondary-on-dark {
+  background-color: transparent !important;
+  color: var(--on-dark) !important;
+  border: 1px solid var(--on-dark-muted) !important;
+  border-radius: var(--rounded-md) !important;
+  padding: 10px 18px !important;
+  font-weight: 500 !important;
+}
+
+.btn-secondary-on-dark:hover {
+  border-color: var(--on-dark) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 卡片组件 */
+.card-base {
+  background-color: var(--canvas);
+  border-radius: var(--rounded-lg);
+  border: 1px solid var(--hairline);
+  padding: var(--spacing-xl);
+}
+
+.card-feature-peach {
+  background-color: var(--card-tint-peach);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-rose {
+  background-color: var(--card-tint-rose);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-mint {
+  background-color: var(--card-tint-mint);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-lavender {
+  background-color: var(--card-tint-lavender);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-sky {
+  background-color: var(--card-tint-sky);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-yellow {
+  background-color: var(--card-tint-yellow);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+.card-feature-yellow-bold {
+  background-color: var(--card-tint-yellow-bold);
+  color: var(--charcoal);
+  border-radius: var(--rounded-lg);
+  padding: var(--spacing-xxl);
+  border: none;
+}
+
+/* 徽章组件 */
+.badge-purple {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--rounded-full);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-tag-purple {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--card-tint-lavender);
+  color: var(--brand-purple-800);
+  border-radius: var(--rounded-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-tag-orange {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--card-tint-peach);
+  color: var(--brand-orange-deep);
+  border-radius: var(--rounded-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-tag-green {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--card-tint-mint);
+  color: var(--brand-green);
+  border-radius: var(--rounded-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badge-tag-blue {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--card-tint-sky);
+  color: var(--link-blue);
+  border-radius: var(--rounded-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 输入框组件 */
+.input-base {
+  background-color: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 16px;
+  height: 44px;
+}
+
+.input-base:focus {
+  border: 2px solid var(--primary);
+  outline: none;
+}
+
+/* Hero 区组件 */
+.hero-band-dark {
+  background-color: var(--brand-navy);
+  color: var(--on-dark);
+  padding: var(--spacing-hero) var(--spacing-xxl);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-title {
+  font-size: 80px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  color: var(--on-dark);
+  margin-bottom: var(--spacing-md);
+}
+
+.hero-subtitle {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--on-dark-muted);
+  margin-bottom: var(--spacing-lg);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--rounded-full);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--on-dark);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* 渐变文字 */
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 40%, #f472b6 70%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 玻璃效果 */
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--rounded-lg);
+}
+
+/* 布局工具 */
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.section {
+  padding: var(--spacing-section-lg) 0;
+}
+
+/* 响应式 */
+@media (max-width: 1023px) {
+  .hero-band-dark {
+    padding: var(--spacing-section-lg) var(--spacing-xl);
+  }
+  .hero-title {
+    font-size: 48px;
+  }
+}
+
+@media (max-width: 767px) {
+  .hero-band-dark {
+    padding: var(--spacing-section) var(--spacing-md);
+  }
+  .hero-title {
+    font-size: 36px;
+  }
+  .container {
+    padding: 0 var(--spacing-md);
+  }
+}

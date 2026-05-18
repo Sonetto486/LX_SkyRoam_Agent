@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Card, 
-  Button, 
-  Input, 
+import {
+  Card,
+  Button,
+  Input,
   AutoComplete,
-  DatePicker, 
-  Select, 
-  Form, 
-  Row, 
-  Col, 
-  Typography, 
+  DatePicker,
+  Select,
+  Form,
+  Row,
+  Col,
+  Typography,
   Space,
   Steps,
   Alert,
@@ -24,9 +24,9 @@ import {
   Timeline
 } from 'antd';
 import type { AutoCompleteProps } from 'antd';
-import { 
-  SearchOutlined, 
-  GlobalOutlined, 
+import {
+  SearchOutlined,
+  GlobalOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
   UserOutlined,
@@ -43,6 +43,7 @@ import { buildApiUrl, API_ENDPOINTS } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 import { createDebouncedFetcher } from '../../utils/searchUtils';
 import { TRANSPORTATION_OPTIONS, AGE_GROUP_OPTIONS, FOOD_PREFERENCES_OPTIONS, DIETARY_RESTRICTIONS_OPTIONS, PREFERENCES_OPTIONS } from '../../constants/travel';
+import './TravelPlanPage.css';
 
 
 const { Title, Paragraph, Text } = Typography;
@@ -664,8 +665,8 @@ const TravelPlanPage: React.FC = () => {
   };
 
   return (
-    <div className="travel-plan-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+    <div className="travel-plan-page">
+      <div className="page-title" style={{ textAlign: 'center', marginBottom: '40px' }}>
         <Title level={2}>创建您的专属旅行计划</Title>
         <Paragraph style={{ fontSize: '16px', color: '#666' }}>
           请填写您的旅行需求，AI将为您生成个性化的旅行方案
@@ -673,16 +674,16 @@ const TravelPlanPage: React.FC = () => {
       </div>
 
       {/* 步骤指示器 */}
-      <Card style={{ marginBottom: '24px' }}>
+      <Card className="steps-card" style={{ marginBottom: '24px' }}>
         <Steps current={currentStep} items={steps} />
       </Card>
 
       {/* 状态提示 */}
       {getStatusAlert()}
-      
+
       {/* 自动提交提示 */}
       {autoSubmitting && (
-        <Card style={{ marginBottom: '24px' }}>
+        <Card className="status-card" style={{ marginBottom: '24px' }}>
           <Alert
             message="正在自动处理您的旅行需求"
             description="检测到您从首页跳转，正在自动提交表单..."
@@ -694,10 +695,10 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 进度条 */}
       {generationStatus === 'generating' && (
-        <Card style={{ marginBottom: '24px' }}>
+        <Card className="progress-card" style={{ marginBottom: '24px' }}>
           <div style={{ textAlign: 'center' }}>
-            <Progress 
-              percent={progress} 
+            <Progress
+              percent={progress}
               status="active"
               strokeColor={{
                 '0%': '#108ee9',
@@ -716,7 +717,8 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 预览数据展示 */}
       {generationStatus === 'generating' && previewData && (
-        <Card 
+        <Card
+          className="preview-card"
           title={
             <Space align="center">
               <PictureOutlined />
@@ -1086,17 +1088,14 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 表单 */}
       {currentStep === 0 && (
-        <Card 
+        <Card
+          className="form-card"
           title={
             <Space>
               <GlobalOutlined />
               旅行需求
             </Space>
           }
-          style={{ 
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-          }}
         >
           <Form
             form={form}
@@ -1315,17 +1314,14 @@ const TravelPlanPage: React.FC = () => {
             </Form.Item>
             
             <Form.Item>
-              <Button 
-                type="primary" 
-                htmlType="submit" 
+              <Button
+                type="primary"
+                htmlType="submit"
                 loading={loading}
                 icon={<SearchOutlined />}
                 size="large"
-                style={{ 
-                  width: '100%',
-                  height: '48px',
-                  borderRadius: '8px'
-                }}
+                className="submit-btn"
+                style={{ width: '100%' }}
               >
                 {loading ? '正在创建计划...' : '开始生成方案'}
               </Button>
@@ -1336,7 +1332,7 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 生成中状态 */}
       {currentStep > 0 && currentStep < 3 && (
-        <Card style={{ textAlign: 'center', padding: '40px' }}>
+        <Card className="loading-card" style={{ textAlign: 'center', padding: '40px' }}>
           <Spin size="large" />
           <div style={{ marginTop: '16px' }}>
             <Title level={4}>
@@ -1353,7 +1349,7 @@ const TravelPlanPage: React.FC = () => {
 
       {/* 完成状态 */}
       {currentStep === 3 && (
-        <Card style={{ textAlign: 'center', padding: '40px' }}>
+        <Card className="complete-card" style={{ textAlign: 'center', padding: '40px' }}>
           <CheckCircleOutlined style={{ fontSize: '64px', color: '#52c41a', marginBottom: '16px' }} />
           <Title level={3} style={{ color: '#52c41a' }}>
             方案生成完成！

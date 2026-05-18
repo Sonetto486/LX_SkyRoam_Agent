@@ -34,6 +34,9 @@ interface Attraction {
   inSchedule?: boolean; // 是否已在日程中
   priority?: string; // 'must' | 'optional' | 'backup'
   id?: number | string; // 景点ID
+  images?: string[]; // 景点图片（兼容旧字段）
+  image_url?: string; // 单张图片URL（高德）
+  photos?: string[]; // 图片URL数组（高德）
 }
 
 interface TravelAlternative {
@@ -248,6 +251,14 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
 
   if (!attractions || attractions.length === 0) return null;
 
+  // 获取景点图片（优先级：image_url > photos > images）
+  const getAttractionImages = (attraction: Attraction): string[] => {
+    if (attraction.image_url) return [attraction.image_url];
+    if (attraction.photos && attraction.photos.length > 0) return attraction.photos.slice(0, 2);
+    if (attraction.images && attraction.images.length > 0) return attraction.images.slice(0, 2);
+    return [];
+  };
+
   // 调试输出
   console.log('AttractionsSection渲染:', {
     attractionsCount: attractions.length,
@@ -360,6 +371,74 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
                           <EnvironmentOutlined style={{ marginRight: 4 }} />
                           {attraction.address}
                         </Paragraph>
+                      )}
+
+                      {/* 景点图片缩略图 - 显示1-2张图片 */}
+                      {getAttractionImages(attraction).length > 0 && (
+                        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                          {getAttractionImages(attraction).map((img, imgIdx) => (
+                            <img
+                              key={imgIdx}
+                              src={img}
+                              alt={`${attraction.name} ${imgIdx + 1}`}
+                              style={{
+                                width: 80,
+                                height: 60,
+                                objectFit: 'cover',
+                                borderRadius: 4,
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => onViewDetail && onViewDetail(index)}
+                              onError={(e) => {
+                                // 图片加载失败时使用兜底图片
+                                e.currentTarget.src = 'https://via.placeholder.com/80x60?text=No+Image';
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 查看详情折叠 */}
+                      {(attraction.description || getAttractionImages(attraction).length > 1) && (
+                        <Collapse
+                          ghost
+                          size="small"
+                          style={{ marginTop: 8 }}
+                          items={[{
+                            key: '1',
+                            label: <Text type="secondary" style={{ fontSize: 12 }}>查看详情</Text>,
+                            children: (
+                              <div>
+                                {attraction.description && (
+                                  <Paragraph style={{ margin: '0 0 8px 0', fontSize: 12, color: '#666' }}>
+                                    {attraction.description}
+                                  </Paragraph>
+                                )}
+                                {getAttractionImages(attraction).length > 1 && (
+                                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                    {getAttractionImages(attraction).slice(1, 4).map((img, imgIndex) => (
+                                      <img
+                                        key={imgIndex}
+                                        src={img}
+                                        alt={`${attraction.name} ${imgIndex + 2}`}
+                                        style={{
+                                          width: 60,
+                                          height: 45,
+                                          objectFit: 'cover',
+                                          borderRadius: 4
+                                        }}
+                                        onError={(e) => {
+                                          // 图片加载失败时使用兜底图片
+                                          e.currentTarget.src = 'https://via.placeholder.com/60x45?text=No+Image';
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          }]}
+                        />
                       )}
                     </Space>
                   </div>

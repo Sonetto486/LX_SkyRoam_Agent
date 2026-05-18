@@ -1,3 +1,11 @@
+/* ========================================
+ * 全局样式 - Notion Design System
+ * ======================================== */
+
+/* 引入 Notion 设计系统样式 */
+@import './styles/notion-theme.css';
+@import './styles/notion-components.css';
+
 /* 全局样式重置 */
 * {
   margin: 0;
@@ -7,17 +15,15 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg);
+  background-color: var(--canvas);
+  color: var(--ink);
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
 /* 滚动条样式 */
@@ -27,27 +33,29 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--surface);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--hairline-strong);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--steel);
 }
 
 /* 链接样式 */
 a {
-  color: inherit;
+  color: var(--link-blue);
   text-decoration: none;
+  transition: color 0.15s ease;
 }
 
 a:hover {
-  text-decoration: none;
+  color: var(--link-blue-pressed);
+  text-decoration: underline;
 }
 
 /* 按钮样式重置 */
@@ -60,6 +68,7 @@ button {
 /* 输入框样式重置 */
 input, textarea, select {
   outline: none;
+  font-family: inherit;
 }
 
 /* 图片样式 */
@@ -68,7 +77,10 @@ img {
   height: auto;
 }
 
-/* 工具类 */
+/* ========================================
+ * 工具类
+ * ======================================== */
+
 .text-center {
   text-align: center;
 }
@@ -114,7 +126,111 @@ img {
   margin: 0 auto;
 }
 
-/* 响应式工具类 */
+/* ========================================
+ * Ant Design 样式覆盖
+ * ======================================== */
+
+/* 主按钮 */
+.ant-btn-primary {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  border-radius: var(--rounded-md) !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease !important;
+}
+
+.ant-btn-primary:hover {
+  background: var(--primary-pressed) !important;
+  border-color: var(--primary-pressed) !important;
+}
+
+.ant-btn-primary:disabled {
+  background: var(--hairline) !important;
+  border-color: var(--hairline) !important;
+  color: var(--muted) !important;
+}
+
+/* 默认按钮 */
+.ant-btn-default {
+  border-radius: var(--rounded-md) !important;
+  border-color: var(--hairline-strong) !important;
+  color: var(--ink) !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease !important;
+}
+
+.ant-btn-default:hover {
+  border-color: var(--ink) !important;
+  color: var(--ink) !important;
+}
+
+/* 卡片 */
+.ant-card {
+  border-radius: var(--rounded-lg) !important;
+  border-color: var(--hairline) !important;
+}
+
+.ant-card-bordered {
+  border: 1px solid var(--hairline) !important;
+}
+
+/* 输入框 */
+.ant-input,
+.ant-input-number,
+.ant-select-selector,
+.ant-picker {
+  border-radius: var(--rounded-md) !important;
+  border-color: var(--hairline-strong) !important;
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number:focus,
+.ant-input-number-focused,
+.ant-select-focused .ant-select-selector,
+.ant-picker-focused {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px rgba(86, 69, 212, 0.1) !important;
+}
+
+/* 标签 */
+.ant-tag {
+  border-radius: var(--rounded-sm) !important;
+}
+
+/* 模态框 */
+.ant-modal-content {
+  border-radius: var(--rounded-lg) !important;
+}
+
+.ant-modal-header {
+  border-radius: var(--rounded-lg) var(--rounded-lg) 0 0 !important;
+}
+
+/* 下拉菜单 */
+.ant-dropdown-menu {
+  border-radius: var(--rounded-md) !important;
+  box-shadow: var(--shadow-2) !important;
+}
+
+.ant-dropdown-menu-item {
+  border-radius: var(--rounded-sm) !important;
+}
+
+/* 消息提示 */
+.ant-message-notice-content {
+  border-radius: var(--rounded-md) !important;
+}
+
+/* 通知 */
+.ant-notification-notice {
+  border-radius: var(--rounded-lg) !important;
+}
+
+/* ========================================
+ * 响应式工具类
+ * ======================================== */
+
 @media (max-width: 768px) {
   .mobile-hidden {
     display: none !important;
@@ -127,7 +243,10 @@ img {
   }
 }
 
-/* 移动端将 RangePicker 弹层的两个面板上下排列，避免横向溢出 */
+/* ========================================
+ * 移动端 RangePicker 样式
+ * ======================================== */
+
 @media (max-width: 576px) {
   .mobile-vertical-range-dropdown {
     max-width: 100vw;
@@ -142,10 +261,38 @@ img {
     width: 100%;
     max-width: 100%;
   }
-  /* 可选：在小屏隐藏箭头，避免遮挡 */
   .mobile-vertical-range-dropdown .ant-picker-range-arrow {
     display: none;
   }
 }
 
+/* ========================================
+ * 动画
+ * ======================================== */
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out;
+}
+
+.animate-slideDown {
+  animation: slideDown 0.4s ease-out;
+}

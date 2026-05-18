@@ -6,6 +6,16 @@
   overflow: hidden;
 }
 
+/* 隐藏高德地图水印和版权信息 */
+.map-container :global(.amap-logo),
+.map-container :global(.amap-copyright),
+.map-container :global(.amap-logo-img),
+.map-container :global(.amap-copyright-info) {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
 .map-placeholder {
   width: 100%;
   height: 100%;

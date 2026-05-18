@@ -176,17 +176,18 @@ class PlanGenerator:
     
     
     async def generate_plans(
-        self, 
-        processed_data: Dict[str, Any], 
+        self,
+        processed_data: Dict[str, Any],
         plan: Any,
         preferences: Optional[Dict[str, Any]] = None,
-        raw_data: Optional[Dict[str, Any]] = None
+        raw_data: Optional[Dict[str, Any]] = None,
+        must_visit_attractions: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """生成多个旅行方案"""
         try:
             # logger.warning(f"preferences={preferences}")
             preferences = self.data_processor.normalize_preferences(preferences)
-            logger.info("开始生成旅行方案")
+            logger.info(f"开始生成旅行方案，必去景点: {must_visit_attractions}")
 
             destination_scope = await self._detect_destination_scope(plan)
             is_international = destination_scope == "international"
@@ -199,28 +200,28 @@ class PlanGenerator:
                     f"旅行天数 {getattr(plan, 'duration_days', None)} 超过最大连续天数 {self.max_segment_days}，尝试分段生成"
                 )
                 segmented_plans = await self._generate_segmented_plans(
-                    processed_data, plan, preferences, raw_data
+                    processed_data, plan, preferences, raw_data, must_visit_attractions
                 )
                 if segmented_plans is not None:
                     return segmented_plans
-            
+
             # 检查是否有多个偏好，决定使用拆分策略还是传统策略
             use_split_strategy = self._should_use_split_strategy(preferences)
-            
+
             # 首先尝试使用LLM生成方案
             try:
                 # 检查OpenAI配置
                 if not openai_client.api_key:
                     logger.warning("OpenAI API密钥未配置，使用传统方法")
                     raise Exception("OpenAI API密钥未配置")
-                
+
                 # 根据偏好情况选择生成策略
                 # if use_split_strategy:
                 if False:
                     logger.info("使用拆分偏好策略生成方案")
                     # 设置超时
                     llm_plans = await asyncio.wait_for(
-                        self._generate_plans_with_split_preferences(processed_data, plan, preferences, raw_data),
+                        self._generate_plans_with_split_preferences(processed_data, plan, preferences, raw_data, must_visit_attractions),
                         timeout=900.0  # 900秒超时，因为需要多次LLM调用
                     )
                 else:
@@ -233,19 +234,20 @@ class PlanGenerator:
                             preferences,
                             raw_data,
                             is_international=is_international,
+                            must_visit_attractions=must_visit_attractions,
                         ),
                         timeout=600.0  # 600秒超时
                     )
-                
+
                 if llm_plans:
                     logger.info(f"使用LLM生成了 {len(llm_plans)} 个旅行方案")
                     return llm_plans
-                    
+
             except asyncio.TimeoutError:
                 logger.warning("LLM调用超时，使用传统方法")
             except Exception as e:
                 logger.warning(f"LLM生成方案失败，使用传统方法: {e}")
-            
+
             # 降级到传统方法
             return await self._generate_traditional_plans(
                 processed_data,
@@ -253,6 +255,7 @@ class PlanGenerator:
                 preferences,
                 raw_data,
                 is_international=is_international,
+                must_visit_attractions=must_visit_attractions,
             )
             
         except Exception as e:
@@ -624,8 +627,8 @@ class PlanGenerator:
                 actual_per_day = max(1, total_unique // total_days)
                 logger.info(f"动态调整为每天最多{actual_per_day}个景点，无重复")
 
-                # 严格去重：每个景点只出现一次
-                seen: Set[str] = set()
+                # 景点不足时，允许景点重复（最多2次）以确保每天有足够的景点
+                seen_count: Dict[str, int] = {}
                 for day in daily_itineraries:
                     attractions = day.get("attractions") or []
                     if not isinstance(attractions, list):
@@ -642,15 +645,54 @@ class PlanGenerator:
                         if not normalized:
                             # 没有名字的，直接保留
                             unique.append(attr)
-                        elif normalized not in seen:
-                            # 未使用过的，保留
-                            unique.append(attr)
-                            seen.add(normalized)
+                        else:
+                            # 检查这个景点已经使用了多少次
+                            count = seen_count.get(normalized, 0)
+                            # 允许景点重复最多2次
+                            if count < 2:
+                                unique.append(attr)
+                                seen_count[normalized] = count + 1
 
                     day["attractions"] = unique
 
-                logger.info(f"动态调整完成，每天景点数根据实际数据分配，无重复景点")
-                
+                logger.info(f"动态调整完成，每天景点数根据实际数据分配，允许景点重复（最多2次）")
+
+            # 保护全天景点：如果某天包含全天景点，移除该天的其他景点
+            full_day_attractions = self._identify_full_day_attractions(
+                [attr for attr, _ in all_attractions if isinstance(attr, dict)]
+            )
+
+            # 收集必去景点名称，确保不会被移除
+            must_visit_names = set()
+            for attr, _ in all_attractions:
+                if isinstance(attr, dict) and attr.get("is_must_visit"):
+                    name = attr.get("name", "")
+                    if name:
+                        must_visit_names.add(name)
+
+            if full_day_attractions:
+                for day in daily_itineraries:
+                    attractions = day.get("attractions") or []
+                    if not isinstance(attractions, list):
+                        continue
+
+                    # 检查是否包含全天景点
+                    has_full_day = False
+                    for attr in attractions:
+                        name = attr.get("name", "") if isinstance(attr, dict) else str(attr)
+                        if name in full_day_attractions:
+                            has_full_day = True
+                            break
+
+                    # 如果有全天景点且当天有多个景点，只保留全天景点和必去景点
+                    if has_full_day and len(attractions) > 1:
+                        day["attractions"] = [
+                            attr for attr in attractions
+                            if (attr.get("name", "") if isinstance(attr, dict) else str(attr)) in full_day_attractions
+                            or (attr.get("name", "") if isinstance(attr, dict) else str(attr)) in must_visit_names
+                        ]
+                        logger.info(f"第{day.get('day', '?')}天包含全天景点，已移除其他景点（保留必去景点）")
+
         except Exception as e:  # 防御性，任何异常不影响主流程
             logger.warning(f"去重每日景点失败: {e}")
             import traceback
@@ -1312,10 +1354,11 @@ class PlanGenerator:
         raw_data: Optional[Dict[str, Any]] = None,
         *,
         is_international: bool = False,
+        must_visit_attractions: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """使用模块化LLM生成旅行方案"""
         try:
-            logger.info("开始模块化生成旅行方案")
+            logger.info(f"开始模块化生成旅行方案，必去景点: {must_visit_attractions}")
             
             # 异步并发调用各模块生成器，子方案支持失败重试
             logger.info("开始并发生成各模块方案，并启用重试机制...")
@@ -1341,11 +1384,11 @@ class PlanGenerator:
                 logger.error(f"{module_name} 重试耗尽，将返回空结果")
                 return {"success": False, "data": [], "error": last_error}
 
+            # 生成所有模块方案
             module_tasks = [
                 {
                     "key": "accommodation",
                     "name": "住宿方案",
-                    # 住宿为空不再阻塞整体方案，允许使用其他模块或占位
                     "critical": False,
                     "coro": run_with_retry(
                         self._generate_accommodation_plans,
@@ -1403,6 +1446,7 @@ class PlanGenerator:
                         preferences,
                         raw_data,
                         is_international=is_international,
+                        must_visit_attractions=must_visit_attractions,
                         attempts=3,
                         delay=1.0,
                         module_name="景点方案",
@@ -1437,7 +1481,7 @@ class PlanGenerator:
                 logger.warning(f"以下模块未生成数据，将以空结果继续: {', '.join(optional_failures)}")
             if failed_due_to_error:
                 logger.warning(f"以下模块多次重试仍失败: {', '.join(failed_due_to_error)}")
-            
+
             if critical_failures:
                 error_msg = f"关键模块缺失: {', '.join(set(critical_failures))}"
                 logger.error(error_msg)
@@ -1447,9 +1491,9 @@ class PlanGenerator:
             dining_plans = next(item["data"] for item in module_tasks if item["key"] == "dining")
             transportation_plans = next(item["data"] for item in module_tasks if item["key"] == "transportation")
             attraction_plans = next(item["data"] for item in module_tasks if item["key"] == "attraction")
-            
+
             logger.info(f"模块化生成完成 - 住宿:{len(accommodation_plans)}, 餐饮:{len(dining_plans)}, 交通:{len(transportation_plans)}, 景点:{len(attraction_plans)}")
-            
+
             # 使用组装器整合所有方案
             assembled_plans = await self._assemble_travel_plans(
                 accommodation_plans,
@@ -2477,6 +2521,57 @@ class PlanGenerator:
             logger.error(f"生成交通方案失败: {e}")
             return []
 
+    def _identify_full_day_attractions(self, attractions_data: List[Dict[str, Any]]) -> List[str]:
+        """识别需要单独安排一天的景点
+
+        基于以下规则判断：
+        1. 名称包含关键词：迪士尼、欢乐谷、长隆、主题乐园、游乐园等
+        2. 标签包含：主题乐园、游乐园、野生动物园等
+        3. visit_duration 为"全天"或超过6小时
+        4. 排除普通园林/公园（豫园、拙政园等）
+        """
+        full_day_keywords = getattr(settings, "PLAN_FULL_DAY_ATTRACTION_KEYWORDS", [
+            "迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
+            "野生动物园", "海洋公园", "环球影城", "方特"
+        ])
+        full_day_duration_patterns = getattr(settings, "PLAN_FULL_DAY_DURATION_PATTERNS", [
+            "全天", "6小时", "8小时", "一天"
+        ])
+        # 排除普通园林/公园，这些不是全天景点
+        exclude_keywords = ["豫园", "拙政园", "留园", "狮子林", "公园", "花园", "植物园", "盆景园"]
+
+        full_day_attractions = []
+        for attr in attractions_data:
+            name = attr.get("name", "")
+            visit_duration = str(attr.get("visit_duration", ""))
+            tags = attr.get("tags", [])
+
+            is_full_day = False
+
+            # 先检查排除规则：普通园林不是全天景点
+            if any(ex in name for ex in exclude_keywords):
+                continue
+
+            # 检查名称
+            if any(kw in name for kw in full_day_keywords):
+                is_full_day = True
+
+            # 检查标签
+            if not is_full_day and tags:
+                tags_str = ','.join(tags) if isinstance(tags, list) else str(tags)
+                if any(kw in tags_str for kw in full_day_keywords):
+                    is_full_day = True
+
+            # 检查游览时长
+            if not is_full_day and visit_duration:
+                if any(pattern in visit_duration for pattern in full_day_duration_patterns):
+                    is_full_day = True
+
+            if is_full_day:
+                full_day_attractions.append(name)
+
+        return full_day_attractions
+
     @retry_with_backoff(max_retries=3, base_delay=2.0)
     async def _generate_attraction_plans(
         self,
@@ -2486,12 +2581,19 @@ class PlanGenerator:
         raw_data: Optional[Dict[str, Any]] = None,
         *,
         is_international: bool = False,
+        must_visit_attractions: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """按天生成景点游玩方案"""
         try:
             total_days = max(int(getattr(plan, "duration_days", 0) or len(attractions_data) or 1), 1)
             per_day_budget = self.budget_calculator.get_per_day_budget(plan)
             logger.warning(f"计算后的每日景点预算: {per_day_budget}")
+            logger.info(f"必去景点: {must_visit_attractions}")
+
+            # 提取必去景点数据
+            must_visit_data = [a for a in attractions_data if a.get("is_must_visit")]
+            logger.info(f"从景点数据中找到 {len(must_visit_data)} 个必去景点")
+
             notes_str = self._format_xiaohongshu_data_for_prompt(
                 raw_data.get("xiaohongshu_notes", []) if raw_data else [], plan.destination
             )
@@ -2537,21 +2639,42 @@ class PlanGenerator:
                     "具体要求：\n"
                     "1. 【最重要】优先使用提供的景点数据中的景点，这些景点来自全国景点基础库或地图搜索，信息真实可靠；\n"
                     "2. 如果景点数据提供了实时信息（评分、门票、开放时间等），请在行程中体现；\n"
-                    "3. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
-                    "4. 对于相距较远、需要长时间通勤的景点，当天安排的景点数量要减少，并在行程中明确写出长途通勤时间；\n"
-                    "5. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
-                    "6. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
-                    "7. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源。"
+                    "3. 【景点数量规则】每天安排3-4个景点（除非当天有特殊景点需要全天游览）；\n"
+                    "4. 【特殊景点识别】以下景点类型需要单独安排一天，当天不再安排其他景点：\n"
+                    "   - 主题乐园/游乐园（如迪士尼、欢乐谷、长隆等）\n"
+                    "   - 大型动物园/野生动物园\n"
+                    "   - 建议游览时间为'全天'或'6小时以上'的景点\n"
+                    "5. 【游览时间参考】请参考每个景点的'建议游览时间'字段：\n"
+                    "   - 1-2小时：适合半天游览，可搭配其他景点\n"
+                    "   - 2-4小时：适合半天游览，当天可安排2-3个景点\n"
+                    "   - 4-6小时：需要半天以上，当天最多安排1-2个景点\n"
+                    "   - 全天/6小时以上：单独安排一天\n"
+                    "6. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
+                    "7. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
+                    "8. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
+                    "9. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源；\n"
+                    "10. 【热门景点优先】优先选择热度排名靠前、评分高的景点，这些景点更受游客欢迎。"
                 )
                 # 构建RAG上下文部分
                 rag_section = ""
                 if rag_context:
                     rag_section = f"【RAG检索 - 真实旅行攻略参考】：\n{rag_context}\n"
 
+                # 构建必去景点提示
+                must_visit_section = ""
+                if must_visit_attractions and len(must_visit_attractions) > 0:
+                    must_visit_section = f"\n【必去景点】以下景点必须包含在行程中：{', '.join(must_visit_attractions)}\n请确保这些景点被安排在合适的日期，并优先考虑其开放时间和最佳游览时段。\n"
+
                 # 构建景点数据上下文
                 attractions_section = ""
                 if attractions_data:
                     attractions_section = f"【主要数据源 - 景点数据】：\n{self.data_processor.format_data_for_llm(attractions_data, 'attraction')}\n"
+
+                # 识别特殊景点（需要单独一天）
+                special_attractions_hint = ""
+                full_day_attractions = self._identify_full_day_attractions(attractions_data)
+                if full_day_attractions:
+                    special_attractions_hint = f"\n【特殊景点提示】以下景点需要单独安排一天：{', '.join(full_day_attractions)}\n请将这些景点安排在单独的一天，当天不再安排其他景点。\n"
 
                 user_prompt = f"""
 请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的景点游览方案：
@@ -2563,7 +2686,7 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
-{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
+{must_visit_section}{special_attractions_hint}{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
 {notes_str}
 
 {intl_hint}
@@ -2634,7 +2757,10 @@ class PlanGenerator:
                 build_prompts=build_prompts,
                 llm_requester=self._request_llm_json,
                 fallback_builder=lambda d, date: build_simple_attraction_plan(
-                    d, date, attractions_data
+                    d, date, attractions_data,
+                    min_attractions=self.min_attractions_per_day,
+                    max_attractions=self.max_attractions_per_day,
+                    must_visit_attractions=must_visit_attractions,
                 ),
                 post_process=post_process,
             )
@@ -2659,7 +2785,7 @@ class PlanGenerator:
             assembled_plans = []
             restaurant_lookup = self._build_lookup_map(processed_data.get("restaurants", []))
             hotel_lookup = self._build_lookup_map(processed_data.get("hotels", []))
-            
+
             # 为每个住宿方案创建完整的旅行计划
             for i, accommodation in enumerate(accommodation_plans):
                 try:
@@ -2717,9 +2843,50 @@ class PlanGenerator:
                                 normalized_attractions = []
                                 for attr in raw_attractions:
                                     if isinstance(attr, dict):
+                                        # 补充图片数据：从attractions_data中匹配
+                                        attr_name = attr.get("name", "")
+                                        # 无论是否有photos，都尝试补充image_url和photos
+                                        matched_data = next(
+                                            (a for a in processed_data.get('attractions', [])
+                                             if a.get('name') == attr_name),
+                                            None
+                                        )
+                                        if matched_data:
+                                            # 图片处理优先级：
+                                            # 1. 使用已有的image_url（保留原有值）
+                                            # 2. 补充photos数组（来自高德API或数据库）
+                                            # 3. 若都无，则从photos[0]生成image_url
+                                            if not attr.get("image_url") and not attr.get("photos"):
+                                                # 完全没有图片信息，从matched_data补充
+                                                if matched_data.get("photos"):
+                                                    attr["photos"] = matched_data["photos"]
+                                                    attr["image_url"] = matched_data["photos"][0]
+                                            elif not attr.get("photos") and matched_data.get("photos"):
+                                                # 有image_url但没有photos数组，补充photos
+                                                attr["photos"] = matched_data["photos"]
+                                            
+                                            # 补充category和labels字段（用于地图标签显示）
+                                            if matched_data.get("category") and not attr.get("category"):
+                                                attr["category"] = matched_data["category"]
+                                            if matched_data.get("labels") and not attr.get("labels"):
+                                                attr["labels"] = matched_data["labels"]
                                         normalized_attractions.append(attr)
                                     elif attr not in (None, ""):
-                                        normalized_attractions.append({"name": attr})
+                                        # 字符串类型的景点名称，尝试匹配图片和详细信息
+                                        attr_dict = {"name": attr}
+                                        matched_data = next(
+                                            (a for a in processed_data.get('attractions', [])
+                                             if a.get('name') == attr),
+                                            None
+                                        )
+                                        if matched_data:
+                                            # 传输完整的photos数组（前端可使用轮播）
+                                            if matched_data.get("photos"):
+                                                attr_dict["photos"] = matched_data["photos"]
+                                                attr_dict["image_url"] = matched_data["photos"][0]
+                                            attr_dict["category"] = matched_data.get("category")
+                                            attr_dict["labels"] = matched_data.get("labels")
+                                        normalized_attractions.append(attr_dict)
                                 daily_plan["attractions"] = normalized_attractions
                             else:
                                 daily_plan["attractions"] = []
@@ -2774,17 +2941,17 @@ class PlanGenerator:
                                     stay_info["hotel"],
                                     hotel_lookup
                                 )
-                        notes = stay_info.get("notes") or stay_info.get("accommodation_highlights") or []
-                        if notes:
-                            daily_plan["daily_tips"].extend(notes)
-                        stay_cost = stay_info.get("daily_cost") or stay_info.get("estimated_cost") or 0
-                        if isinstance(stay_cost, str):
-                            try:
-                                stay_cost = float(stay_cost)
-                            except (TypeError, ValueError):
-                                stay_cost = 0
-                        if isinstance(stay_cost, (int, float)):
-                            daily_plan["estimated_cost"] += stay_cost
+                            notes = stay_info.get("notes") or stay_info.get("accommodation_highlights") or []
+                            if notes:
+                                daily_plan["daily_tips"].extend(notes)
+                            stay_cost = stay_info.get("daily_cost") or stay_info.get("estimated_cost") or 0
+                            if isinstance(stay_cost, str):
+                                try:
+                                    stay_cost = float(stay_cost)
+                                except (TypeError, ValueError):
+                                    stay_cost = 0
+                            if isinstance(stay_cost, (int, float)):
+                                daily_plan["estimated_cost"] += stay_cost
                         
                         # 按时间排序schedule
                         daily_plan["schedule"] = sorted(

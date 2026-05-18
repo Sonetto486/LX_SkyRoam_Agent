@@ -87,7 +87,7 @@ start.bat
 
 ### 4. 访问应用
 - 前端应用: http://localhost:13000
-- 后端 API: 默认不对外暴露；由前端容器通过 `http://backend:8001` 访问。若需宿主机直接访问，请在 `docker-compose.yml` 的 `backend` 服务添加端口映射：`ports: - "18001:8001"`，然后使用 `http://localhost:18001`。
+- 后端 API: 默认不对外暴露；由前端容器通过 `http://backend:8001` 访问。若需宿主机直接访问，请在 `docker-compose.yml` 的 `backend` 服务添加端口映射：`ports: - "18001:8001"`，然后使用 `http://localhost:1`。
 - API 文档: 默认仅容器内可访问 `http://backend:8001/docs`；如上端口映射后，可在宿主机访问 `http://localhost:18001/docs`。
 - Celery 监控 (Flower): 默认仅容器内 `http://skyroam-flower:5555`；若需宿主机访问，请在 `flower` 服务添加端口映射：`ports: - "15555:5555"`，然后使用 `http://localhost:15555`。
 - 高德 MCP HTTP 服务: http://localhost:13002

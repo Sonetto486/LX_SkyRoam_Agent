@@ -82,6 +82,14 @@ api_router.include_router(
     tags=["openai"],
 )
 
+from app.api.v1.endpoints import smart_chat as smart_chat_endpoint
+
+api_router.include_router(
+    smart_chat_endpoint.router,
+    prefix="/smart-chat",
+    tags=["smart-chat"],
+)
+
 api_router.include_router(
     map.router,
     prefix="/map",

@@ -98,6 +98,7 @@ class AgentService:
         plan_id: int,
         preferences: Optional[Dict[str, Any]] = None,
         requirements: Optional[Dict[str, Any]] = None,
+        must_visit_attractions: Optional[List[str]] = None,
         use_pre_generated: bool = True
     ) -> bool:
         """
@@ -107,36 +108,37 @@ class AgentService:
             plan_id: 旅行计划ID
             preferences: 用户偏好
             requirements: 特殊要求
+            must_visit_attractions: 必去景点列表
             use_pre_generated: 是否尝试使用预生成方案
 
         Returns:
             bool: 是否成功生成
         """
         try:
-            logger.info(f"开始生成旅行方案，计划ID: {plan_id}")
-            
+            logger.info(f"开始生成旅行方案，计划ID: {plan_id}, 必去景点: {must_visit_attractions}")
+
             # 1. 获取旅行计划信息
             plan = await self._get_travel_plan(plan_id)
             if not plan:
                 logger.error(f"旅行计划不存在: {plan_id}")
                 return False
-            
+
             # 2. 更新状态为生成中
             await self._update_plan_status(plan_id, "generating")
-            
-            # 3. 数据收集阶段
+
+            # 3. 数据收集阶段（包含必去景点搜索）
             logger.info("开始数据收集...")
-            raw_data = await self._collect_data(plan, preferences, requirements)
+            raw_data = await self._collect_data(plan, preferences, requirements, must_visit_attractions)
             logger.info("保存原始数据预览并提前展示...")
             await self._save_raw_preview(plan_id, raw_data, plan)
-            
+
             # 4. 数据清洗和评分
             logger.info("开始数据清洗和评分...")
             processed_data = await self._process_data(raw_data, plan)
-            
-            # 5. 生成多个方案
+
+            # 5. 生成多个方案（传递必去景点）
             logger.info("开始生成旅行方案...")
-            generated_plans = await self._generate_plans(processed_data, plan, preferences, raw_data)
+            generated_plans = await self._generate_plans(processed_data, plan, preferences, raw_data, must_visit_attractions)
             
             # 6. 方案评分和排序
             logger.info("开始方案评分和排序...")
@@ -228,14 +230,15 @@ class AgentService:
             
     
     async def _collect_data(
-        self, 
-        plan, 
+        self,
+        plan,
         preferences: Optional[Dict[str, Any]] = None,
         requirements: Optional[Dict[str, Any]] = None,
+        must_visit_attractions: Optional[List[str]] = None,
         interval_seconds: float = 1.0  # 每个任务启动之间的时间间隔
     ) -> Dict[str, Any]:
         """数据收集阶段：按间隔启动任务，并在每个任务完成后增量保存预览"""
-        
+
         logger.info(f"开始收集 {plan.destination} 的各类数据（每个任务间隔 {interval_seconds}s 启动）")
 
         # 估算行程天数，用于动态控制原始数据量
@@ -248,10 +251,10 @@ class AgentService:
         # 将任务与对应的section键关联，便于增量更新（缺少出发地则跳过航班与交通）
         task_specs = [
             ("hotels", lambda: self.data_collector.collect_hotel_data(plan.destination, plan.start_date, plan.end_date)),
-            ("attractions", lambda: self.data_collector.collect_attraction_data(plan.destination, plan.start_date, plan.end_date)),
+            ("attractions", lambda: self.data_collector.collect_attraction_data(plan.destination, plan.start_date, plan.end_date, must_visit_attractions)),
             ("weather", lambda: self.data_collector.collect_weather_data(plan.destination, plan.start_date, plan.end_date)),
             ("restaurants", lambda: self.data_collector.collect_restaurant_data(plan.destination, plan.start_date, plan.end_date)),
-            ("xiaohongshu_notes", lambda: self.data_collector.collect_xiaohongshu_data(plan.destination, plan.start_date, plan.end_date)),
+            # ("xiaohongshu_notes", lambda: self.data_collector.collect_xiaohongshu_data(plan.destination, plan.start_date, plan.end_date)),  # 暂时禁用
         ]
         if plan.departure:
             task_specs.insert(0, ("flights", lambda: self.data_collector.collect_flight_data(plan.departure, plan.destination, plan.start_date, plan.end_date)))
@@ -352,35 +355,36 @@ class AgentService:
         return cleaned
     
     async def _generate_plans(
-        self, 
-        processed_data: Dict[str, Any], 
+        self,
+        processed_data: Dict[str, Any],
         plan: TravelPlan,
         preferences: Optional[Dict[str, Any]] = None,
-        raw_data: Optional[Dict[str, Any]] = None
+        raw_data: Optional[Dict[str, Any]] = None,
+        must_visit_attractions: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """生成多个旅行方案"""
-        
+
         # 使用LLM增强的方案生成
         try:
             # 首先尝试使用LLM分析数据并生成方案
             if self.openai_client.api_key:
                 return await self.plan_generator.generate_plans(
-                    processed_data, plan, preferences, raw_data
+                    processed_data, plan, preferences, raw_data, must_visit_attractions
                 )
             else:
                 logger.info("OpenAI API密钥未配置，直接使用原始数据")
                 return await self.plan_generator.generate_plans(
-                    processed_data, plan, preferences, raw_data
+                    processed_data, plan, preferences, raw_data, must_visit_attractions
                 )
         except asyncio.TimeoutError:
             logger.warning("LLM数据增强超时，使用原始数据")
             return await self.plan_generator.generate_plans(
-                processed_data, plan, preferences, raw_data
+                processed_data, plan, preferences, raw_data, must_visit_attractions
             )
         except Exception as e:
             logger.warning(f"LLM增强数据失败，使用原始数据: {e}")
             return await self.plan_generator.generate_plans(
-                processed_data, plan, preferences, raw_data
+                processed_data, plan, preferences, raw_data, must_visit_attractions
             )
     
     async def _score_plans(

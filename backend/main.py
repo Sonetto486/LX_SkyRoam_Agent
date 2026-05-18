@@ -31,6 +31,7 @@ from app.api.v1.api import api_router
 from app.core.redis import init_redis
 from app.services.background_tasks import start_background_tasks
 from app.core.rate_limit import RateLimitMiddleware
+from app.api.v1.endpoints import smart_chat
 
 # 全局变量存储 Celery Worker 进程
 _celery_worker_process = None
@@ -484,6 +485,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # 注册API路由
 app.include_router(api_router, prefix="/api/v1")
+# 直接注册 smart-chat 路由（绕过 api_router 的问题）
+app.include_router(smart_chat.router, prefix="/api/v1/smart-chat", tags=["smart-chat"])
 
 
 @app.get("/")
@@ -603,13 +606,129 @@ async def celery_health_check():
             "message": f"检查 Celery Worker 状态失败: {str(e)}"
         }
 
+# ========== 智能对话独立路由（直接测试用）==========
+from pydantic import BaseModel
+
+class TestChatRequest(BaseModel):
+    message: str
+
+class TestChatResponse(BaseModel):
+    answer: str
+
+@app.post("/api/test/chat")
+async def test_chat(request: TestChatRequest):
+    """测试聊天接口"""
+    return TestChatResponse(answer=f"收到: {request.message}")
+
+@app.get("/api/test/ping")
+async def test_ping():
+    return {"pong": True}
+
+
+# ========== RAG 智能问答接口 ==========
+from pydantic import BaseModel as PydanticBaseModel
+from typing import Optional, List
+import importlib.util
+from pathlib import Path
+
+class RAGAskRequest(PydanticBaseModel):
+    question: str
+    conversation_history: Optional[List[dict]] = None  # 添加历史参数
+
+class RAGAskResponse(PydanticBaseModel):
+    answer: str
+    sources: Optional[List[dict]] = []
+    entities: Optional[List[dict]] = []
+    success: bool = True
+    error: Optional[str] = None
+
+# 查找 rag_api.py 的路径
+def find_rag_api():
+    possible_paths = [
+        Path(__file__).parent.parent / "scripts" / "rag_api.py",  # 项目根目录/scripts
+        Path(__file__).parent.parent / "rag_api.py",  # 项目根目录
+        Path(__file__).parent / "scripts" / "rag_api.py",  # backend/scripts
+    ]
+    for path in possible_paths:
+        if path.exists():
+            return path
+    return None
+
+@app.post("/api/rag/ask", response_model=RAGAskResponse)
+async def rag_ask(request: RAGAskRequest):
+    logger.info(f"📝 RAG问答请求: {request.question[:50]}...")
+    
+    try:
+        rag_path = find_rag_api()
+        
+        if rag_path is None:
+            return RAGAskResponse(
+                answer="RAG模块未找到",
+                success=False,
+                error="rag_api.py not found",
+                entities=[]
+            )
+        
+        # 动态导入
+        spec = importlib.util.spec_from_file_location("rag_api", str(rag_path))
+        rag_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rag_module)
+        
+        if not hasattr(rag_module, "answer_question"):
+            return RAGAskResponse(
+                answer="RAG模块缺少 answer_question 函数",
+                success=False,
+                error="answer_question not found",
+                entities=[]
+            )
+        
+        # 调用 RAG 问答，传递对话历史！
+        result = await rag_module.answer_question(
+            request.question,
+            conversation_history=request.conversation_history,  # 关键：传递历史
+            use_backend_embedding=False
+        )
+        # 记录返回的简要统计，便于排查为何模型返回了回退文本
+        try:
+            ents = result.get("entities", []) or []
+            srcs = result.get("sources", []) or []
+            logger.info(f"RAG 返回: answer_len={len(str(result.get('answer','')))}, sources={len(srcs)}, entities={len(ents)}")
+        except Exception:
+            logger.warning("无法解析 RAG 返回的统计信息")
+
+        return RAGAskResponse(
+            answer=result.get("answer", "无法获取回答"),
+            sources=result.get("sources", [])[:5],
+            entities=result.get("entities", [])[:10],
+            success=True
+        )
+        
+    except Exception as e:
+        logger.error(f"RAG问答失败: {e}", exc_info=True)
+        return RAGAskResponse(
+            answer=f"处理请求时出错: {str(e)}",
+            success=False,
+                error=str(e),
+                entities=[]
+        )
+
+@app.get("/api/rag/health")
+async def rag_health():
+    """RAG 服务健康检查"""
+    rag_path = find_rag_api()
+    return {
+        "status": "ok",
+        "rag_module_exists": rag_path is not None,
+        "rag_path": str(rag_path) if rag_path else None,
+        "message": "RAG 接口已就绪"
+    }
 
 if __name__ == "__main__":
     # 通过命令行参数传递host和port
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-celery", action="store_true", help="禁用自动启动 Celery Worker")
     args = parser.parse_args()
 

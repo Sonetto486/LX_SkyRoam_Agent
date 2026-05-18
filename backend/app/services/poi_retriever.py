@@ -190,6 +190,83 @@ class POIRetriever:
             logger.error(f"POI检索失败: {e}")
             return []
 
+    def search_by_name(
+        self,
+        name: str,
+        destination: str = None,
+        top_k: int = 5
+    ) -> Optional[Dict[str, Any]]:
+        """
+        根据景点名称精确搜索景点
+
+        Args:
+            name: 景点名称
+            destination: 目的地/城市（可选，用于缩小搜索范围）
+            top_k: 返回结果数量
+
+        Returns:
+            匹配的景点信息，如果未找到返回None
+        """
+        try:
+            conn = psycopg2.connect(**self.db_config)
+            cursor = conn.cursor()
+
+            # 构建SQL查询 - 使用名称模糊匹配
+            sql = """
+                SELECT
+                    a.id, a.poi_id, a.name_zh, a.name_en,
+                    a.city_zh, a.city_en, a.latitude, a.longitude,
+                    a.label_zh, a.label_en, a.rating, a.popularity_score,
+                    COALESCE(p.popularity_rank, 9999) AS popularity_rank
+                FROM poi_attractions a
+                LEFT JOIN attraction_popularity p ON a.id = p.attraction_id
+                WHERE a.name_zh ILIKE %s
+            """
+            params = [f"%{name}%"]
+
+            # 如果指定了目的地，添加城市过滤
+            if destination:
+                sql += " AND (a.city_zh ILIKE %s OR a.city_en ILIKE %s)"
+                params.extend([f"%{destination}%", f"%{destination}%"])
+
+            sql += " ORDER BY popularity_rank ASC LIMIT %s"
+            params.append(top_k)
+
+            cursor.execute(sql, params)
+            results = cursor.fetchall()
+
+            if results:
+                row = results[0]
+                attraction = {
+                    "id": row[0],
+                    "poi_id": row[1],
+                    "name": row[2],
+                    "name_en": row[3],
+                    "city": row[4],
+                    "city_en": row[5],
+                    "latitude": float(row[6]) if row[6] else None,
+                    "longitude": float(row[7]) if row[7] else None,
+                    "labels": row[8].split(";") if row[8] else [],
+                    "labels_en": row[9].split(";") if row[9] else [],
+                    "rating": float(row[10]) if row[10] else None,
+                    "popularity_score": float(row[11]) if row[11] else 0,
+                    "popularity_rank": int(row[12]) if row[12] else 9999,
+                    "source": "POI向量库"
+                }
+                logger.info(f"名称搜索找到景点: {name} -> {attraction.get('name')} ({attraction.get('city')})")
+                cursor.close()
+                conn.close()
+                return attraction
+
+            cursor.close()
+            conn.close()
+            logger.info(f"名称搜索未找到景点: {name}")
+            return None
+
+        except Exception as e:
+            logger.error(f"名称搜索失败: {e}")
+            return None
+
     def retrieve_by_coordinates(
         self,
         latitude: float,
@@ -282,20 +359,36 @@ class POIRetriever:
             logger.warning(f"未找到目的地'{destination}'的景点数据")
             return []
 
-        # 2. 调用高德 API 补充信息
-        enriched_attractions = []
-        for attraction in attractions[:top_k]:
-            enriched = await self._enrich_with_amap(attraction)
-            enriched_attractions.append(enriched)
+        # 2. 使用信号量控制并发请求数量，避免API限流
+        import asyncio
+        semaphore = asyncio.Semaphore(3)  # 最多3个并发请求
+
+        async def enrich_with_limit(attraction):
+            async with semaphore:
+                return await self._enrich_with_amap(attraction)
+
+        # 并发调用高德 API 补充信息（带限流）
+        tasks = [enrich_with_limit(attraction) for attraction in attractions[:top_k]]
+        enriched_attractions = await asyncio.gather(*tasks)
 
         logger.info(f"景点信息增强完成: {len(enriched_attractions)}条")
         return enriched_attractions
 
     async def _enrich_with_amap(self, attraction: Dict[str, Any]) -> Dict[str, Any]:
-        """使用高德 API 补充景点信息"""
+        """使用高德 API 补充景点信息（带缓存）"""
         try:
             if not self.amap_api_key:
                 logger.warning("高德 API Key 未配置，跳过信息增强")
+                return attraction
+
+            # 检查缓存，避免重复API调用
+            from app.core.redis import get_cache, set_cache
+            cache_key = f"poi:{attraction.get('city', '')}:{attraction['name']}"
+            cached_data = await get_cache(cache_key)
+
+            if cached_data:
+                logger.info(f"使用缓存的POI数据: {attraction['name']}")
+                attraction.update(cached_data)
                 return attraction
 
             # 调用高德 POI 搜索 - 改进匹配精度
@@ -358,11 +451,78 @@ class POIRetriever:
                 attraction["photos"] = [p.get("url") for p in matched_poi.get("photos", [])[:3] if p.get("url")]
                 attraction["source"] = "向量数据库 + 高德地图"
 
+                # 使用高德返回的type字段作为category（优先级最高）
+                amap_type = matched_poi.get("type", "")
+                if amap_type:
+                    # 提取第一个类型（高德type格式："风景名胜;风景名胜"）
+                    attraction["category"] = amap_type.split(";")[0] if ";" in amap_type else amap_type
+
+                # 使用高德返回的tag字段作为标签（补充信息）
+                amap_tag = matched_poi.get("tag", "")
+                if amap_tag:
+                    # 高德tag可能是逗号或分号分隔的多个标签
+                    if ";" in amap_tag:
+                        tags = amap_tag.split(";")
+                    elif "," in amap_tag:
+                        tags = amap_tag.split(",")
+                    else:
+                        tags = [amap_tag]
+
+                    # 区分"景点类别标签"和"具体项目标签"
+                    # 景点类别关键词（优先保留）
+                    category_keywords = ["风景名胜", "主题乐园", "公园", "博物馆", "景区", "景点", "乐园", "度假村", "古镇", "寺庙", "教堂", "广场", "海滩", "湖泊", "山", "森林", "游乐场", "动物园", "海洋馆", "水族馆"]
+                    # 具体项目关键词（需要过滤掉）- 包含各种项目名称的变体
+                    project_keywords = ["飞跃", "飞越", "过山车", "漂流", "旋转", "碰碰", "摩天轮", "跳楼机", "激流", "探险", "游览车", "项目", "演出", "表演", "童话", "奇幻", "梦幻", "极速", "光轮", "创", "巴斯光年", "小飞侠", "七个小矮人", "雷鸣山", "加勒比", "小熊维尼", "米奇", "米妮", "唐老鸭", "白雪公主", "美人鱼", "冰雪奇缘"]
+
+                    logger.debug(f"景点 '{attraction_name}' 原始标签: {tags}")
+
+                    # 优先提取景点类型标签（排除项目标签）
+                    category_tags = []
+                    for t in tags:
+                        t_stripped = t.strip()
+                        # 如果标签包含类别关键词，且不包含项目关键词
+                        if any(kw in t_stripped for kw in category_keywords):
+                            if not any(kw in t_stripped for kw in project_keywords):
+                                category_tags.append(t_stripped)
+                            else:
+                                logger.debug(f"标签 '{t_stripped}' 包含项目关键词，已过滤")
+
+                    # 如果没有类型标签，使用非项目标签
+                    if not category_tags:
+                        for t in tags:
+                            t_stripped = t.strip()
+                            if t_stripped and len(t_stripped) <= 10:
+                                if not any(kw in t_stripped for kw in project_keywords):
+                                    category_tags.append(t_stripped)
+                                else:
+                                    logger.debug(f"标签 '{t_stripped}' 包含项目关键词，已过滤")
+
+                    if category_tags:
+                        attraction["labels"] = category_tags[:3]  # 最多保留3个标签
+                        # 只有在没有type字段时才用tag作为category
+                        if not amap_type:
+                            attraction["category"] = category_tags[0]
+                        logger.debug(f"景点 '{attraction_name}' 使用高德标签: {category_tags}")
+
                 # 更新数据库中的热度字段
                 if rating:
                     await self._update_popularity_in_db(attraction["id"], rating)
 
                 logger.info(f"景点 '{attraction_name}' 高德匹配完成: 评分={attraction['rating']}, 匹配POI='{matched_poi.get('name')}'")
+
+                # 缓存结果，避免重复API调用（缓存7天）
+                cache_data = {
+                    "amap_id": attraction.get("amap_id"),
+                    "address": attraction.get("address"),
+                    "rating": attraction.get("rating"),
+                    "photos": attraction.get("photos"),
+                    "category": attraction.get("category"),
+                    "labels": attraction.get("labels"),
+                    "cost": attraction.get("cost"),
+                    "opening_hours": attraction.get("opening_hours"),
+                    "phone": attraction.get("phone"),
+                }
+                await set_cache(cache_key, cache_data, ttl=7 * 24 * 3600)  # 7天
 
             return attraction
 

@@ -150,19 +150,34 @@ class DataProcessor:
             
             elif data_type == 'attraction':
                 # 增强景点信息格式化，包含百度地图的详细信息
+                # 添加热度排名信息
+                popularity_info = ""
+                popularity_rank = item.get('popularity_rank')
+                popularity_score = item.get('popularity_score')
+                if popularity_rank and popularity_rank < 9999:
+                    popularity_info = f"\n     热度排名: 第{popularity_rank}名 (热度评分: {popularity_score})"
+                elif popularity_score and popularity_score > 0:
+                    popularity_info = f"\n     热度评分: {popularity_score}"
+
+                # 添加图片信息
+                photos = item.get('photos', [])
+                photos_info = ""
+                if photos:
+                    photos_info = f"\n     图片链接: {', '.join(photos[:2])}"
+
                 formatted_items.append(f"""
   {i+1}. 景点名称: {item.get('name', 'N/A')}
      类型: {item.get('category', 'N/A')}
      描述: {item.get('description', 'N/A')}
      门票价格: {item.get('price', 'N/A')}元
-     评分: {item.get('rating', 'N/A')}
+     评分: {item.get('rating', 'N/A')}{popularity_info}
      地址: {item.get('address', 'N/A')}
      开放时间: {item.get('opening_hours', 'N/A')}
      建议游览时间: {item.get('visit_duration', 'N/A')}
-     特色标签: {', '.join(item.get('tags', []))}
+     特色标签: {', '.join(item.get('labels', item.get('tags', [])))}
      联系方式: {item.get('phone', 'N/A')}
      官方网站: {item.get('website', 'N/A')}
-     交通便利性: {item.get('accessibility', 'N/A')}
+     交通便利性: {item.get('accessibility', 'N/A')}{photos_info}
      数据来源: {item.get('source', 'N/A')}""")
             
             elif data_type == 'restaurant':
