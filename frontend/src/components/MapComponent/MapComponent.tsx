@@ -21,6 +21,7 @@ interface Marker {
   score?: number;      // 评分
   type?: string;       // 景点类型
   price?: number;      // 门票价格
+  category?: string;   // 景点类别（更准确的类型）
 }
 
 interface RouteSegment {
@@ -123,7 +124,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
               <p style="margin:0 0 4px 0;color:#666;">${marker.address}</p>
               ${marker.isHotel ? '<p style="margin:0;color:#722ed1;">住宿推荐</p>' : ''}
               ${marker.score ? `<p style="margin:0 0 4px 0;color:#faad14;">⭐ ${marker.score} 分</p>` : ''}
-              ${marker.type ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.type}</p>` : ''}
+              ${marker.category ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.category}</p>` : marker.type ? `<p style="margin:0 0 4px 0;color:#52c41a;">📍 ${marker.type}</p>` : ''}
               ${marker.price ? `<p style="margin:0 0 4px 0;color:#ff4d4f;">💰 ¥${marker.price}</p>` : ''}
               ${marker.time ? `<p style="margin:0;color:#999;">时间: ${marker.time}</p>` : ''}
               ${marker.day ? `<p style="margin:0;color:#999;">第 ${marker.day} 天</p>` : ''}
@@ -150,12 +151,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
       markersByDay[day].push(m);
     });
 
-    // 为每天绘制路线
-    Object.entries(markersByDay).forEach(([day, dayMarkers]) => {
-      if (dayMarkers.length < 2) return;
+    // 为每天绘制路线 - 只有单天模式才绘制路线
+    if (viewMode === 'day') {
+      Object.entries(markersByDay).forEach(([day, dayMarkers]) => {
+        if (dayMarkers.length < 2) return;
 
-      const dayNum = parseInt(day);
-      const isCurrentDay = viewMode === 'full' || dayNum === currentDay;
+        const dayNum = parseInt(day);
+        const isCurrentDay = dayNum === currentDay;
 
       // 获取当天的日期字符串（从第一个marker获取）
       const dayDateString = dayMarkers[0]?.date;
@@ -226,19 +228,25 @@ const MapComponent: React.FC<MapComponentProps> = ({
         }
       }
     });
+    } // end of if (viewMode === 'day')
 
-    // 自适应视图 - 优先使用绘制的路线，否则使用标记点
+    // 自适应视图 - 根据模式调整视野
     if (isMountedRef.current && mapInstanceRef.current) {
       try {
-        // 如果有绘制的路线，使用路线来调整视野
-        if (polylineRef.current.length > 0) {
+        if (viewMode === 'full') {
+          // 全程模式：使用已添加的标记覆盖物调整视野，确保所有地标可见
+          if (markersRef.current.length > 0) {
+            mapInstanceRef.current.setFitView(markersRef.current, false, [50, 50, 50, 50]);
+            console.log('全程模式：使用标记覆盖物调整视野，标记数量:', markersRef.current.length);
+          }
+        } else if (polylineRef.current.length > 0) {
+          // 单天模式：使用路线调整视野
           mapInstanceRef.current.setFitView(polylineRef.current, false, [50, 50, 50, 50]);
-          console.log('使用路线调整视野，路线数量:', polylineRef.current.length);
-        } else if (markers.length > 0) {
-          // 否则使用标记点
-          const positions = markers.map(m => [m.position.lng, m.position.lat]);
-          mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
-          console.log('使用标记点调整视野，标记数量:', markers.length);
+          console.log('单天模式：使用路线调整视野，路线数量:', polylineRef.current.length);
+        } else if (markersRef.current.length > 0) {
+          // 单天模式无路线：使用标记覆盖物
+          mapInstanceRef.current.setFitView(markersRef.current, false, [50, 50, 50, 50]);
+          console.log('单天模式：使用标记覆盖物调整视野，标记数量:', markersRef.current.length);
         }
       } catch (e) {
         console.error('自适应视图失败:', e);
@@ -285,11 +293,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
             // 地图加载完成后，调整视野以包含所有标记点
             // 延迟执行，确保 markers 已更新
             setTimeout(() => {
-              if (markers.length > 0 && mapInstanceRef.current) {
+              if (markersRef.current.length > 0 && mapInstanceRef.current) {
                 try {
-                  const positions = markers.map(m => [m.position.lng, m.position.lat]);
-                  mapInstanceRef.current.setFitView(positions, false, [50, 50, 50, 50]);
-                  console.log('初始地图视野已调整，包含', markers.length, '个标记点');
+                  mapInstanceRef.current.setFitView(markersRef.current, false, [50, 50, 50, 50]);
+                  console.log('初始地图视野已调整，包含', markersRef.current.length, '个标记点');
                 } catch (e) {
                   console.error('初始视野调整失败:', e);
                 }
@@ -360,12 +367,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
         } catch (e) {
           console.error('调整地图视野失败:', e);
         }
-      } else if (markers.length > 0) {
-        // 如果没有路线，使用标记点调整视野
+      } else if (markersRef.current.length > 0) {
+        // 如果没有路线，使用标记覆盖物调整视野
         try {
-          const positions = markers.map(m => [m.position.lng, m.position.lat]);
-          mapInstanceRef.current.setFitView(positions, false, [60, 60, 60, 60]);
-          console.log('地图视野已调整，包含', markers.length, '个标记点');
+          mapInstanceRef.current.setFitView(markersRef.current, false, [60, 60, 60, 60]);
+          console.log('地图视野已调整，包含', markersRef.current.length, '个标记点');
         } catch (e) {
           console.error('调整地图视野失败:', e);
         }

@@ -266,8 +266,11 @@ async def input_tips(
             await redis_client.expire(rl_key, window)
         if count > max_requests:
             raise HTTPException(status_code=429, detail="Too Many Requests: map tips")
+    except HTTPException:
+        raise  # 重新抛出HTTP异常（如429限流）
     except Exception as e:
-        logger.error(f"map_tips 限流错误: {e}")
+        logger.warning(f"map_tips 限流检查失败（降级继续）: {e}")
+        # 限流失败时降级继续，不影响正常请求
 
     # 短期缓存
     cache_key = f"cache:map_tips_v2:{provider or settings.MAP_PROVIDER}:{city or ''}:{datatype}:{'1' if citylimit else '0'}:{'1' if city_only else '0'}:{q.strip()}"
@@ -294,10 +297,14 @@ async def input_tips(
             async with httpx.AsyncClient(timeout=20.0, proxies=None) as client:
                 resp = await client.get(url, params=params)
                 if resp.status_code != 200:
-                    raise HTTPException(status_code=500, detail=f"高德输入提示服务错误: {resp.text}")
+                    logger.warning(f"高德输入提示服务返回非200状态: {resp.status_code}, 响应: {resp.text[:200]}")
+                    # 返回空结果而不是500错误
+                    return {"options": []}
                 data = resp.json()
                 if data.get("status") != "1":
-                    raise HTTPException(status_code=500, detail=f"高德返回错误: {data.get('info')}")
+                    logger.warning(f"高德返回错误状态: {data.get('status')}, info: {data.get('info')}")
+                    # 返回空结果而不是500错误
+                    return {"options": []}
 
                 tips = data.get("tips", [])
                 options = []

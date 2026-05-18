@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Row, Col, Progress, Steps, Modal, Popconfirm, Alert, Spin, AutoComplete } from 'antd';
-import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, CheckOutlined, ReloadOutlined, CloseOutlined, EditOutlined, StopOutlined, LoadingOutlined } from '@ant-design/icons';
+import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, CheckOutlined, ReloadOutlined, CloseOutlined, EditOutlined, StopOutlined, LoadingOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import './PlanGeneratorPage.css';
 import MapComponent from '../../components/MapComponent/MapComponent';
+import AttractionImageCarousel from '../../components/AttractionImageCarousel/AttractionImageCarousel';
 import { buildApiUrl } from '../../config/api';
 import { authFetch } from '../../utils/auth';
 
@@ -98,18 +99,21 @@ const PlanGeneratorPage: React.FC = () => {
   const [celeryTaskId, setCeleryTaskId] = useState<string | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 39.9042, lng: 116.4074 }); // 默认北京
   const [previewActiveDay, setPreviewActiveDay] = useState(0); // 预览时选中的天数
+  const [viewMode, setViewMode] = useState<'full' | 'day'>('full'); // 'full' 表示全程，'day' 表示单天
+  const [expandedAttractions, setExpandedAttractions] = useState<Set<string>>(new Set()); // 跟踪展开的景点卡片
   const navigate = useNavigate();
 
-  // 切换天数时更新地图中心点
+  // 切换天数时更新地图中心点（仅在单天模式下）
   useEffect(() => {
-    if (showPreview && generatedPlan) {
+    if (showPreview && generatedPlan && viewMode === 'day') {
       const markers = getPlanMarkers();
       if (markers.length > 0) {
         setMapCenter(markers[0].position);
       }
     }
+    // 全程模式不设置中心点，让 MapComponent 自己通过 setFitView 调整视野
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewActiveDay, showPreview]);
+  }, [previewActiveDay, viewMode, showPreview]);
 
   // 地理编码 - 通过后端 API 获取目的地坐标
   const geocodeDestination = async (destination: string): Promise<{ lat: number; lng: number } | null> => {
@@ -172,7 +176,7 @@ const PlanGeneratorPage: React.FC = () => {
 
   const checkCeleryWorker = async (): Promise<boolean> => {
     try {
-      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8001/api/v1';
+      const apiUrl = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
       const baseUrl = apiUrl.replace(/\/api\/v1\/?$/, '');
       const res = await fetch(`${baseUrl}/health/celery`);
       if (res.ok) {
@@ -185,14 +189,14 @@ const PlanGeneratorPage: React.FC = () => {
     }
   };
 
-  const generateSync = async (planId: number, preferences: any) => {
+  const generateSync = async (planId: number, preferences: any, mustVisitAttractions: string[] = []) => {
     setGenerationProgress(30);
     setGenerationStatus('正在生成方案（同步模式）...');
 
     const generateRes = await authFetch(buildApiUrl(`/travel-plans/${planId}/generate-sync`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preferences }),
+      body: JSON.stringify({ preferences, must_visit_attractions: mustVisitAttractions }),
     });
 
     if (!generateRes.ok) {
@@ -206,14 +210,14 @@ const PlanGeneratorPage: React.FC = () => {
     return result;
   };
 
-  const generateAsync = async (planId: number, preferences: any) => {
+  const generateAsync = async (planId: number, preferences: any, mustVisitAttractions: string[] = []) => {
     setGenerationProgress(30);
     setGenerationStatus('已提交生成任务，等待处理...');
 
     const generateRes = await authFetch(buildApiUrl(`/travel-plans/${planId}/generate`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preferences }),
+      body: JSON.stringify({ preferences, must_visit_attractions: mustVisitAttractions }),
     });
 
     if (!generateRes.ok) {
@@ -280,9 +284,16 @@ const PlanGeneratorPage: React.FC = () => {
     try {
       const durationDays = values.dateRange[1].diff(values.dateRange[0], 'days') + 1;
 
+      // 解析必去景点（支持逗号、顿号、换行分隔）
+      const mustVisitAttractions = values.must_visit_attractions
+        ? values.must_visit_attractions
+            .split(/[，,、\n]+/)
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : [];
+
       const createData = {
         title: values.title || `${values.destination} ${durationDays}天旅行计划`,
-        description: values.description,
         destination: values.destination,
         start_date: values.dateRange[0].format('YYYY-MM-DD'),
         end_date: values.dateRange[1].format('YYYY-MM-DD'),
@@ -292,6 +303,7 @@ const PlanGeneratorPage: React.FC = () => {
           travelers: typeof values.people === 'string' ? (values.people === '10+' ? 10 : parseInt(values.people) || 1) : values.people,
           interests: values.interests || [],
         },
+        must_visit_attractions: mustVisitAttractions,
       };
 
       setGenerationProgress(10);
@@ -319,8 +331,8 @@ const PlanGeneratorPage: React.FC = () => {
       };
 
       const planDetail = useSyncMode
-        ? await generateSync(newPlanId!, preferences)
-        : await generateAsync(newPlanId!, preferences);
+        ? await generateSync(newPlanId!, preferences, mustVisitAttractions)
+        : await generateAsync(newPlanId!, preferences, mustVisitAttractions);
 
       if (controller.signal.aborted) throw new Error('生成已中止');
 
@@ -504,60 +516,98 @@ const PlanGeneratorPage: React.FC = () => {
     return people ? (people === '10+' ? '十人及以上' : `${people}人`) : '未设置';
   };
 
-  // 从生成方案中提取地图标记数据（只返回当前选中天数的景点）
+  // 从生成方案中提取地图标记数据（根据 viewMode 决定显示哪些天的景点）
   const getPlanMarkers = () => {
     if (!generatedPlan) return [];
 
     const plans = generatedPlan.generated_plans;
     const dailyItineraries = plans?.[0]?.daily_itineraries || [];
 
-    // 只返回当前选中天数的景点
-    const currentDayData = dailyItineraries[previewActiveDay];
-    if (!currentDayData) return [];
-
-    console.log('getPlanMarkers called:', {
-      previewActiveDay,
-      date: currentDayData.date,
-      attractionsCount: currentDayData.attractions?.length,
-      attractionsNames: currentDayData.attractions?.map((a: any) => a.name),
-      allAttractions: currentDayData.attractions
-    });
-
     const markers: any[] = [];
 
-    // 添加当天景点
-    if (currentDayData.attractions) {
-      currentDayData.attractions.forEach((attraction: any, index: number) => {
-        // 检查是否有坐标数据（支持多种格式）
-        let position = null;
+    // 根据 viewMode 决定显示哪些天的景点
+    const daysToShow = viewMode === 'full'
+      ? dailyItineraries
+      : [dailyItineraries[previewActiveDay]].filter(Boolean);
 
-        // 格式1: coordinates 对象
-        if (attraction.coordinates && attraction.coordinates.lat && attraction.coordinates.lng) {
-          position = { lat: attraction.coordinates.lat, lng: attraction.coordinates.lng };
-        }
-        // 格式2: latitude/longitude 字段
-        else if (attraction.latitude && attraction.longitude) {
-          position = { lat: attraction.latitude, lng: attraction.longitude };
-        }
+    // 诊断日志：打印后端返回的完整数据结构
+    console.log('=== 地图标签诊断日志 ===');
+    console.log('当前viewMode:', viewMode);
+    console.log('dailyItineraries数量:', dailyItineraries.length);
+    
+    daysToShow.forEach((dayData: any, arrayIndex: number) => {
+      const dayIndex = viewMode === 'full' ? arrayIndex : previewActiveDay;
+      if (!dayData) return;
 
-        if (position) {
-          markers.push({
-            id: attraction.name,
-            name: attraction.name,
-            position: position,
-            address: attraction.address || '',
-            day: previewActiveDay + 1,
-            date: currentDayData.date,
-            // 景点指标数据
-            score: attraction.rating || attraction.score,
-            type: attraction.category || attraction.type,
-            price: attraction.price,
-          });
-        }
+      console.log(`Day ${dayIndex + 1}:`, {
+        date: dayData.date,
+        attractionsCount: dayData.attractions?.length || 0,
+        attractions: dayData.attractions?.map((a: any) => ({
+          name: a.name,
+          category: a.category,
+          type: a.type,
+          hasImages: !!(a.image_url || a.photos),
+          coordinates: a.coordinates || { lat: a.latitude, lng: a.longitude }
+        })) || []
       });
-    }
 
-    console.log('最终 markers 数量:', markers.length, '景点名称:', markers.map(m => m.name));
+      // 添加当天景点
+      if (dayData.attractions) {
+        dayData.attractions.forEach((attraction: any, index: number) => {
+          // 检查是否有坐标数据（支持多种格式）
+          let position = null;
+
+          // 格式1: coordinates 对象
+          if (attraction.coordinates && attraction.coordinates.lat && attraction.coordinates.lng) {
+            position = { lat: attraction.coordinates.lat, lng: attraction.coordinates.lng };
+          }
+          // 格式2: latitude/longitude 字段
+          else if (attraction.latitude && attraction.longitude) {
+            position = { lat: attraction.latitude, lng: attraction.longitude };
+          }
+
+          if (position) {
+            const markerData = {
+              id: `${dayIndex}-${attraction.name}`,
+              name: attraction.name,
+              position: position,
+              address: attraction.address || '',
+              day: dayIndex + 1,
+              date: dayData.date,
+              // 景点指标数据
+              score: attraction.rating || attraction.score,
+              type: attraction.category || attraction.type,
+              price: attraction.price,
+              // 是否为当前选中天数（全程模式下全部高亮，单天模式下只有当天高亮）
+              isActive: viewMode === 'full' ? true : dayIndex === previewActiveDay,
+            };
+            
+            // 诊断：检查是否有名称不匹配的问题
+            if (attraction.category && attraction.category !== attraction.name) {
+              console.warn(`⚠️ 潜在的景点名称问题:`, {
+                name: attraction.name,
+                category: attraction.category,
+                markerWillShow: attraction.name
+              });
+            }
+            
+            markers.push(markerData);
+          }
+        });
+      }
+    });
+
+    console.log('最终 markers 数据:', {
+      数量: markers.length,
+      景点列表: markers.map(m => ({
+        name: m.name,
+        day: m.day,
+        type: m.type,
+        position: m.position
+      }))
+    });
+    console.log('=== 诊断完成 ===');
+    
     return markers;
   };
 
@@ -573,6 +623,24 @@ const PlanGeneratorPage: React.FC = () => {
 
     const plans = generatedPlan.generated_plans;
     const dailyItineraries = plans?.[0]?.daily_itineraries || [];
+
+    // 诊断：对比左侧列表和地图标记的景点名称
+    const leftListAttractions = dailyItineraries.flatMap((day: any) =>
+      (day.attractions || []).map((a: any) => a.name)
+    );
+    const mapMarkerAttractions = getPlanMarkers().map(m => m.name);
+    
+    const mismatchedAttractions = leftListAttractions.filter(
+      (name: string) => !mapMarkerAttractions.includes(name)
+    );
+    
+    if (mismatchedAttractions.length > 0) {
+      console.warn('⚠️ 景点名称不匹配警告:', {
+        message: '以下景点出现在左侧列表但不在地图上',
+        mismatched: mismatchedAttractions,
+        suggestion: '这可能表示景点缺少坐标数据或名称不一致'
+      });
+    }
 
     return (
       <div className="plan-preview-content">
@@ -596,15 +664,84 @@ const PlanGeneratorPage: React.FC = () => {
                     <h3 className="day-section-title">
                       Day {day.day || dayIndex + 1} - {day.date || `第${dayIndex + 1}天`}
                     </h3>
-                    {day.attractions?.map((attraction: any, idx: number) => (
-                      <Card key={idx} className="activity-card" size="small" style={{ marginBottom: 8 }}>
-                        <div className="activity-content">
-                          <h4 className="activity-title">{attraction.name}</h4>
-                          {attraction.description && <p className="activity-description">{attraction.description}</p>}
-                          {attraction.address && <p className="activity-location"><EnvironmentOutlined /> {attraction.address}</p>}
-                        </div>
-                      </Card>
-                    ))}
+                    {day.attractions?.map((attraction: any, idx: number) => {
+                      const attractionKey = `${dayIndex}-${idx}-${attraction.name}`;
+                      const isExpanded = expandedAttractions.has(attractionKey);
+                      const images = attraction.photos || (attraction.image_url ? [attraction.image_url] : []);
+                      
+                      return (
+                        <Card key={idx} className="activity-card" size="small" style={{ marginBottom: 8 }}>
+                          <div className="activity-content">
+                            <h4 className="activity-title">{attraction.name}</h4>
+                            
+                            {/* 图片轮播组件 */}
+                            {images.length > 0 && (
+                              <AttractionImageCarousel 
+                                images={images} 
+                                attractionName={attraction.name}
+                                maxImagesToShow={2}
+                              />
+                            )}
+                            
+                            {/* 简要信息（始终显示） */}
+                            {attraction.description && <p className="activity-description">{attraction.description}</p>}
+                            {attraction.address && <p className="activity-location"><EnvironmentOutlined /> {attraction.address}</p>}
+                            
+                            {/* 展开的详细信息 */}
+                            {isExpanded && (
+                              <div className="attraction-details-expanded">
+                                {attraction.ticket_price && (
+                                  <p className="detail-item"><span className="detail-label">门票价格：</span> ¥{attraction.ticket_price}</p>
+                                )}
+                                {attraction.opening_hours && (
+                                  <p className="detail-item"><span className="detail-label">营业时间：</span> {
+                                    typeof attraction.opening_hours === 'string' 
+                                      ? attraction.opening_hours 
+                                      : JSON.stringify(attraction.opening_hours)
+                                  }</p>
+                                )}
+                                {attraction.rating && (
+                                  <p className="detail-item"><span className="detail-label">评分：</span> ⭐ {attraction.rating}</p>
+                                )}
+                                {attraction.category && (
+                                  <p className="detail-item"><span className="detail-label">分类：</span> {attraction.category}</p>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* 查看详情按钮 */}
+                            {(attraction.ticket_price || attraction.opening_hours || attraction.rating || attraction.category) && (
+                              <Button
+                                type="text"
+                                size="small"
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedAttractions);
+                                  if (isExpanded) {
+                                    newExpanded.delete(attractionKey);
+                                  } else {
+                                    newExpanded.add(attractionKey);
+                                  }
+                                  setExpandedAttractions(newExpanded);
+                                }}
+                                style={{ marginTop: 8 }}
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <UpOutlined style={{ marginRight: 4 }} />
+                                    收起详情
+                                  </>
+                                ) : (
+                                  <>
+                                    <DownOutlined style={{ marginRight: 4 }} />
+                                    查看详情
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
                 ))
               ) : (
@@ -616,12 +753,25 @@ const PlanGeneratorPage: React.FC = () => {
             {/* 天数选择 */}
             <div style={{ marginBottom: 8 }}>
               <Space>
+                {/* 全程按钮 */}
+                <Button
+                  type={viewMode === 'full' ? 'primary' : 'default'}
+                  size="small"
+                  onClick={() => setViewMode('full')}
+                  style={{ fontWeight: viewMode === 'full' ? 'bold' : 'normal' }}
+                >
+                  全程
+                </Button>
+                {/* 各天按钮 */}
                 {dailyItineraries.map((day: any, index: number) => (
                   <Button
                     key={index}
-                    type={previewActiveDay === index ? 'primary' : 'default'}
+                    type={viewMode === 'day' && previewActiveDay === index ? 'primary' : 'default'}
                     size="small"
-                    onClick={() => setPreviewActiveDay(index)}
+                    onClick={() => {
+                      setViewMode('day');
+                      setPreviewActiveDay(index);
+                    }}
                   >
                     Day {day.day || index + 1}
                   </Button>
@@ -631,12 +781,12 @@ const PlanGeneratorPage: React.FC = () => {
             {/* 地图 */}
             <div className="map-section" style={{ height: 360 }}>
               <MapComponent
-                key={`map-${planId}-${previewActiveDay}`}
+                key={`map-${planId}-${viewMode}-${previewActiveDay}`}
                 markers={getPlanMarkers()}
                 center={mapCenter}
                 zoom={11}
-                viewMode="day"
-                currentDay={previewActiveDay + 1}
+                viewMode={viewMode}
+                currentDay={viewMode === 'day' ? previewActiveDay + 1 : undefined}
               />
             </div>
           </Col>
@@ -728,8 +878,12 @@ const PlanGeneratorPage: React.FC = () => {
               </Select>
             </Form.Item>
 
-            <Form.Item name="description" label="行程描述（可选）">
-              <Input.TextArea placeholder="描述您的旅行期望和特殊需求" rows={3} maxLength={500} showCount />
+            <Form.Item
+              name="must_visit_attractions"
+              label="必去景点（可选）"
+              tooltip="输入您一定要去的景点，多个景点用逗号分隔"
+            >
+              <Input.TextArea placeholder="例如：故宫、长城、天坛" rows={2} maxLength={200} showCount />
             </Form.Item>
           </div>
 

@@ -32,10 +32,10 @@ RUN mkdir -p logs uploads
 # 设置环境变量
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8001
+ENV PORT=8000
 
 # 暴露端口
-EXPOSE 8001
+EXPOSE 8000
 
 # 启动命令，支持通过环境变量 PORT 调整端口
 CMD ["bash", "-lc", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]

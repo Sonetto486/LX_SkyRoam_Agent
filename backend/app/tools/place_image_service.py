@@ -70,7 +70,7 @@ class PlaceImageService:
     def __init__(self):
         self.request_count = 0
         self._last_request_time = 0
-        self._request_interval = 0.2  # 200ms间隔，防止QPS限流
+        self._request_interval = 0.3  # 300ms间隔，更保守的限流策略
 
     async def _rate_limit_wait(self):
         """请求间隔控制，防止QPS限流"""

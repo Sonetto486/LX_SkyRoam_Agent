@@ -3,8 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import 'antd/dist/reset.css';
-import './App.css';
 import './pages/common.css';
+import './App.css';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 
@@ -27,12 +27,14 @@ const AppContent: React.FC = () => {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: '#6366f1',
-          colorInfo: '#6366f1',
-          colorSuccess: '#10b981',
-          colorWarning: '#f59e0b',
-          colorError: '#ef4444',
-          borderRadius: 12,
+          // Notion 设计系统主题色
+          colorPrimary: '#5645d4',
+          colorInfo: '#0075de',
+          colorSuccess: '#1aae39',
+          colorWarning: '#dd5b00',
+          colorError: '#e03131',
+          borderRadius: 8,
+          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
         },
         algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
       }}

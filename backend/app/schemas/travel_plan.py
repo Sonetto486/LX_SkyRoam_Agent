@@ -49,6 +49,7 @@ class TravelPlanBase(BaseModel):
     packing_list: Optional[List[Dict[str, Any]]] = Field(None, description="物品清单")
     travel_mode: Optional[str] = Field(None, description="出行方式: flight, train, car, bus")
     tags: Optional[List[str]] = Field(None, description="行程标签")
+    must_visit_attractions: Optional[List[str]] = Field(default=[], description="必去景点列表")
 
 
 class TravelPlanCreateRequest(TravelPlanBase):
@@ -187,6 +188,7 @@ class TravelPlanGenerateRequest(BaseModel):
     """生成旅行方案请求模式"""
     preferences: Optional[Dict[str, Any]] = Field(None, description="生成偏好")
     requirements: Optional[Dict[str, Any]] = Field(None, description="特殊要求")
+    must_visit_attractions: Optional[List[str]] = Field(default=[], description="必去景点列表")
     num_plans: int = Field(3, description="生成方案数量", ge=1, le=10)
 
 
