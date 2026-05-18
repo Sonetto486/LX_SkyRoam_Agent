@@ -75,6 +75,7 @@ interface AttractionsSectionProps {
   onMoveAttraction?: (index: number, direction: 'up' | 'down') => void;
   onMoveToDay?: (index: number, targetDay: number) => void;
   onViewDetail?: (index: number) => void;
+  onReorderAttractions?: (fromIndex: number, toIndex: number) => void; // 新增：拖拽交换顺序
 }
 
 const AttractionsSection: React.FC<AttractionsSectionProps> = ({
@@ -91,7 +92,8 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   onTogglePriority,
   onMoveAttraction,
   onMoveToDay,
-  onViewDetail
+  onViewDetail,
+  onReorderAttractions
 }) => {
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,7 +101,7 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [lastAttractionsKey, setLastAttractionsKey] = useState<string>('');
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-  const [dragOverDay, setDragOverDay] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     // 只在景点列表真正变化时重置优化状态
@@ -314,9 +316,9 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
       <List
         dataSource={attractions}
         renderItem={(attraction, index) => (
-          <div 
+          <div
             key={index}
-            draggable={!!(totalDays && totalDays > 1)}
+            draggable={true}
             onDragStart={(e) => {
               setDraggingIndex(index);
               e.dataTransfer.effectAllowed = 'move';
@@ -324,7 +326,30 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
             }}
             onDragEnd={() => {
               setDraggingIndex(null);
-              setDragOverDay(null);
+              setDragOverIndex(null);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (draggingIndex !== null && draggingIndex !== index) {
+                setDragOverIndex(index);
+              }
+            }}
+            onDragLeave={() => {
+              setDragOverIndex(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+              const toIndex = index;
+
+              // 同一天内拖拽交换顺序
+              if (!isNaN(fromIndex) && fromIndex !== toIndex && onReorderAttractions) {
+                onReorderAttractions(fromIndex, toIndex);
+              }
+
+              setDraggingIndex(null);
+              setDragOverIndex(null);
             }}
           >
             {/* 景点卡片 */}
@@ -332,12 +357,15 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
               <Card
                 size="small"
                 hoverable
-                className={`attraction-card ${hoveredIndex === index ? 'hovered' : ''} ${draggingIndex === index ? 'dragging' : ''}`}
+                className={`attraction-card ${hoveredIndex === index ? 'hovered' : ''} ${draggingIndex === index ? 'dragging' : ''} ${dragOverIndex === index ? 'drag-over' : ''}`}
                 style={{
                   width: '100%',
                   borderLeft: index === 0 ? '4px solid #52c41a' : '4px solid #1890ff',
-                  cursor: (totalDays && totalDays > 1) ? 'grab' : 'default',
-                  opacity: draggingIndex === index ? 0.5 : 1
+                  cursor: 'grab',
+                  opacity: draggingIndex === index ? 0.5 : 1,
+                  transition: 'all 0.2s ease',
+                  transform: dragOverIndex === index ? 'scale(1.02)' : 'none',
+                  boxShadow: dragOverIndex === index ? '0 4px 12px rgba(24, 144, 255, 0.3)' : 'none'
                 }}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}

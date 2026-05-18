@@ -484,6 +484,80 @@ const ItineraryWorkspace: React.FC = () => {
     }
   };
 
+  // 拖拽交换景点顺序
+  const handleReorderAttractions = async (fromIndex: number, toIndex: number) => {
+    if (!plan || !id) return;
+
+    const dayActivities = getDayActivities();
+    if (activeDay >= dayActivities.length) return;
+
+    const day = dayActivities[activeDay];
+    if (!day.attractions || fromIndex >= day.attractions.length || toIndex >= day.attractions.length) {
+      message.warning('无法找到该景点');
+      return;
+    }
+
+    // 获取同一天的所有景点（按时间排序）
+    const currentDate = day.date;
+    const sameDayItems = plan.items?.filter(item =>
+      item.item_type === 'attraction' &&
+      item.start_time &&
+      item.start_time.split('T')[0] === currentDate
+    ).sort((a, b) => {
+      if (!a.start_time || !b.start_time) return 0;
+      return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+    });
+
+    if (!sameDayItems || sameDayItems.length < 2) {
+      message.warning('景点数量不足，无法交换');
+      return;
+    }
+
+    // 获取要交换的两个景点
+    const fromItem = sameDayItems[fromIndex];
+    const toItem = sameDayItems[toIndex];
+
+    if (!fromItem || !toItem) {
+      message.warning('无法找到景点');
+      return;
+    }
+
+    try {
+      // 交换时间
+      const [res1, res2] = await Promise.all([
+        authFetch(
+          buildApiUrl(`/travel-plans/${id}/items/${fromItem.id}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              start_time: toItem.start_time
+            }),
+          }
+        ),
+        authFetch(
+          buildApiUrl(`/travel-plans/${id}/items/${toItem.id}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              start_time: fromItem.start_time
+            }),
+          }
+        )
+      ]);
+
+      if (!res1.ok || !res2.ok) {
+        throw new Error('更新失败');
+      }
+
+      message.success('景点顺序已交换');
+      await fetchPlan();
+    } catch (err: any) {
+      message.error('交换失败：' + (err.message || '未知错误'));
+    }
+  };
+
   // 移动景点到其他天数
   const handleMoveActivityToDay = async (attractionIndex: number, targetDay: number) => {
     if (!plan || !id) return;
@@ -1573,6 +1647,7 @@ const getDayActivities = (): DayActivity[] => {
                           }}
                           onMoveToDay={handleMoveActivityToDay}
                           onViewDetail={openAttractionDetail}
+                          onReorderAttractions={handleReorderAttractions}
                         />
                       ) : (
                         <Empty description="暂无景点安排" style={{ padding: '40px 0' }} />
