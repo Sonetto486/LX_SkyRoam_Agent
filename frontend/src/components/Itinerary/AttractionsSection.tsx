@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, List, Tag, Button, Space, Typography, Collapse, Rate, message, Spin, Tooltip, Popconfirm } from 'antd';
+import { Card, List, Tag, Button, Space, Typography, Collapse, Rate, message, Spin, Tooltip, Popconfirm, Dropdown, Menu } from 'antd';
 import {
   CameraOutlined,
   EnvironmentOutlined,
@@ -14,7 +14,8 @@ import {
   StarFilled,
   UpOutlined,
   DownOutlined as MoveDownOutlined,
-  EyeOutlined
+  EyeOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import { authFetch } from '../../utils/auth';
 import { buildApiUrl } from '../../config/api';
@@ -62,11 +63,14 @@ interface AttractionsSectionProps {
   hotelCoordinates?: { lat: number; lng: number };
   planId?: number;
   dayDate?: string;
+  currentDay?: number;
+  totalDays?: number;
   onRouteOptimized?: (data: { date?: string; route_segments: RouteSegment[]; ordered_items?: any[] }) => void;
   onEditAttraction?: (index: number) => void;
   onDeleteAttraction?: (index: number) => void;
   onTogglePriority?: (index: number, priority: string) => void;
   onMoveAttraction?: (index: number, direction: 'up' | 'down') => void;
+  onMoveToDay?: (index: number, targetDay: number) => void;
   onViewDetail?: (index: number) => void;
 }
 
@@ -76,11 +80,14 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   hotelCoordinates,
   planId,
   dayDate,
+  currentDay,
+  totalDays,
   onRouteOptimized,
   onEditAttraction,
   onDeleteAttraction,
   onTogglePriority,
   onMoveAttraction,
+  onMoveToDay,
   onViewDetail
 }) => {
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([]);
@@ -88,6 +95,8 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
   const [optimized, setOptimized] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [lastAttractionsKey, setLastAttractionsKey] = useState<string>('');
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<number | null>(null);
 
   useEffect(() => {
     // 只在景点列表真正变化时重置优化状态
@@ -294,16 +303,30 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
       <List
         dataSource={attractions}
         renderItem={(attraction, index) => (
-          <div key={index}>
+          <div 
+            key={index}
+            draggable={!!(totalDays && totalDays > 1)}
+            onDragStart={(e) => {
+              setDraggingIndex(index);
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', index.toString());
+            }}
+            onDragEnd={() => {
+              setDraggingIndex(null);
+              setDragOverDay(null);
+            }}
+          >
             {/* 景点卡片 */}
             <List.Item style={{ border: 'none', padding: '8px 0' }}>
               <Card
                 size="small"
                 hoverable
-                className={`attraction-card ${hoveredIndex === index ? 'hovered' : ''}`}
+                className={`attraction-card ${hoveredIndex === index ? 'hovered' : ''} ${draggingIndex === index ? 'dragging' : ''}`}
                 style={{
                   width: '100%',
-                  borderLeft: index === 0 ? '4px solid #52c41a' : '4px solid #1890ff'
+                  borderLeft: index === 0 ? '4px solid #52c41a' : '4px solid #1890ff',
+                  cursor: (totalDays && totalDays > 1) ? 'grab' : 'default',
+                  opacity: draggingIndex === index ? 0.5 : 1
                 }}
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex(null)}
@@ -342,79 +365,105 @@ const AttractionsSection: React.FC<AttractionsSectionProps> = ({
                   </div>
 
                   {/* 操作按钮（hover显示） */}
-                  <div className={`attraction-actions ${hoveredIndex === index ? 'visible' : ''}`}>
-                    {/* 查看详情 */}
-                    {onViewDetail && (
-                      <Tooltip title="查看详情">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={() => onViewDetail(index)}
-                        />
-                      </Tooltip>
-                    )}
-                    {/* 上移按钮 */}
-                    {onMoveAttraction && index > 0 && (
-                      <Tooltip title="上移">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<UpOutlined />}
-                          onClick={() => onMoveAttraction(index, 'up')}
-                        />
-                      </Tooltip>
-                    )}
-                    {/* 下移按钮 */}
-                    {onMoveAttraction && index < attractions.length - 1 && (
-                      <Tooltip title="下移">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<MoveDownOutlined />}
-                          onClick={() => onMoveAttraction(index, 'down')}
-                        />
-                      </Tooltip>
-                    )}
-                    {/* 优先级切换 */}
-                    {onTogglePriority && (
-                      <Tooltip title="切换优先级">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<StarFilled />}
-                          onClick={() => handleTogglePriority(index, attraction.priority)}
-                        />
-                      </Tooltip>
-                    )}
-                    {onEditAttraction && (
-                      <Tooltip title="编辑">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EditOutlined />}
-                          onClick={() => onEditAttraction(index)}
-                        />
-                      </Tooltip>
-                    )}
-                    {onDeleteAttraction && (
-                      <Popconfirm
-                        title="确定删除此景点？"
-                        okText="删除"
-                        cancelText="取消"
-                        onConfirm={() => onDeleteAttraction(index)}
-                      >
-                        <Tooltip title="删除">
+                    <div className={`attraction-actions ${hoveredIndex === index ? 'visible' : ''}`}>
+                      {/* 查看详情 */}
+                      {onViewDetail && (
+                        <Tooltip title="查看详情">
                           <Button
                             type="text"
                             size="small"
-                            danger
-                            icon={<DeleteOutlined />}
+                            icon={<EyeOutlined />}
+                            onClick={() => onViewDetail(index)}
                           />
                         </Tooltip>
-                      </Popconfirm>
-                    )}
-                  </div>
+                      )}
+                      {/* 上移按钮 */}
+                      {onMoveAttraction && index > 0 && (
+                        <Tooltip title="上移">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<UpOutlined />}
+                            onClick={() => onMoveAttraction(index, 'up')}
+                          />
+                        </Tooltip>
+                      )}
+                      {/* 下移按钮 */}
+                      {onMoveAttraction && index < attractions.length - 1 && (
+                        <Tooltip title="下移">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<MoveDownOutlined />}
+                            onClick={() => onMoveAttraction(index, 'down')}
+                          />
+                        </Tooltip>
+                      )}
+                      {/* 移动到其他天数 */}
+                      {onMoveToDay && totalDays && totalDays > 1 && (
+                        <Dropdown
+                          overlay={
+                            <Menu>
+                              {Array.from({ length: totalDays }, (_, i) => i + 1).filter(day => day !== currentDay).map(day => (
+                                <Menu.Item
+                                  key={day}
+                                  onClick={() => onMoveToDay(index, day)}
+                                >
+                                  <CalendarOutlined /> Day {day}
+                                </Menu.Item>
+                              ))}
+                            </Menu>
+                          }
+                          trigger={['click']}
+                        >
+                          <Tooltip title="移动到其他天数">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<CalendarOutlined />}
+                            />
+                          </Tooltip>
+                        </Dropdown>
+                      )}
+                      {/* 优先级切换 */}
+                      {onTogglePriority && (
+                        <Tooltip title="切换优先级">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<StarFilled />}
+                            onClick={() => handleTogglePriority(index, attraction.priority)}
+                          />
+                        </Tooltip>
+                      )}
+                      {onEditAttraction && (
+                        <Tooltip title="编辑">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => onEditAttraction(index)}
+                          />
+                        </Tooltip>
+                      )}
+                      {onDeleteAttraction && (
+                        <Popconfirm
+                          title="确定删除此景点？"
+                          okText="删除"
+                          cancelText="取消"
+                          onConfirm={() => onDeleteAttraction(index)}
+                        >
+                          <Tooltip title="删除">
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                            />
+                          </Tooltip>
+                        </Popconfirm>
+                      )}
+                    </div>
                 </div>
               </Card>
             </List.Item>

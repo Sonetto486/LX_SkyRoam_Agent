@@ -429,6 +429,55 @@ const ItineraryWorkspace: React.FC = () => {
     }
   };
 
+  // 移动景点到其他天数
+  const handleMoveActivityToDay = async (attractionIndex: number, targetDay: number) => {
+    if (!plan || !id) return;
+
+    const dayActivities = getDayActivities();
+    if (activeDay >= dayActivities.length) return;
+
+    const day = dayActivities[activeDay];
+    if (!day.attractions || attractionIndex >= day.attractions.length) {
+      message.warning('无法找到该景点');
+      return;
+    }
+
+    const attraction = day.attractions[attractionIndex];
+    
+    // 尝试从items中找到匹配的景点
+    const matchingItem = plan.items?.find(item =>
+      item.title === attraction.name ||
+      item.address === attraction.address
+    );
+
+    if (!matchingItem || !matchingItem.id) {
+      message.warning('无法找到对应的行程项');
+      return;
+    }
+
+    try {
+      // 计算目标日期（从start_date开始偏移targetDay-1天）
+      const targetDate = getDateByOffset(plan.start_date, targetDay - 1);
+      
+      // 更新景点的日期
+      await authFetch(
+        buildApiUrl(`/travel-plans/${id}/items/${matchingItem.id}`),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start_time: `${targetDate}T09:00:00` // 默认设置为目标日期的上午9点
+          }),
+        }
+      );
+
+      message.success(`景点已移动到 Day ${targetDay}`);
+      fetchPlan();
+    } catch (err: any) {
+      message.error('移动失败：' + (err.message || '未知错误'));
+    }
+  };
+
   // 更新日期
   const handleUpdateDateRange = async (startDate: string, endDate: string, durationDays: number) => {
     if (!plan || !id) return;
@@ -1244,10 +1293,25 @@ const getDayActivities = (): DayActivity[] => {
               <Tabs.TabPane
                 key={index}
                 tab={
-                  <Space size={4}>
-                    <span className="day-label">Day {index + 1}</span>
-                    <span className="day-date">{formatDateDisplay(day.date)}</span>
-                  </Space>
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const attractionIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                      if (!isNaN(attractionIndex) && index !== activeDay) {
+                        handleMoveActivityToDay(attractionIndex, index + 1);
+                      }
+                    }}
+                    style={{ padding: '4px 12px', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    <Space size={4}>
+                      <span className="day-label">Day {index + 1}</span>
+                      <span className="day-date">{formatDateDisplay(day.date)}</span>
+                    </Space>
+                  </div>
                 }
               >
                 {/* 分类标签页 */}
@@ -1345,6 +1409,8 @@ const getDayActivities = (): DayActivity[] => {
                           hotelCoordinates={day.hotel?.coordinates}
                           planId={plan?.id}
                           dayDate={day.date}
+                          currentDay={activeDay + 1}
+                          totalDays={dayActivities.length}
                           onRouteOptimized={(data) => {
                             // Handle route segments for map display
                             // data 包含 { date, route_segments, ordered_items }
@@ -1449,6 +1515,7 @@ const getDayActivities = (): DayActivity[] => {
                               }
                             }
                           }}
+                          onMoveToDay={handleMoveActivityToDay}
                           onViewDetail={openAttractionDetail}
                         />
                       ) : (
