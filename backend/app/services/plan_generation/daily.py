@@ -7,13 +7,21 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 import copy
 import math
 import re
+import asyncio
 
 from loguru import logger
 
 LLMRequester = Callable[..., Awaitable[Optional[Any]]]
-PromptBuilder = Callable[[int, str, Optional[float]], Tuple[str, str, int, float]]
+PromptBuilder = Callable[[int, str, Optional[float], Optional[List[str]]], Tuple[str, str, int, float]]
 FallbackBuilder = Callable[[int, str], Dict[str, Any]]
 DayEntryExtractor = Callable[[Any, int, str], Optional[Dict[str, Any]]]
+
+# 全局 LLM 请求信号量：限制同时进行的请求数量（避免触发速率限制）
+# 智谱 AI 免费版建议同时最多 1 个并发请求，并需要请求间隔
+_LLM_SEMAPHORE = asyncio.Semaphore(1)
+# 请求间隔时间（秒），避免触发速率限制
+# 智谱 AI 免费版速率限制严格，需要较长间隔
+_LLM_REQUEST_INTERVAL = 5.0
 
 
 def _ensure_attraction_description(attr: Dict[str, Any]) -> str:
@@ -33,12 +41,44 @@ def _ensure_attraction_description(attr: Dict[str, Any]) -> str:
     # 生成简洁简介
     name = attr.get("name", "景点")
     city = attr.get("city", "")
-    labels = attr.get("labels", [])
-    label_str = labels[0] if labels else "风景名胜"
+
+    # 根据景点名称智能生成简介，避免语病
+    # labels 字段是 POI 分类标签，不适合直接用作简介描述
+    attraction_type = _get_attraction_type_label(name)
 
     if city:
-        return f"{name}是{city}著名的{label_str}，值得一游。"
-    return f"{name}是热门的{label_str}景点，值得一游。"
+        return f"{name}是{city}著名的{attraction_type}，值得一游。"
+    return f"{name}是热门的{attraction_type}，值得一游。"
+
+
+def _get_attraction_type_label(name: str) -> str:
+    """根据景点名称智能判断景点类型，返回合适的描述词"""
+    # 主题乐园/游乐园
+    if any(kw in name for kw in ["迪士尼", "欢乐谷", "长隆", "环球影城", "方特", "主题乐园", "游乐园", "乐园"]):
+        return "主题乐园"
+    # 动物园/海洋馆
+    if any(kw in name for kw in ["动物园", "野生动物园", "海洋馆", "海洋世界", "水族馆", "熊猫基地", "熊猫"]):
+        return "动物园/海洋馆"
+    # 博物馆/纪念馆
+    if any(kw in name for kw in ["博物馆", "纪念馆", "展览馆", "美术馆", "艺术馆", "科技馆", "天文馆"]):
+        return "博物馆"
+    # 古镇/古街
+    if any(kw in name for kw in ["古镇", "古街", "老街", "巷子", "胡同", "坊", "里"]):
+        return "历史文化街区"
+    # 寺庙/宗教场所
+    if any(kw in name for kw in ["寺", "庙", "宫", "观", "教堂", "塔", "祠", "院", "阁", "庵"]):
+        return "宗教文化景点"
+    # 园林/公园
+    if any(kw in name for kw in ["园", "公园", "花园", "植物园", "湿地", "森林", "山", "湖", "江", "河", "海滩", "海滩"]):
+        return "自然风光景点"
+    # 广场/地标
+    if any(kw in name for kw in ["广场", "塔", "楼", "大厦", "中心", "地标", "外滩", "步行街", "路"]):
+        return "城市地标"
+    # 遗址/古迹
+    if any(kw in name for kw in ["遗址", "古迹", "陵", "墓", "长城", "城墙", "门", "关"]):
+        return "历史古迹"
+    # 默认
+    return "风景名胜"
 
 
 def calculate_date(start_date: Optional[Any], days_offset: int) -> str:
@@ -90,36 +130,99 @@ async def generate_daily_entries(
     fallback_builder: FallbackBuilder,
     post_process: Optional[Callable[[Dict[str, Any], int, str], Dict[str, Any]]] = None,
     day_entry_extractor: Optional[DayEntryExtractor] = None,
+    sequential: bool = False,
+    get_assigned_items: Optional[Callable[[int, List[Dict[str, Any]]], List[str]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Generate structured daily entries with graceful fallback handling."""
+    """Generate structured daily entries with graceful fallback handling.
+
+    Args:
+        sequential: If True, process days sequentially (needed when days depend on each other)
+        get_assigned_items: Function to get already assigned items for a given day
+                           (receives current day and previous results, returns list of names)
+        fallback_builder: Can accept optional 'assigned_names' parameter for deduplication
+    """
     extractor = day_entry_extractor or extract_day_entry
     results: List[Dict[str, Any]] = []
-    for day in range(1, max(total_days, 0) + 1):
-        date_str = calculate_date(start_date, day - 1)
-        try:
-            system_prompt, user_prompt, max_tokens, temperature = build_prompts(
-                day, date_str, per_day_budget
-            )
-            parsed = await llm_requester(
-                system_prompt,
-                user_prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                log_context=f"{module_name} 第{day}天",
-            )
-            if parsed is not None:
-                day_plan = extractor(parsed, day, date_str)
-                if day_plan:
-                    if post_process:
-                        day_plan = post_process(day_plan, day, date_str)
-                    results.append(day_plan)
-                    continue
-            logger.warning(f"{module_name} 第{day}天LLM返回无效，启用降级方案")
-        except Exception as exc:  # pragma: no cover - defensive log only
-            logger.error(f"{module_name} 第{day}天生成异常: {exc}")
-        results.append(fallback_builder(day, date_str))
+
+    if sequential:
+        # 顺序处理：每天生成时可以参考之前已分配的内容
+        for day in range(1, max(total_days, 0) + 1):
+            date_str = calculate_date(start_date, day - 1)
+            # 获取已分配的景点名称列表
+            assigned_items = []
+            if get_assigned_items:
+                assigned_items = get_assigned_items(day, results)
+
+            async with _LLM_SEMAPHORE:
+                try:
+                    system_prompt, user_prompt, max_tokens, temperature = build_prompts(
+                        day, date_str, per_day_budget, assigned_items=assigned_items
+                    )
+                    parsed = await llm_requester(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        log_context=f"{module_name} 第{day}天",
+                    )
+                    if parsed is not None:
+                        day_plan = extractor(parsed, day, date_str)
+                        if day_plan:
+                            if post_process:
+                                day_plan = post_process(day_plan, day, date_str)
+                            results.append(day_plan)
+                            # 请求间隔，避免触发速率限制
+                            await asyncio.sleep(_LLM_REQUEST_INTERVAL)
+                            continue
+                    logger.warning(f"{module_name} 第{day}天LLM返回无效，启用降级方案")
+                except Exception as exc:
+                    logger.error(f"{module_name} 第{day}天生成异常: {exc}")
+            # 调用 fallback 时传递已分配的景点名称
+            try:
+                # 尝试使用支持 assigned_names 参数的 fallback_builder
+                fallback_result = fallback_builder(day, date_str, assigned_names=assigned_items)
+            except TypeError:
+                # 如果 fallback_builder 不支持 assigned_names 参数，使用原始调用方式
+                fallback_result = fallback_builder(day, date_str)
+            results.append(fallback_result)
+            # 即使使用 fallback，也需要间隔
+            await asyncio.sleep(_LLM_REQUEST_INTERVAL)
+    else:
+        # 并行处理所有天数（但受信号量限制）
+        async def process_day(day: int) -> Dict[str, Any]:
+            date_str = calculate_date(start_date, day - 1)
+            async with _LLM_SEMAPHORE:
+                try:
+                    system_prompt, user_prompt, max_tokens, temperature = build_prompts(
+                        day, date_str, per_day_budget
+                    )
+                    parsed = await llm_requester(
+                        system_prompt,
+                        user_prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        log_context=f"{module_name} 第{day}天",
+                    )
+                    if parsed is not None:
+                        day_plan = extractor(parsed, day, date_str)
+                        if day_plan:
+                            if post_process:
+                                day_plan = post_process(day_plan, day, date_str)
+                            # 请求间隔，避免触发速率限制
+                            await asyncio.sleep(_LLM_REQUEST_INTERVAL)
+                            return day_plan
+                    logger.warning(f"{module_name} 第{day}天LLM返回无效，启用降级方案")
+                except Exception as exc:
+                    logger.error(f"{module_name} 第{day}天生成异常: {exc}")
+            # 请求间隔，避免触发速率限制
+            await asyncio.sleep(_LLM_REQUEST_INTERVAL)
+            return fallback_builder(day, date_str)
+
+        tasks = [process_day(day) for day in range(1, max(total_days, 0) + 1)]
+        results = await asyncio.gather(*tasks)
+
     logger.info(f"{module_name} 按天生成完成，共 {len(results)} 天")
-    return results
+    return list(results)
 
 
 def get_day_entry_from_list(entries: Optional[List[Dict[str, Any]]], day: int) -> Optional[Dict[str, Any]]:
@@ -168,6 +271,7 @@ def build_simple_attraction_plan(
     min_attractions: int = 3,
     max_attractions: int = 4,
     must_visit_attractions: Optional[List[str]] = None,
+    assigned_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Fallback attraction plan when the LLM response is unusable.
 
@@ -178,7 +282,11 @@ def build_simple_attraction_plan(
         min_attractions: Minimum attractions per day (default 3)
         max_attractions: Maximum attractions per day (default 4)
         must_visit_attractions: List of must-visit attraction names
+        assigned_names: List of attraction names already assigned to previous days
     """
+    # 已分配的景点名称集合
+    assigned_set = set(assigned_names or [])
+
     # 全天景点关键词
     full_day_keywords = ["迪士尼", "欢乐谷", "长隆", "主题乐园", "游乐园",
                          "野生动物园", "海洋公园", "环球影城", "方特"]
@@ -186,20 +294,25 @@ def build_simple_attraction_plan(
     # 排除关键词：这些不是全天景点
     exclude_keywords = ["豫园", "拙政园", "留园", "狮子林", "公园", "花园", "植物园", "盆景园"]
 
-    # 识别全天景点
+    # 识别全天景点（排除已分配的）
     full_day_attractions = []
     for attr in attractions_data:
         name = attr.get("name", "")
+        # 排除已分配的景点
+        if name in assigned_set:
+            continue
         # 排除普通园林
         if any(ex in name for ex in exclude_keywords):
             continue
         if any(kw in name for kw in full_day_keywords):
             full_day_attractions.append(attr)
 
-    # 识别必去景点（非全天）
+    # 识别必去景点（非全天，排除已分配的）
     must_visit_non_full_day = []
     for attr in attractions_data:
         name = attr.get("name", "")
+        if name in assigned_set:
+            continue
         if attr.get("is_must_visit") or name in (must_visit_attractions or []):
             if attr not in full_day_attractions:
                 must_visit_non_full_day.append(attr)
@@ -214,8 +327,8 @@ def build_simple_attraction_plan(
         if assigned_day == day:
             return _build_full_day_plan(day, date_str, attr)
 
-    # 获取非全天景点列表
-    non_full_day = [a for a in attractions_data if a not in full_day_attractions]
+    # 获取非全天景点列表（排除已分配的）
+    non_full_day = [a for a in attractions_data if a not in full_day_attractions and a.get("name") not in assigned_set]
 
     # 按热度排序（popularity_rank 越小越热门）
     non_full_day_sorted = sorted(
@@ -231,7 +344,8 @@ def build_simple_attraction_plan(
 
     # 从非必去景点中选择，填充到 min_attractions
     added_names = {a.get("name") for a in selection}
-    other_attractions = [a for a in non_full_day_sorted if a.get("name") not in added_names]
+    # 排除已分配的景点
+    other_attractions = [a for a in non_full_day_sorted if a.get("name") not in added_names and a.get("name") not in assigned_set]
 
     # 计算还需要多少景点
     remaining_slots = max_attractions - len(selection)
@@ -256,9 +370,10 @@ def build_simple_attraction_plan(
     if len(selection) < min_attractions:
         added_names = {a.get("name") for a in selection}
         for attr in non_full_day_sorted:
-            if attr.get("name") not in added_names:
+            name = attr.get("name")
+            if name not in added_names and name not in assigned_set:
                 selection.append(attr)
-                added_names.add(attr.get("name"))
+                added_names.add(name)
                 if len(selection) >= min_attractions:
                     break
 

@@ -3,11 +3,14 @@ import time
 from typing import List, Optional, Dict, Any, Union
 from loguru import logger
 from app.tools.amap_rest_client import amap_rest_client
+from app.tools.wikimedia_service import wikimedia_service
+from app.core.redis import get_cache, set_cache
 import Levenshtein
 
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
-DEFAULT_IMAGE = "https://picsum.photos/400/300"
+# 无图片时使用空字符串，前端会显示"暂无图片"
+DEFAULT_IMAGE = ""
 
 
 class PlaceImageService:
@@ -669,10 +672,85 @@ class PlaceImageService:
             except Exception as e:
                 logger.warning(f"名称geocode失败: {e}")
 
-        if not result["images"]:
-            result["images"] = [DEFAULT_IMAGE]
+        # 如果高德 POI 没有图片，尝试从 Wikimedia 获取
+        if result["image_url"] == DEFAULT_IMAGE or not result["images"] or result["images"] == [DEFAULT_IMAGE]:
+            wikimedia_image = await self._get_wikimedia_image(name, inferred_city)
+            if wikimedia_image:
+                result["image_url"] = wikimedia_image
+                result["images"] = [wikimedia_image]
+                result["source"] = "wikimedia"
+                logger.info(f"使用 Wikimedia 图片: {name}")
+            else:
+                # 无图片，保持空值
+                result["image_url"] = ""
+                result["images"] = []
+                logger.info(f"未找到图片: {name}")
 
         return result
+
+    async def get_best_image(
+        self,
+        attraction_name: str,
+        city: str = "",
+        db_image_url: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        按优先级获取最佳图片
+
+        优先级:
+        1. 数据库预置图片
+        2. Wikimedia Commons
+        3. 无图片时返回 None
+        """
+        # 1. 数据库预置图片（最高优先级）
+        if db_image_url and self._is_valid_image_url(db_image_url):
+            logger.debug(f"使用数据库预置图片: {attraction_name}")
+            return db_image_url
+
+        # 2. Wikimedia Commons
+        wikimedia_image = await self._get_wikimedia_image(attraction_name, city)
+        if wikimedia_image:
+            logger.debug(f"使用Wikimedia图片: {attraction_name}")
+            return wikimedia_image
+
+        # 3. 无图片
+        logger.info(f"未找到图片: {attraction_name}")
+        return None
+
+    async def _get_wikimedia_image(self, name: str, city: str) -> Optional[str]:
+        """从 Wikimedia Commons 获取图片"""
+        try:
+            # 检查缓存
+            cache_key = f"wikimedia:image:{name}:{city}"
+            cached = await get_cache(cache_key)
+            if cached:
+                return cached
+
+            # 调用 Wikimedia API
+            image_url = await wikimedia_service.search_attraction_image(name, city)
+
+            if image_url:
+                # 缓存 30 天
+                await set_cache(cache_key, image_url, ttl=30 * 24 * 3600)
+                return image_url
+
+        except Exception as e:
+            logger.warning(f"Wikimedia图片获取失败: {e}")
+
+        return None
+
+    def _is_valid_image_url(self, url: str) -> bool:
+        """验证图片 URL 是否有效（排除 picsum.photos）"""
+        if not url:
+            return False
+        # 排除 picsum.photos
+        if "picsum.photos" in url:
+            return False
+        # 检查 URL 格式
+        return url.startswith("http") and any(
+            ext in url.lower()
+            for ext in [".jpg", ".jpeg", ".png", ".webp", "image", "wikimedia"]
+        )
 
 
 place_image_service = PlaceImageService()

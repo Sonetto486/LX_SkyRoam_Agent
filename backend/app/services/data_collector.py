@@ -863,29 +863,86 @@ class DataCollector:
         """生成简洁的景点简介，使用准确的类别信息"""
         name = poi.get("name", "景点")
         city = poi.get("city", "")
+        address = poi.get("address", "")
         category = poi.get("category", "")
         labels = poi.get("labels", [])
+
+        # 不适合直接用作简介宾语的标签（会导致语病）
+        # 这些词不能直接跟在"是当地知名的"后面
+        invalid_label_patterns = [
+            # 服务类（不能作为景点类型）
+            "体育休闲服务", "体育休闲", "生活服务", "公共服务", "政府机构",
+            "科教文化服务", "医疗保健服务", "金融保险服务", "公司企业",
+            "道路附属设施", "通行设施", "室内公共设施",
+            "购物服务", "餐饮服务", "住宿服务", "汽车服务", "摩托车服务",
+            # 抽象概念/形容词（不能作为宾语）
+            "文艺", "艺术", "文化", "历史", "现代", "传统", "特色", "风情",
+            "表演", "游乐设施", "飞越地平线", "动物", "植物",
+            # 其他不合适的标签
+            "风景名胜", "景点", "旅游", "观光", "风景区", "景区"
+        ]
 
         # 如果有高德API返回的简介，检查是否有效
         desc = poi.get("description", "")
         if desc and len(desc) > 10:
             # 过滤掉包含坐标的简介
             if not any(kw in desc for kw in ["纬度", "经度", "坐标", "location", "latitude", "longitude"]):
-                return desc
+                # 过滤掉包含不合适标签的简介（会导致语病）
+                if not any(pattern in desc for pattern in invalid_label_patterns):
+                    return desc
 
-        # 确定景点类别（优先使用高德返回的category）
-        # 过滤掉不合适的默认类别
-        invalid_categories = ["风景名胜", "景点", "旅游", "观光", "风景区"]
-        if category and category not in invalid_categories:
-            label_str = category
-        else:
-            # 从标签中选择一个有效的（过滤掉项目名称类的长标签）
-            valid_labels = [l for l in labels if l and len(l) <= 10 and l not in invalid_categories]
-            label_str = valid_labels[0] if valid_labels else "景点"
+        # 根据景点名称智能判断景点类型
+        def _get_smart_label(name: str, labels: list) -> str:
+            """根据景点名称智能选择合适的标签，确保可以作为宾语"""
+            # 主题乐园/游乐园
+            if any(kw in name for kw in ["迪士尼", "欢乐谷", "长隆", "环球影城", "方特", "主题乐园", "游乐园", "乐园"]):
+                return "主题乐园"
+            # 动物园/海洋馆
+            if any(kw in name for kw in ["动物园", "野生动物园", "海洋馆", "海洋世界", "水族馆", "熊猫基地"]):
+                return "动物园"
+            # 博物馆/纪念馆
+            if any(kw in name for kw in ["博物馆", "纪念馆", "展览馆", "美术馆", "艺术馆", "科技馆", "天文馆"]):
+                return "博物馆"
+            # 古镇/古街
+            if any(kw in name for kw in ["古镇", "古街", "老街", "巷子", "胡同"]):
+                return "历史文化街区"
+            # 寺庙/宗教场所
+            if any(kw in name for kw in ["寺", "庙", "宫", "观", "教堂", "塔", "祠", "阁", "庵"]):
+                return "宗教文化景点"
+            # 园林/公园
+            if any(kw in name for kw in ["园", "公园", "花园", "植物园", "湿地", "森林"]):
+                return "公园"
+            # 自然风光
+            if any(kw in name for kw in ["山", "湖", "江", "河", "海滩", "海", "湾", "岛"]):
+                return "自然风光景点"
+            # 广场/地标
+            if any(kw in name for kw in ["广场", "外滩", "步行街", "路", "街", "大厦", "中心"]):
+                return "城市地标"
+            # 遗址/古迹
+            if any(kw in name for kw in ["遗址", "古迹", "陵", "墓", "长城", "城墙", "门", "关"]):
+                return "历史古迹"
+            # 文艺创意园区（如田子坊、新天地等）
+            if any(kw in name for kw in ["坊", "天地", "创意园", "艺术区", "文创园"]):
+                return "文创园区"
+            # 从标签中选择有效的
+            valid_labels = [l for l in labels if l and len(l) <= 8 and l not in invalid_label_patterns]
+            return valid_labels[0] if valid_labels else "旅游景点"
 
-        # 生成简洁简介
-        if city:
-            return f"{name}位于{city}，是当地知名的{label_str}。"
+        label_str = _get_smart_label(name, labels)
+
+        # 从地址中提取区名
+        district = ""
+        if address:
+            # 尝试匹配"XX区"格式
+            import re
+            match = re.search(r'([一-龥]+区)', address)
+            if match:
+                district = match.group(1)
+
+        # 生成简洁简介：优先使用区名，其次使用城市名
+        location = district if district else city
+        if location:
+            return f"{name}位于{location}，是当地知名的{label_str}。"
         return f"{name}是热门的{label_str}，值得一游。"
 
     async def collect_weather_data(

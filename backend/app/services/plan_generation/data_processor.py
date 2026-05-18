@@ -165,6 +165,14 @@ class DataProcessor:
                 if photos:
                     photos_info = f"\n     图片链接: {', '.join(photos[:2])}"
 
+                # 过滤不适合直接用作简介的 labels
+                raw_labels = item.get('labels', item.get('tags', []))
+                invalid_labels = {"体育休闲服务", "体育休闲", "生活服务", "公共服务", "政府机构",
+                                  "科教文化服务", "医疗保健服务", "金融保险服务", "公司企业",
+                                  "道路附属设施", "通行设施", "室内公共设施", "动物", "植物"}
+                filtered_labels = [l for l in raw_labels if l not in invalid_labels and len(l) <= 8]
+                labels_str = ', '.join(filtered_labels) if filtered_labels else ""
+
                 formatted_items.append(f"""
   {i+1}. 景点名称: {item.get('name', 'N/A')}
      类型: {item.get('category', 'N/A')}
@@ -174,7 +182,7 @@ class DataProcessor:
      地址: {item.get('address', 'N/A')}
      开放时间: {item.get('opening_hours', 'N/A')}
      建议游览时间: {item.get('visit_duration', 'N/A')}
-     特色标签: {', '.join(item.get('labels', item.get('tags', [])))}
+     特色标签: {labels_str}
      联系方式: {item.get('phone', 'N/A')}
      官方网站: {item.get('website', 'N/A')}
      交通便利性: {item.get('accessibility', 'N/A')}{photos_info}
@@ -343,15 +351,19 @@ class DataProcessor:
     def clean_llm_response(response: str) -> str:
         """清理LLM响应，移除markdown标记等"""
         import re
-        
+
+        # 处理空响应
+        if not response:
+            return ""
+
         # 移除markdown代码块标记
         cleaned = re.sub(r'```json\s*', '', response)
         cleaned = re.sub(r'```\s*$', '', cleaned)
         cleaned = re.sub(r'```\s*', '', cleaned)  # 移除单独的```
-        
+
         # 移除前后的空白字符
         cleaned = cleaned.strip()
-        
+
         return cleaned
     
     @staticmethod

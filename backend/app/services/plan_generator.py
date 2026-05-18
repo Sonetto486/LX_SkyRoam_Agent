@@ -439,17 +439,32 @@ class PlanGenerator:
         temperature: float,
         log_context: str,
     ) -> Optional[Any]:
+        # 记录请求信息
+        logger.info(f"{log_context} 发送LLM请求: system_prompt长度={len(system_prompt)}, user_prompt长度={len(user_prompt)}, max_tokens={max_tokens}")
+
         response = await openai_client.generate_text(
             prompt=user_prompt,
             system_prompt=system_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
         )
+        # 添加诊断日志（WARNING级别确保可见）
+        if not response or len(response) < 10:
+            logger.warning(f"{log_context} LLM响应异常：长度={len(response) if response else 0}")
+            # 打印响应内容的前100字符（如果有）
+            if response:
+                logger.warning(f"{log_context} 响应内容预览: {response[:200]}")
+        else:
+            logger.info(f"{log_context} LLM响应长度: {len(response)}")
+
         cleaned_response = self.data_processor.clean_llm_response(response)
+
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
-            logger.warning(f"{log_context} JSON解析失败，原始返回：{cleaned_response}")
+            # 显示更多内容便于诊断
+            preview = cleaned_response[:500] if cleaned_response else "空内容"
+            logger.warning(f"{log_context} JSON解析失败，清理后响应：{preview}")
             return None
 
     async def _generate_traditional_plans(
@@ -1198,12 +1213,12 @@ class PlanGenerator:
 
 请直接返回JSON格式的结果，不要添加任何其他文本。
 """
-            
+
             # 调用LLM生成方案
             response = await openai_client.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=settings.OPENAI_MAX_TOKENS or 2000,
                 temperature=0.7
             )
             
@@ -1835,7 +1850,7 @@ class PlanGenerator:
             response = await openai_client.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=settings.OPENAI_MAX_TOKENS or 2000,
                 temperature=0.7
             )
 
@@ -2172,7 +2187,7 @@ class PlanGenerator:
             }
 
     # ==================== 模块化LLM生成器方法 ====================
-    
+
     @retry_with_backoff(max_retries=3, base_delay=2.0)
     async def _generate_accommodation_plans(
         self,
@@ -2184,99 +2199,25 @@ class PlanGenerator:
         *,
         is_international: bool = False,
     ) -> List[Dict[str, Any]]:
-        """生成住宿方案（按天拆分）"""
+        """生成住宿方案（直接使用 fallback，不调用 LLM）"""
         try:
             total_days = max(int(getattr(plan, "duration_days", 0) or 1), 1)
-            # 住宿使用固定支出预算，按天均分
-            fixed_budget = self.budget_calculator.get_fixed_budget(plan)
-            logger.warning(f"计算后的固定住宿支出预算: {fixed_budget}")
-            per_day_accommodation_budget = (
-                fixed_budget / total_days if fixed_budget and total_days > 0 else None
-            )
-            notes_str = self._format_xiaohongshu_data_for_prompt(
-                raw_data.get("xiaohongshu_notes", []) if raw_data else [], plan.destination
-            )
+            logger.info(f"住宿方案：直接使用 fallback，不调用 LLM（共 {total_days} 天）")
 
-            def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
-                # 对于住宿，如果是第一天，预算可以包含航班费用；其他天主要是酒店
-                if day == 1 and daily_budget:
-                    # 第一天可以包含航班费用，预算可以稍高
-                    budget_info = f"{daily_budget * 1.5:.0f}元（含航班）"
-                else:
-                    budget_info = (
-                        f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
-                    )
-                intl_hint = ""
-                if is_international:
-                    intl_hint = (
-                        "\n注意：目的地为海外，如下方航班/酒店数据为空或可能不准确，请重点依据小红书真实体验，并提醒用户抵达后再确认住宿信息。"
-                    )
-                system_prompt = (
-                    "你是一位住宿规划师，请针对某一天给出航班（如有）与酒店安排，"
-                    "需结合真实航班/酒店数据输出结构化结果。"
-                )
-                user_prompt = f"""
-请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的住宿安排：
-- 目的地：{plan.destination}
-- 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
-- 当日预算：{budget_info}
-- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
-- 饮食偏好：{', '.join((preferences or {}).get('foodPreferences', [])) if (preferences or {}).get('foodPreferences') else '无特殊偏好'}
-- 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
-- 活动偏好：{', '.join((preferences or {}).get('activity_preference', [])) if (preferences or {}).get('activity_preference') else '未指定'}
-- 特殊要求：{plan.requirements or '无'}
+            # 直接使用 fallback 生成每天的住宿方案
+            daily_entries = []
+            for day in range(1, total_days + 1):
+                date_str = calculate_date(getattr(plan, "start_date", None), day - 1)
+                entry = build_simple_accommodation_day(day, date_str, hotels_data)
+                daily_entries.append(entry)
 
-可用航班数据：
-{self.data_processor.format_data_for_llm(flights_data, 'flight')}
-
-可用酒店数据：
-{self.data_processor.format_data_for_llm(hotels_data, 'hotel')}
-
-小红书住宿体验：
-{notes_str}
-
-{intl_hint}
-
-请返回JSON对象，包含字段{{
-  "day": {day},
-  "date": "{date_str}",
-  "flight": {{}},
-  "hotel": {{}},
-  "daily_cost": 参考费用,
-  "accommodation_highlights": ["亮点1", "亮点2"],
-  "notes": ["提示1", "提示2"]
-}}，必须使用提供数据。"""
-                return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1100), 0.65
-
-            def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:
-                entry.setdefault("flight", {})
-                entry.setdefault("hotel", {})
-                entry.setdefault("daily_cost", 0)
-                entry.setdefault("accommodation_highlights", [])
-                entry.setdefault("notes", [])
-                return entry
-
-            daily_entries = await generate_daily_entries(
-                module_name="住宿方案",
-                total_days=total_days,
-                start_date=getattr(plan, "start_date", None),
-                per_day_budget=per_day_accommodation_budget,
-                build_prompts=build_prompts,
-                llm_requester=self._request_llm_json,
-                fallback_builder=lambda d, date: build_simple_accommodation_day(
-                    d, date, hotels_data
-                ),
-                post_process=post_process,
-            )
             if not daily_entries:
                 return []
 
             total_hotel_cost = sum(
                 self.budget_calculator.safe_number(entry.get("daily_cost", 0)) for entry in daily_entries if isinstance(entry, dict)
             )
-            first_flight = next(
-                (entry.get("flight") for entry in daily_entries if entry.get("flight")), {}
-            )
+            first_flight = {}
             first_hotel = next(
                 (entry.get("hotel") for entry in daily_entries if entry.get("hotel")), {}
             )
@@ -2287,9 +2228,9 @@ class PlanGenerator:
                 "hotel": first_hotel,
                 "daily_accommodation": daily_entries,
                 "total_accommodation_cost": {
-                    "flight": self.budget_calculator.safe_number(first_flight.get("price", 0)),
+                    "flight": 0,
                     "hotel": total_hotel_cost,
-                    "total": self.budget_calculator.safe_number(first_flight.get("price", 0)) + total_hotel_cost,
+                    "total": total_hotel_cost,
                 },
                 "accommodation_highlights": [
                     highlight
@@ -2314,83 +2255,20 @@ class PlanGenerator:
         *,
         is_international: bool = False,
     ) -> List[Dict[str, Any]]:
-        """生成餐饮方案（按天）"""
+        """生成餐饮方案（直接使用 fallback，不调用 LLM）"""
         try:
             total_days = max(int(getattr(plan, "duration_days", 0) or 1), 1)
-            per_day_budget = self.budget_calculator.get_per_day_budget(plan)
-            logger.warning(f"计算后的每日餐饮预算: {per_day_budget}")
-            notes_str = self._format_xiaohongshu_data_for_prompt(
-                raw_data.get("xiaohongshu_notes", []) if raw_data else [], plan.destination
-            )
+            logger.info(f"餐饮方案：直接使用 fallback，不调用 LLM（共 {total_days} 天）")
 
-            def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
-                budget_info = (
-                    f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
-                )
-                intl_hint = ""
-                if is_international:
-                    intl_hint = (
-                        "\n注意：目的地为海外，小红书美食体验是主要依据。若餐厅数据缺失，请结合笔记与通用经验推荐，并提示用户现场确认具体商家。"
-                    )
-                system_prompt = (
-                    "你是一位美食规划师，请针对某一天制定详细的早餐/午餐/晚餐安排，"
-                    "需结合真实餐厅数据与小红书体验，输出结构化结果。"
-                )
-                user_prompt = f"""
-请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的餐饮方案：
-- 目的地：{plan.destination}
-- 当日预算：{budget_info}
-- 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
-- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
-- 饮食偏好：{', '.join((preferences or {}).get('foodPreferences', [])) if (preferences or {}).get('foodPreferences') else '无特殊偏好'}
-- 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
+            # 直接使用 fallback 生成每天的餐饮方案
+            daily_entries = []
+            for day in range(1, total_days + 1):
+                date_str = calculate_date(getattr(plan, "start_date", None), day - 1)
+                entry = build_simple_dining_plan(day, date_str, restaurants_data)
+                daily_entries.append(entry)
 
-可用餐厅数据：
-{self.data_processor.format_data_for_llm(restaurants_data, 'restaurant')}
-
-小红书真实用户美食分享：
-{notes_str}
-
-{intl_hint}
-
-请返回JSON对象，字段与示例一致：{{
-  "day": {day},
-  "meals": [
-    {{
-      "type": "早餐/午餐/晚餐",
-      "time": "08:00-09:00",
-      "restaurant_name": "餐厅名称",
-      "cuisine": "菜系",
-      "recommended_dishes": [...],
-      "estimated_cost": 参考费用,
-      "booking_tips": "预订建议",
-      "address": "地址"
-    }}
-  ],
-  "daily_food_cost": 当日总费用,
-  "food_highlights": ["亮点1", "亮点2"]
-}}
-务必使用提供的数据并包含实用口味描述。"""
-                return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1000), 0.65
-
-            def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:
-                entry.setdefault("meals", [])
-                entry.setdefault("food_highlights", [])
-                entry.setdefault("daily_food_cost", 0)
-                return entry
-
-            return await generate_daily_entries(
-                module_name="餐饮方案",
-                total_days=total_days,
-                start_date=getattr(plan, "start_date", None),
-                per_day_budget=per_day_budget,
-                build_prompts=build_prompts,
-                llm_requester=self._request_llm_json,
-                fallback_builder=lambda d, date: build_simple_dining_plan(
-                    d, date, restaurants_data
-                ),
-                post_process=post_process,
-            )
+            logger.info(f"生成餐饮方案天数: {len(daily_entries)}")
+            return daily_entries
 
         except Exception as e:
             logger.error(f"生成餐饮方案失败: {e}")
@@ -2406,116 +2284,28 @@ class PlanGenerator:
         *,
         is_international: bool = False,
     ) -> List[Dict[str, Any]]:
-        """生成交通方案（按天）"""
+        """生成交通方案（直接使用 fallback，不调用 LLM）"""
         try:
             total_days = max(int(getattr(plan, "duration_days", 0) or 1), 1)
             origin_city = self._extract_origin_city(plan)
             destination_city = getattr(plan, "destination", None) or "目的地"
-            notes_str = self._format_xiaohongshu_data_for_prompt(
-                raw_data.get("xiaohongshu_notes", []) if raw_data else [], plan.destination
-            )
+            logger.info(f"交通方案：直接使用 fallback，不调用 LLM（共 {total_days} 天）")
 
-            # 交通模块也使用每日可变预算，但预算限制较宽松（因为交通费用通常较小）
-            per_day_budget = self.budget_calculator.get_per_day_budget(plan)
-            logger.warning(f"计算后的每日交通预算: {per_day_budget}")
-            
-            def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
+            # 直接使用 fallback 生成每天的交通方案
+            daily_entries = []
+            for day in range(1, total_days + 1):
+                date_str = calculate_date(getattr(plan, "start_date", None), day - 1)
                 stage = self._determine_transport_stage(day, total_days)
-                stage_meta = self._build_transport_stage_instruction(
-                    stage, origin_city, destination_city
-                )
-                budget_info = (
-                    f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
-                )
-                intl_hint = ""
-                if is_international:
-                    intl_hint = (
-                        "\n注意：目的地为海外，如缺乏可靠交通数据，可根据小红书笔记和常规经验给出交通建议，并提醒用户参考当地最新信息。"
-                    )
-                system_prompt = (
-                    "你是一位交通规划师，请针对某一天提供详细的城市内交通安排，"
-                    "包含路线、费用和注意事项。"
-                )
-                user_prompt = f"""
-请为如下旅行生成第 {day} 天（日期：{date_str or '未提供'}）的交通方案：
-- 行程阶段：{stage_meta['label']}
-- 出发地：{origin_city}
-- 目的地：{plan.destination}
-- 出行方式偏好：{plan.transportation or '未指定'}
-- 当日交通预算：{budget_info}（交通费用通常较小，请合理规划）
-- 人数：{(preferences or {}).get('travelers', getattr(plan, 'travelers', 1))}
-- 年龄群体：{', '.join((preferences or {}).get('ageGroups', [])) if (preferences or {}).get('ageGroups') else '未指定'}
-- 活动偏好：{', '.join((preferences or {}).get('activity_preference', [])) if (preferences or {}).get('activity_preference') else '未指定'}
-
-行程阶段要求：
-{stage_meta['prompt']}
-
-{intl_hint}
-
-可用交通数据：
-{self.data_processor.format_data_for_llm(transportation_data, 'transportation')}
-
-小红书真实交通攻略：
-{notes_str}
-
-请输出严格的JSON对象（禁止附加说明文字）：{{
-  "day": {day},
-  "date": "{date_str}",
-  "primary_routes": [
-    {{
-      "type": "交通方式",
-      "name": "名称",
-      "route": "起点→途经→终点",
-      "duration": "耗时(分钟)",
-      "distance": "距离(公里)",
-      "price": 数字,
-      "usage_tips": ["建议1", "注意2"]
-    }}
-  ],
-  "backup_routes": [...],
-  "daily_transport_cost": 数字,
-  "tips": ["注意事项1", "注意事项2"]
-}}
-
-要求：
-1. 所有数值字段（如 price、distance、duration、daily_transport_cost）必须是纯数字，单位默认元/公里/分钟。
-2. 不得输出注释、额外文字或带单位的字符串；只返回合法JSON。
-3. 务必使用提供的交通数据。"""
-                return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 900), 0.6
-
-            def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:
-                entry.setdefault("primary_routes", [])
-                entry.setdefault("backup_routes", [])
-                entry.setdefault("tips", [])
-                entry.setdefault("daily_transport_cost", 0)
-                stage = self._determine_transport_stage(day, total_days)
-                stage_meta = self._build_transport_stage_instruction(
-                    stage, origin_city, destination_city
-                )
-                entry.setdefault("stage", stage)
-                entry.setdefault("stage_label", stage_meta["label"])
-                entry.setdefault("stage_hint", stage_meta["hint"])
-                return self._normalize_transport_stage_routes(
-                    entry, stage, origin_city, destination_city
-                )
-
-            return await generate_daily_entries(
-                module_name="交通方案",
-                total_days=total_days,
-                start_date=getattr(plan, "start_date", None),
-                per_day_budget=per_day_budget,
-                build_prompts=build_prompts,
-                llm_requester=self._request_llm_json,
-                fallback_builder=lambda d, date: build_simple_transportation_plan(
-                    d,
-                    date,
-                    transportation_data,
-                    stage=self._determine_transport_stage(d, total_days),
+                entry = build_simple_transportation_plan(
+                    day, date_str, transportation_data,
+                    stage=stage,
                     origin=origin_city,
-                    destination=destination_city,
-                ),
-                post_process=post_process,
-            )
+                    destination=destination_city
+                )
+                daily_entries.append(entry)
+
+            logger.info(f"生成交通方案天数: {len(daily_entries)}")
+            return daily_entries
 
         except Exception as e:
             logger.error(f"生成交通方案失败: {e}")
@@ -2624,7 +2414,7 @@ class PlanGenerator:
                 else:
                     logger.info(f"景点数据来自高德地图API搜索")
 
-            def build_prompts(day: int, date_str: str, daily_budget: Optional[float]):
+            def build_prompts(day: int, date_str: str, daily_budget: Optional[float], assigned_items: Optional[List[str]] = None):
                 budget_info = (
                     f"{daily_budget:.0f}元" if isinstance(daily_budget, (int, float)) else "未指定"
                 )
@@ -2633,6 +2423,12 @@ class PlanGenerator:
                     intl_hint = (
                         "\n注意：目的地为海外，请优先结合小红书体验与真实景点数据，若缺少官方数据，请说明信息来源并提示用户现场确认。"
                     )
+
+                # 构建已分配景点提示（避免重复）
+                assigned_section = ""
+                if assigned_items:
+                    assigned_section = f"\n【已安排景点】以下景点已在之前的日期安排，请勿重复安排：{', '.join(assigned_items)}\n"
+
                 system_prompt = (
                     "你是一位资深景点规划师，请针对某一天制定详细的景点游览安排，"
                     "需优先使用提供的景点数据，结合其他数据源，输出结构化结果。\n"
@@ -2651,7 +2447,7 @@ class PlanGenerator:
                     "   - 全天/6小时以上：单独安排一天\n"
                     "6. 一天内的景点尽量选择地理位置相近、动线顺路的组合，避免在城市中来回折返；\n"
                     "7. 在时间轴上合理安排上午、下午和晚上的活动，避免时间重叠或不可能完成的安排；\n"
-                    "8. 同一趟旅行中，一个景点不应在不同日期重复安排；\n"
+                    "8. 【禁止重复】同一趟旅行中，一个景点不应在不同日期重复安排；\n"
                     "9. 不要凭空捏造不存在的地点，所有景点必须来自提供的数据源；\n"
                     "10. 【热门景点优先】优先选择热度排名靠前、评分高的景点，这些景点更受游客欢迎。"
                 )
@@ -2686,7 +2482,7 @@ class PlanGenerator:
 - 饮食禁忌：{', '.join((preferences or {}).get('dietaryRestrictions', [])) if (preferences or {}).get('dietaryRestrictions') else '无'}
 - 特殊要求：{plan.requirements or '无'}
 
-{must_visit_section}{special_attractions_hint}{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
+{assigned_section}{must_visit_section}{special_attractions_hint}{attractions_section}{rag_section}【补充数据 - 小红书真实体验分享】：
 {notes_str}
 
 {intl_hint}
@@ -2696,6 +2492,7 @@ class PlanGenerator:
 2. 如果景点数据提供了实时信息（评分、门票、开放时间等），请在行程中体现；
 3. 如果景点数据不足，可以参考小红书数据；
 4. 确保推荐的景点来自提供的数据源，不要凭空捏造景点名称。
+5. 【禁止重复】如果已安排景点列表中有景点，请勿重复安排这些景点。
 
 请返回JSON对象，字段与示例一致，estimated_cost根据已知信息估算：{{
   "day": {day},
@@ -2720,7 +2517,9 @@ class PlanGenerator:
 2. 不要在activity字段中写入完整的描述性文字，保持简洁
 3. description字段应包含交通方式、景点特色、游览建议等详细信息
 务必使用提供的景点数据中的景点，并给出实用游览建议。"""
-                return system_prompt, user_prompt, min(settings.OPENAI_MAX_TOKENS, 1200), 0.6
+                # 确保 max_tokens 有有效值
+                max_tokens = settings.OPENAI_MAX_TOKENS or 2000
+                return system_prompt, user_prompt, min(max_tokens, 1200), 0.6
 
             def post_process(entry: Dict[str, Any], day: int, date_str: str) -> Dict[str, Any]:
                 entry.setdefault("schedule", [])
@@ -2749,6 +2548,28 @@ class PlanGenerator:
 
                 return entry
 
+            # 定义提取已分配景点的函数
+            def get_assigned_attractions(current_day: int, previous_results: List[Dict[str, Any]]) -> List[str]:
+                """从之前的结果中提取已分配的景点名称"""
+                assigned = []
+                for result in previous_results:
+                    # 从 attractions 字段提取
+                    attractions = result.get("attractions", [])
+                    for attr in attractions:
+                        if isinstance(attr, dict):
+                            name = attr.get("name", "")
+                            if name:
+                                assigned.append(name)
+                        elif isinstance(attr, str):
+                            assigned.append(attr)
+                    # 从 schedule 的 location 字段提取
+                    schedule = result.get("schedule", [])
+                    for item in schedule:
+                        location = item.get("location", "")
+                        if location and location not in assigned:
+                            assigned.append(location)
+                return assigned
+
             return await generate_daily_entries(
                 module_name="景点方案",
                 total_days=total_days,
@@ -2756,13 +2577,16 @@ class PlanGenerator:
                 per_day_budget=per_day_budget,
                 build_prompts=build_prompts,
                 llm_requester=self._request_llm_json,
-                fallback_builder=lambda d, date: build_simple_attraction_plan(
+                fallback_builder=lambda d, date, assigned_names=None: build_simple_attraction_plan(
                     d, date, attractions_data,
                     min_attractions=self.min_attractions_per_day,
                     max_attractions=self.max_attractions_per_day,
                     must_visit_attractions=must_visit_attractions,
+                    assigned_names=assigned_names,
                 ),
                 post_process=post_process,
+                sequential=True,  # 顺序生成，避免景点重复
+                get_assigned_items=get_assigned_attractions,
             )
 
         except Exception as e:
@@ -2811,15 +2635,18 @@ class PlanGenerator:
                         hotel_lookup
                     )
                     accommodation_daily = accommodation.get("daily_accommodation", [])
-                    
+
                     # 构建每日行程
                     daily_itineraries = []
+                    # 用于跟踪已分配的景点（避免重复）
+                    assigned_attraction_names = set()
+
                     for day in range(1, plan.duration_days + 1):
                         # 确保day是整数
                         day_num = int(day)
                         # 确保日期计算正确
                         calculated_date = calculate_date(getattr(plan, "start_date", None), day_num - 1)
-                        
+
                         daily_plan = {
                             "day": day_num,
                             "date": calculated_date,
@@ -2830,7 +2657,7 @@ class PlanGenerator:
                             "estimated_cost": 0,  # 确保是整数
                             "daily_tips": []
                         }
-                        
+
                         # 添加景点安排
                         day_attractions = self._get_day_attractions(attraction_plans, day_num)
                         if day_attractions:
@@ -2845,7 +2672,26 @@ class PlanGenerator:
                                     if isinstance(attr, dict):
                                         # 补充图片数据：从attractions_data中匹配
                                         attr_name = attr.get("name", "")
-                                        # 无论是否有photos，都尝试补充image_url和photos
+                                        # 检查是否已分配（避免重复）
+                                        if attr_name in assigned_attraction_names:
+                                            logger.warning(f"景点 '{attr_name}' 已在其他日期安排，尝试寻找替代景点")
+                                            # 从未分配的景点中选择替代
+                                            replacement = next(
+                                                (a for a in processed_data.get('attractions', [])
+                                                 if a.get('name') not in assigned_attraction_names),
+                                                None
+                                            )
+                                            if replacement:
+                                                # 使用替代景点的完整数据
+                                                attr = dict(replacement)
+                                                attr_name = attr.get("name", "")
+                                                logger.info(f"使用替代景点: {attr_name}")
+                                            else:
+                                                continue  # 没有替代景点，跳过
+                                        # 记录已分配的景点
+                                        if attr_name:
+                                            assigned_attraction_names.add(attr_name)
+
                                         matched_data = next(
                                             (a for a in processed_data.get('attractions', [])
                                              if a.get('name') == attr_name),
@@ -2853,27 +2699,49 @@ class PlanGenerator:
                                         )
                                         if matched_data:
                                             # 图片处理优先级：
-                                            # 1. 使用已有的image_url（保留原有值）
-                                            # 2. 补充photos数组（来自高德API或数据库）
-                                            # 3. 若都无，则从photos[0]生成image_url
-                                            if not attr.get("image_url") and not attr.get("photos"):
-                                                # 完全没有图片信息，从matched_data补充
-                                                if matched_data.get("photos"):
-                                                    attr["photos"] = matched_data["photos"]
-                                                    attr["image_url"] = matched_data["photos"][0]
-                                            elif not attr.get("photos") and matched_data.get("photos"):
-                                                # 有image_url但没有photos数组，补充photos
+                                            # 数据库图片 > 高德API图片 > LLM生成的图片
+                                            # 强制使用 matched_data 中的图片（来自数据库或高德API）
+                                            if matched_data.get("photos"):
                                                 attr["photos"] = matched_data["photos"]
-                                            
-                                            # 补充category和labels字段（用于地图标签显示）
-                                            if matched_data.get("category") and not attr.get("category"):
-                                                attr["category"] = matched_data["category"]
-                                            if matched_data.get("labels") and not attr.get("labels"):
-                                                attr["labels"] = matched_data["labels"]
+                                                attr["image_url"] = matched_data["photos"][0]
+                                            elif matched_data.get("image_url"):
+                                                attr["image_url"] = matched_data["image_url"]
+                                                attr["photos"] = [matched_data["image_url"]]
+
+                                            # 补充其他字段
+                                            for field in ["category", "labels", "description", "address",
+                                                          "rating", "price", "opening_hours", "phone",
+                                                          "latitude", "longitude", "coordinates", "city"]:
+                                                if matched_data.get(field) and not attr.get(field):
+                                                    attr[field] = matched_data[field]
                                         normalized_attractions.append(attr)
                                     elif attr not in (None, ""):
                                         # 字符串类型的景点名称，尝试匹配图片和详细信息
-                                        attr_dict = {"name": attr}
+                                        # 检查是否已分配（避免重复）
+                                        if attr in assigned_attraction_names:
+                                            logger.warning(f"景点 '{attr}' 已在其他日期安排，尝试寻找替代景点")
+                                            # 从未分配的景点中选择替代
+                                            replacement = next(
+                                                (a for a in processed_data.get('attractions', [])
+                                                 if a.get('name') not in assigned_attraction_names),
+                                                None
+                                            )
+                                            if replacement:
+                                                # 使用替代景点的完整数据
+                                                attr_dict = dict(replacement)
+                                                attr = attr_dict.get("name", "")
+                                                logger.info(f"使用替代景点: {attr}")
+                                                # 替代景点已经有完整数据，直接添加到已分配集合
+                                                assigned_attraction_names.add(attr)
+                                                normalized_attractions.append(attr_dict)
+                                                continue  # 跳过后续处理，因为数据已经完整
+                                            else:
+                                                continue  # 没有替代景点，跳过
+                                        else:
+                                            attr_dict = {"name": attr}
+                                        # 记录已分配的景点
+                                        assigned_attraction_names.add(attr)
+
                                         matched_data = next(
                                             (a for a in processed_data.get('attractions', [])
                                              if a.get('name') == attr),
@@ -2884,8 +2752,12 @@ class PlanGenerator:
                                             if matched_data.get("photos"):
                                                 attr_dict["photos"] = matched_data["photos"]
                                                 attr_dict["image_url"] = matched_data["photos"][0]
-                                            attr_dict["category"] = matched_data.get("category")
-                                            attr_dict["labels"] = matched_data.get("labels")
+                                            # 补充其他字段
+                                            for field in ["category", "labels", "description", "address",
+                                                          "rating", "price", "opening_hours", "phone",
+                                                          "latitude", "longitude", "coordinates", "city"]:
+                                                if matched_data.get(field) and not attr_dict.get(field):
+                                                    attr_dict[field] = matched_data[field]
                                         normalized_attractions.append(attr_dict)
                                 daily_plan["attractions"] = normalized_attractions
                             else:
@@ -3242,10 +3114,12 @@ class PlanGenerator:
 
 总字数控制在{max_chars}字以内，使用清晰的分段，直接返回纯文本。"""
 
+            # 确保 max_tokens 有有效值
+            max_tokens_value = settings.OPENAI_MAX_TOKENS or 2000
             response = await openai_client.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=min(settings.OPENAI_MAX_TOKENS, max_chars // 2),  # 保守估计token数
+                max_tokens=min(max_tokens_value, max_chars // 2),  # 保守估计token数
                 temperature=0.7
             )
             
@@ -3312,12 +3186,12 @@ class PlanGenerator:
   }}
 ]
 """
-            
+
             # 调用LLM
             response = await openai_client.generate_text(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=settings.OPENAI_MAX_TOKENS or 2000,
                 temperature=0.7
             )
             

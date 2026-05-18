@@ -50,6 +50,7 @@ class AttractionDetail(BaseModel):
     
     # 图片信息
     image_url = Column(String(500), nullable=True)  # 图片链接
+    image_source = Column(String(50), nullable=True)  # 图片来源: wikimedia, unsplash, amap, manual
     
     # 其他详细信息（JSON格式，用于展示，灵活存储）
     # 常用字段示例：
@@ -97,6 +98,7 @@ class AttractionDetail(BaseModel):
             "latitude": self.latitude,
             "longitude": self.longitude,
             "image_url": self.image_url,
+            "image_source": self.image_source,
             "extra_info": self.extra_info or {},
             "match_priority": self.match_priority,
             "source": self.source,

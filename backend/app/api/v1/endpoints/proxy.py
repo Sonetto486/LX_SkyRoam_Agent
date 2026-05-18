@@ -16,6 +16,8 @@ _ALLOWED_HOSTS = {
     "img.xiaohongshu.com",
     "ci.xiaohongshu.com",
     "pic.qyer.com",
+    # Wikimedia Commons（景点真实图片）
+    "upload.wikimedia.org",
 }
 
 def _is_allowed_host(url: str) -> bool:
@@ -31,6 +33,7 @@ def _is_allowed_host(url: str) -> bool:
             host.endswith(".xhscdn.com")
             or host.endswith(".xiaohongshu.com")
             or host.endswith(".qyer.com")
+            or host.endswith(".wikimedia.org")  # Wikimedia Commons 子域
         )
     except Exception:
         return False

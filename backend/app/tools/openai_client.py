@@ -13,16 +13,16 @@ from app.core.config import settings
 
 class OpenAIClient:
     """OpenAI客户端"""
-    
+
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY
         self.api_base = settings.OPENAI_API_BASE
         self.model = settings.OPENAI_MODEL
-        self.max_tokens = settings.OPENAI_MAX_TOKENS
+        self.max_tokens = settings.OPENAI_MAX_TOKENS or 2000  # 默认值
         self.temperature = settings.OPENAI_TEMPERATURE
         self.timeout = settings.OPENAI_TIMEOUT
         self.max_retries = settings.OPENAI_MAX_RETRIES
-        
+
         # 配置OpenAI客户端
         self._configure_client()
     
@@ -66,9 +66,28 @@ class OpenAIClient:
                 **kwargs
             )
 
-            # logger.debug(f"OpenAI API响应: {response.choices[0].message.content}")
-            
-            return response.choices[0].message.content
+            # 添加诊断日志
+            if response and response.choices:
+                content = response.choices[0].message.content
+                if content:
+                    logger.debug(f"LLM响应长度: {len(content)}")
+                    return content
+                else:
+                    # 检查是否有其他字段包含内容
+                    logger.warning(f"LLM返回空content，检查response结构")
+                    logger.debug(f"Response: {response}")
+                    # 智谱AI可能使用不同的字段
+                    if hasattr(response.choices[0].message, 'content') and response.choices[0].message.content is None:
+                        # 尝试获取原始响应
+                        if hasattr(response, 'model_dump'):
+                            raw = response.model_dump()
+                            logger.debug(f"Raw response: {raw}")
+                        return ""
+            else:
+                logger.error(f"LLM响应异常: response={response}")
+                return ""
+
+            return response.choices[0].message.content or ""
             
         except Exception as e:
             logger.error(f"生成文本失败: {e}")
@@ -219,8 +238,8 @@ class OpenAIClient:
             raise
     
     async def _call_api(
-        self, 
-        messages: Iterable[ChatCompletionMessageParam], 
+        self,
+        messages: Iterable[ChatCompletionMessageParam],
         **kwargs
     ) -> Any:
         """调用OpenAI API"""
@@ -231,17 +250,32 @@ class OpenAIClient:
                 base_url=self.api_base if self.api_base != "https://api.openai.com/v1" else None,
                 timeout=self.timeout
             )
-            
+
+            max_tokens = kwargs.get('max_tokens', self.max_tokens)
+            logger.debug(f"调用LLM API: model={self.model}, max_tokens={max_tokens}")
+
             response = await client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=kwargs.get('max_tokens', self.max_tokens),
+                max_tokens=max_tokens,
                 temperature=kwargs.get('temperature', self.temperature),
                 **{k: v for k, v in kwargs.items() if k not in ['max_tokens', 'temperature']}
             )
-            
+
+            # 记录响应信息
+            if response:
+                logger.debug(f"LLM API响应: id={response.id}, choices_count={len(response.choices) if response.choices else 0}")
+                if response.choices:
+                    finish_reason = response.choices[0].finish_reason
+                    content_len = len(response.choices[0].message.content) if response.choices[0].message.content else 0
+                    logger.debug(f"LLM API响应: finish_reason={finish_reason}, content_length={content_len}")
+                    if finish_reason == "length":
+                        logger.warning("LLM响应因达到max_tokens限制而被截断")
+            else:
+                logger.error("LLM API返回空响应")
+
             return response
-            
+
         except Exception as e:
             logger.error(f"调用OpenAI API失败: {e}")
             raise

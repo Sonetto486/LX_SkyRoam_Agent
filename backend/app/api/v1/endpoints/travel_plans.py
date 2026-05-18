@@ -34,7 +34,7 @@ from app.core.security import get_current_user, get_current_user_optional, is_ad
 from app.services.attraction_detail_service import AttractionDetailService
 from app.models.attraction_detail import AttractionDetail
 from app.models.user import User
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from app.tasks.travel_plan_tasks import (
     generate_travel_plans_task as celery_generate_travel_plans_task,
     refine_travel_plan_task as celery_refine_travel_plan_task,
@@ -291,17 +291,164 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
         if not destination:
             return plan_data
 
-        # 批量加载该目的地的景点详情，按名称建立索引（小写去空格）
+        # 归一化 destination（去掉 "市"、"省" 等后缀）
+        normalized_dest = destination.strip()
+        for suffix in ["特别行政区", "自治区", "省", "市", "县", "区"]:
+            if normalized_dest.endswith(suffix):
+                normalized_dest = normalized_dest[:-len(suffix)]
+                break
+
+        logger.info(f"补充景点详情: destination={destination}, normalized={normalized_dest}")
+
+        # 常见城市名关键字（用于过滤过于通用的别名）
+        CITY_KEYWORDS = {
+            "北京", "上海", "广州", "深圳", "杭州", "成都", "西安", "南京",
+            "苏州", "厦门", "重庆", "天津", "武汉", "长沙", "青岛", "大连",
+            "故宫", "外滩", "西湖", "豫园", "城隍庙",  # 过于通用的景点简称
+        }
+
+        # 批量加载该目的地的景点详情，同时匹配原始和归一化的 destination
         result = await db.execute(
-            select(AttractionDetail).where(AttractionDetail.destination == destination)
+            select(AttractionDetail).where(
+                or_(
+                    AttractionDetail.destination == destination,
+                    AttractionDetail.destination == normalized_dest,
+                    AttractionDetail.city == destination,
+                    AttractionDetail.city == normalized_dest
+                )
+            )
         )
-        details = result.scalars().all()
+        details = list(result.scalars().all())
         if not details:
-            logger.info(f"未找到目的地 {destination} 的景点详细信息")
+            logger.info(f"未找到目的地 {destination} (归一化: {normalized_dest}) 的景点详细信息")
             return plan_data
 
-        detail_map = {d.name.strip().lower(): d for d in details if d.name}
-        logger.info(f"已加载 {destination} 的 {len(detail_map)} 个景点详细信息")
+        # 构建多级索引：精确名称、别名、模糊匹配
+        detail_map_exact = {}  # 精确匹配：名称小写 -> detail
+        detail_map_alias = {}  # 别名匹配：常见别名 -> detail
+
+        # 需要跳过的别名集合
+        skip_alias_set = {normalized_dest.lower(), destination.lower()}
+        skip_alias_set.update(k.lower() for k in CITY_KEYWORDS)
+
+        for d in details:
+            if not d.name:
+                continue
+            name_lower = d.name.strip().lower()
+            detail_map_exact[name_lower] = d
+
+            # 构建别名（去掉括号内容、常见后缀等）
+            clean_name = d.name.split("(")[0].split("（")[0].strip()
+            if clean_name != d.name and clean_name.lower() not in skip_alias_set:
+                detail_map_alias[clean_name.lower()] = d
+
+            # 添加常见别名映射（但排除过于通用的别名）
+            alias_patterns = [
+                ("博物馆", ""),  # 故宫博物院 -> 故宫
+                ("风景名胜区", ""),
+                ("风景区", ""),
+                ("景区", ""),
+                ("公园", ""),
+                ("广场", ""),
+                ("塔", ""),
+                ("楼", ""),
+                ("广播电视塔", ""),
+                ("电视塔", ""),
+                ("大剧院", ""),
+                ("体育馆", ""),
+            ]
+            for suffix, _ in alias_patterns:
+                if d.name.endswith(suffix) and len(d.name) > len(suffix) + 2:
+                    alias = d.name[:-len(suffix)]
+                    # 过滤：别名不能是城市名或过于通用
+                    if (len(alias) >= 2 and
+                        alias.lower() not in skip_alias_set and
+                        alias.lower() != normalized_dest.lower()):
+                        detail_map_alias[alias.lower()] = d
+
+        logger.info(f"已加载 {destination} 的 {len(detail_map_exact)} 个景点详细信息 (别名: {len(detail_map_alias)})")
+
+        def find_matching_detail_local(attraction_name: str) -> Optional[AttractionDetail]:
+            """本地匹配逻辑，支持精确匹配、别名匹配、模糊匹配"""
+            if not attraction_name:
+                return None
+
+            name_lower = attraction_name.strip().lower()
+
+            # 1. 精确匹配
+            if name_lower in detail_map_exact:
+                return detail_map_exact[name_lower]
+
+            # 2. 别名匹配
+            if name_lower in detail_map_alias:
+                return detail_map_alias[name_lower]
+
+            # 3. 清理名称后再匹配（去掉括号内容）
+            clean_name = attraction_name.split("(")[0].split("（")[0].strip().lower()
+            if clean_name in detail_map_exact:
+                return detail_map_exact[clean_name]
+            if clean_name in detail_map_alias:
+                return detail_map_alias[clean_name]
+
+            # 3.5. 特殊别名映射（常见简称）
+            special_alias_map = {
+                "迪士尼": "上海迪士尼乐园",
+                "迪士尼乐园": "上海迪士尼乐园",
+                "迪士尼度假区": "上海迪士尼乐园",
+                "上海迪士尼度假区": "上海迪士尼乐园",
+                "上海迪士尼": "上海迪士尼乐园",
+                "野生动物园": "上海野生动物园",
+                "上海野生动物园": "上海野生动物园",
+                "科技馆": "上海科技馆",
+                "上海科技馆": "上海科技馆",
+                "南京路": "南京路步行街",
+                "东方明珠": "东方明珠广播电视塔",
+                "环球金融中心": "上海环球金融中心",
+                "上海中心": "上海中心大厦",
+                "金茂": "金茂大厦",
+                "城隍庙": "城隍庙",
+            }
+            if name_lower in special_alias_map:
+                target_name = special_alias_map[name_lower].lower()
+                if target_name in detail_map_exact:
+                    return detail_map_exact[target_name]
+
+            # 4. 模糊匹配：名称包含关系（但排除过于通用的词）
+            for detail_name, detail in detail_map_exact.items():
+                # 检查是否互相包含
+                if detail_name in name_lower:
+                    # 排除单纯的城市名匹配
+                    common = detail_name
+                    if common in skip_alias_set or len(common) < 3:
+                        continue
+                    return detail
+                elif name_lower in detail_name:
+                    # 输入名称是数据库名称的子串
+                    if name_lower in skip_alias_set or len(name_lower) < 3:
+                        continue
+                    return detail
+
+            # 4.5. 反向模糊匹配：检查别名是否包含输入名称
+            for alias_name, detail in detail_map_alias.items():
+                if name_lower in alias_name or alias_name in name_lower:
+                    if name_lower in skip_alias_set or len(name_lower) < 2:
+                        continue
+                    if alias_name in skip_alias_set or len(alias_name) < 2:
+                        continue
+                    return detail
+
+            # 5. 模糊匹配：别名包含关系（同样排除过于通用的词）
+            for alias_name, detail in detail_map_alias.items():
+                if alias_name in name_lower:
+                    if alias_name in skip_alias_set or len(alias_name) < 3:
+                        continue
+                    return detail
+                elif name_lower in alias_name:
+                    if name_lower in skip_alias_set or len(name_lower) < 3:
+                        continue
+                    return detail
+
+            return None
 
         def merge_one(attraction: Any) -> Any:
             if attraction is None:
@@ -311,21 +458,24 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
             elif isinstance(attraction, dict):
                 base = dict(attraction)
             else:
-                return attraction
+                return base
 
-            name = (base.get("name") or "").strip().lower()
+            name = base.get("name", "")
             if not name:
                 return base
 
-            detail = detail_map.get(name)
+            # 使用增强的匹配逻辑
+            detail = find_matching_detail_local(name)
             if detail:
-                logger.debug(f"成功匹配景点详情: {base.get('name')}")
+                logger.info(f"✅ 成功匹配景点详情: '{name}' -> '{detail.name}'")
                 return AttractionDetailService.merge_detail_into_attraction(base, detail)
             else:
-                logger.debug(f"未找到景点详情匹配: {base.get('name')} (规范化: {name})")
+                logger.debug(f"❌ 未找到景点详情匹配: {name}")
                 return base
 
         # 遍历 generated_plans -> daily_itineraries -> attractions
+        matched_count = 0
+        total_count = 0
         generated_plans = plan_data.get("generated_plans")
         if isinstance(generated_plans, list):
             for plan in generated_plans:
@@ -339,12 +489,16 @@ async def _enrich_plan_with_attraction_details(plan_data: dict, db: AsyncSession
                         continue
                     attractions = day.get("attractions")
                     if isinstance(attractions, list):
-                        # 日志：记录当天的景点名称
-                        attraction_names = [a.get("name") if isinstance(a, dict) else a for a in attractions]
-                        logger.debug(f"日期 {day.get('date')}: 处理景点 {attraction_names}")
-                        
-                        merged = [merge_one(a) for a in attractions]
+                        merged = []
+                        for a in attractions:
+                            total_count += 1
+                            result_a = merge_one(a)
+                            if isinstance(result_a, dict) and result_a.get("detail_id"):
+                                matched_count += 1
+                            merged.append(result_a)
                         day["attractions"] = merged
+
+        logger.info(f"景点详情匹配统计: {matched_count}/{total_count}")
 
         # 同步 selected_plan（如果有且与 generated_plans 对应）
         selected_plan = plan_data.get("selected_plan")

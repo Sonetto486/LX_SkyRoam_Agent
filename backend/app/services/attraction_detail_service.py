@@ -3,16 +3,45 @@
 用于匹配和合并手动维护的景点详细信息到收集的景点数据中
 """
 
+import re
 from typing import List, Dict, Any, Optional
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from app.models.attraction_detail import AttractionDetail
+from app.tools.place_image_service import place_image_service
+
+
+def normalize_destination(destination: str) -> str:
+    """
+    归一化目的地名称
+
+    - 去掉尾部 "市"、"省"、"自治区"、"特别行政区" 等后缀
+    - 去掉空格
+    - 统一大小写（中文无影响，但保留）
+    """
+    if not destination:
+        return destination
+
+    # 去空格
+    normalized = destination.strip()
+
+    # 去掉常见后缀
+    suffixes = [
+        "特别行政区", "自治区", "省", "市", "县", "区",
+        "盟", "旗", "自治州", "地区"
+    ]
+    for suffix in suffixes:
+        if normalized.endswith(suffix):
+            normalized = normalized[:-len(suffix)]
+            break
+
+    return normalized
 
 
 class AttractionDetailService:
     """景点详细信息服务"""
-    
+
     @staticmethod
     async def find_matching_detail(
         db: AsyncSession,
@@ -23,57 +52,88 @@ class AttractionDetailService:
     ) -> Optional[AttractionDetail]:
         """
         查找匹配的景点详细信息
-        
+
         Args:
             db: 数据库会话
             attraction_name: 景点名称
             destination: 目的地
             city: 城市（可选）
             coordinates: 坐标信息 {"lat": x, "lng": y}（可选）
-            
+
         Returns:
             匹配的 AttractionDetail 对象，如果未找到返回 None
         """
         try:
+            # 归一化 destination
+            normalized_dest = normalize_destination(destination)
+            logger.debug(f"查找景点详情: {attraction_name}, destination={destination}, normalized={normalized_dest}, city={city}")
+
             # 1. 精确匹配：名称和目的地完全一致
             query = select(AttractionDetail).where(
                 and_(
                     func.lower(AttractionDetail.name) == attraction_name.lower().strip(),
-                    AttractionDetail.destination == destination
+                    or_(
+                        AttractionDetail.destination == destination,
+                        AttractionDetail.destination == normalized_dest,
+                        AttractionDetail.city == destination,
+                        AttractionDetail.city == normalized_dest
+                    )
                 )
             ).order_by(AttractionDetail.match_priority.desc())
-            
+
             result = await db.execute(query)
             detail = result.scalar_one_or_none()
-            
+
             if detail:
                 logger.debug(f"精确匹配到景点详情: {attraction_name} in {destination}")
                 return detail
-            
-            # 2. 模糊匹配：名称包含关键词，且目的地匹配
+
+            # 2. 模糊匹配：名称包含关键词，且目的地/城市匹配
             if city:
+                normalized_city = normalize_destination(city)
                 query = select(AttractionDetail).where(
                     and_(
-                        AttractionDetail.name.contains(attraction_name),
+                        or_(
+                            AttractionDetail.name.contains(attraction_name),
+                            func.lower(AttractionDetail.name).contains(attraction_name.lower())
+                        ),
                         or_(
                             AttractionDetail.destination == destination,
-                            AttractionDetail.city == city
+                            AttractionDetail.destination == normalized_dest,
+                            AttractionDetail.destination == city,
+                            AttractionDetail.destination == normalized_city,
+                            AttractionDetail.city == city,
+                            AttractionDetail.city == normalized_city,
+                            AttractionDetail.city == destination,
+                            AttractionDetail.city == normalized_dest
                         )
                     )
                 ).order_by(AttractionDetail.match_priority.desc())
-                
+
                 result = await db.execute(query)
                 detail = result.scalar_one_or_none()
-                
+
                 if detail:
                     logger.debug(f"模糊匹配到景点详情: {attraction_name} in {destination}/{city}")
                     return detail
-            
-            # 3. 坐标匹配（如果提供了坐标）
+
+            # 3. 仅用名称匹配（destination/city 都不匹配时）
+            query = select(AttractionDetail).where(
+                func.lower(AttractionDetail.name) == attraction_name.lower().strip()
+            ).order_by(AttractionDetail.match_priority.desc())
+
+            result = await db.execute(query)
+            detail = result.scalar_one_or_none()
+
+            if detail:
+                logger.debug(f"仅名称匹配到景点详情: {attraction_name} (忽略目的地)")
+                return detail
+
+            # 4. 坐标匹配（如果提供了坐标）
             if coordinates and coordinates.get("lat") and coordinates.get("lng"):
                 lat = coordinates["lat"]
                 lng = coordinates["lng"]
-                
+
                 # 查找距离在1公里内的景点（约0.01度）
                 threshold = 0.01
                 query = select(AttractionDetail).where(
@@ -84,17 +144,17 @@ class AttractionDetailService:
                         AttractionDetail.longitude.between(lng - threshold, lng + threshold)
                     )
                 ).order_by(AttractionDetail.match_priority.desc())
-                
+
                 result = await db.execute(query)
                 detail = result.scalar_one_or_none()
-                
+
                 if detail:
                     logger.debug(f"坐标匹配到景点详情: {attraction_name} near ({lat}, {lng})")
                     return detail
-            
+
             logger.debug(f"未找到匹配的景点详情: {attraction_name} in {destination}")
             return None
-            
+
         except Exception as e:
             logger.warning(f"查找景点详情时出错: {e}")
             return None
@@ -125,17 +185,21 @@ class AttractionDetailService:
             if detail.wechat:
                 attraction["wechat"] = detail.wechat
             # 合并图片信息
-            # 优先级：数据库image_url > 原始photos数组的第一张
-            # 但同时保留完整的photos数组供前端轮播使用
+            # 优先级：数据库image_url > 原始photos数组
+            # 数据库图片是经过验证的真实图片，应该优先使用
             if detail.image_url:
-                # 数据库维护的图片优先使用
-                attraction["image_url"] = detail.image_url
-                # 如果没有photos数组，从image_url创建单元素数组
-                if not attraction.get("photos"):
+                # 仅在数据库图片通过有效性校验时才使用（排除 picsum 等占位图）
+                if place_image_service._is_valid_image_url(detail.image_url):
+                    # 强制使用数据库图片，覆盖高德API返回的可能无效的图片
+                    attraction["image_url"] = detail.image_url
                     attraction["photos"] = [detail.image_url]
+                    attraction["image_source"] = detail.image_source or "database"
+                else:
+                    # DB 中的图片不可信，尝试使用原始 photos 补充
+                    if attraction.get("photos") and not attraction.get("image_url"):
+                        attraction["image_url"] = attraction["photos"][0]
             elif attraction.get("photos"):
-                # 保留高德API返回的photos数组
-                # 若image_url为空，从photos[0]补充
+                # 没有数据库图片，保留高德API返回的photos数组
                 if not attraction.get("image_url") and attraction["photos"]:
                     attraction["image_url"] = attraction["photos"][0]
             

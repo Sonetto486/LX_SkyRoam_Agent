@@ -271,6 +271,15 @@ class Settings(BaseSettings):
     PRE_GENERATION_CONCURRENT_LIMIT: int = int(os.getenv("PRE_GENERATION_CONCURRENT_LIMIT", "3"))  # 并发生成数
     PRE_GENERATION_DURATION_TOLERANCE: int = int(os.getenv("PRE_GENERATION_DURATION_TOLERANCE", "1"))  # 天数容差
 
+    # Unsplash API 配置（用于景点图片兜底）
+    UNSPLASH_ACCESS_KEY: str = os.getenv("UNSPLASH_ACCESS_KEY", "")
+    UNSPLASH_API_BASE: str = os.getenv("UNSPLASH_API_BASE", "https://api.unsplash.com")
+    UNSPLASH_CACHE_TTL: int = int(os.getenv("UNSPLASH_CACHE_TTL", "604800"))  # 7天
+
+    # Wikimedia Commons API 配置（用于景点真实图片）
+    WIKIMEDIA_API_BASE: str = os.getenv("WIKIMEDIA_API_BASE", "https://commons.wikimedia.org/w/api.php")
+    WIKIMEDIA_CACHE_TTL: int = int(os.getenv("WIKIMEDIA_CACHE_TTL", "2592000"))  # 30天
+
 # 创建全局配置实例
 settings = Settings()
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Form, Input, Select, DatePicker, Button, Space, message, Divider, Row, Col, Progress, Steps, Modal, Popconfirm, Alert, Spin, AutoComplete } from 'antd';
-import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, CheckOutlined, ReloadOutlined, CloseOutlined, EditOutlined, StopOutlined, LoadingOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
+import { CalendarOutlined, UserOutlined, EnvironmentOutlined, ClockCircleOutlined, CheckOutlined, CloseOutlined, EditOutlined, StopOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import './PlanGeneratorPage.css';
@@ -100,7 +100,6 @@ const PlanGeneratorPage: React.FC = () => {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 39.9042, lng: 116.4074 }); // 默认北京
   const [previewActiveDay, setPreviewActiveDay] = useState(0); // 预览时选中的天数
   const [viewMode, setViewMode] = useState<'full' | 'day'>('full'); // 'full' 表示全程，'day' 表示单天
-  const [expandedAttractions, setExpandedAttractions] = useState<Set<string>>(new Set()); // 跟踪展开的景点卡片
   const navigate = useNavigate();
 
   // 切换天数时更新地图中心点（仅在单天模式下）
@@ -427,45 +426,6 @@ const PlanGeneratorPage: React.FC = () => {
     }
   };
 
-  const handleRegenerate = async () => {
-    if (!planId) {
-      message.error('请先生成旅行计划');
-      return;
-    }
-
-    setLoading(true);
-    setGenerationProgress(0);
-    setShowPreview(false);
-
-    try {
-      setGenerationProgress(10);
-      setGenerationStatus('重新生成方案中...');
-
-      await authFetch(buildApiUrl(`/travel-plans/${planId}/generate`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: generatedPlan?.preferences || {} }),
-      });
-
-      const success = await waitForGeneration(planId);
-      if (success) {
-        const detailRes = await authFetch(buildApiUrl(`/travel-plans/${planId}`));
-        if (detailRes.ok) {
-          const planDetail = await detailRes.json();
-          if (planDetail.generated_plans?.length > 0) {
-            setGeneratedPlan(planDetail);
-            setShowPreview(true);
-            message.success('旅行计划重新生成成功！');
-          }
-        }
-      }
-    } catch (error: any) {
-      message.error(error.message || '重新生成失败，请重试');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAccept = async () => {
     if (!planId) {
       message.error('请先生成旅行计划');
@@ -665,19 +625,17 @@ const PlanGeneratorPage: React.FC = () => {
                       Day {day.day || dayIndex + 1} - {day.date || `第${dayIndex + 1}天`}
                     </h3>
                     {day.attractions?.map((attraction: any, idx: number) => {
-                      const attractionKey = `${dayIndex}-${idx}-${attraction.name}`;
-                      const isExpanded = expandedAttractions.has(attractionKey);
                       const images = attraction.photos || (attraction.image_url ? [attraction.image_url] : []);
-                      
+
                       return (
                         <Card key={idx} className="activity-card" size="small" style={{ marginBottom: 8 }}>
                           <div className="activity-content">
                             <h4 className="activity-title">{attraction.name}</h4>
-                            
+
                             {/* 图片轮播组件 */}
                             {images.length > 0 && (
-                              <AttractionImageCarousel 
-                                images={images} 
+                              <AttractionImageCarousel
+                                images={images}
                                 attractionName={attraction.name}
                                 maxImagesToShow={2}
                               />
@@ -686,57 +644,10 @@ const PlanGeneratorPage: React.FC = () => {
                             {/* 简要信息（始终显示） */}
                             {attraction.description && <p className="activity-description">{attraction.description}</p>}
                             {attraction.address && <p className="activity-location"><EnvironmentOutlined /> {attraction.address}</p>}
-                            
-                            {/* 展开的详细信息 */}
-                            {isExpanded && (
-                              <div className="attraction-details-expanded">
-                                {attraction.ticket_price && (
-                                  <p className="detail-item"><span className="detail-label">门票价格：</span> ¥{attraction.ticket_price}</p>
-                                )}
-                                {attraction.opening_hours && (
-                                  <p className="detail-item"><span className="detail-label">营业时间：</span> {
-                                    typeof attraction.opening_hours === 'string' 
-                                      ? attraction.opening_hours 
-                                      : JSON.stringify(attraction.opening_hours)
-                                  }</p>
-                                )}
-                                {attraction.rating && (
-                                  <p className="detail-item"><span className="detail-label">评分：</span> ⭐ {attraction.rating}</p>
-                                )}
-                                {attraction.category && (
-                                  <p className="detail-item"><span className="detail-label">分类：</span> {attraction.category}</p>
-                                )}
-                              </div>
-                            )}
-                            
-                            {/* 查看详情按钮 */}
-                            {(attraction.ticket_price || attraction.opening_hours || attraction.rating || attraction.category) && (
-                              <Button
-                                type="text"
-                                size="small"
-                                onClick={() => {
-                                  const newExpanded = new Set(expandedAttractions);
-                                  if (isExpanded) {
-                                    newExpanded.delete(attractionKey);
-                                  } else {
-                                    newExpanded.add(attractionKey);
-                                  }
-                                  setExpandedAttractions(newExpanded);
-                                }}
-                                style={{ marginTop: 8 }}
-                              >
-                                {isExpanded ? (
-                                  <>
-                                    <UpOutlined style={{ marginRight: 4 }} />
-                                    收起详情
-                                  </>
-                                ) : (
-                                  <>
-                                    <DownOutlined style={{ marginRight: 4 }} />
-                                    查看详情
-                                  </>
-                                )}
-                              </Button>
+
+                            {/* 评分（直接显示） */}
+                            {attraction.rating && (
+                              <p className="detail-item" style={{ marginTop: 8 }}><span className="detail-label">评分：</span> ⭐ {attraction.rating}</p>
                             )}
                           </div>
                         </Card>
@@ -797,7 +708,6 @@ const PlanGeneratorPage: React.FC = () => {
         <div className="preview-actions">
           <Space size="large">
             <Button type="primary" icon={<CheckOutlined />} onClick={handleAccept} size="large">接受并保存</Button>
-            <Button icon={<ReloadOutlined />} onClick={handleRegenerate} loading={loading} size="large">重新生成</Button>
             <Button icon={<EditOutlined />} onClick={handleEdit} size="large">编辑行程</Button>
             <Popconfirm title="确定要放弃本次生成吗？" onConfirm={handleDiscard} okText="确定放弃" cancelText="取消">
               <Button danger icon={<CloseOutlined />} size="large">放弃</Button>
@@ -867,7 +777,7 @@ const PlanGeneratorPage: React.FC = () => {
               </Col>
             </Row>
 
-            <Form.Item name="interests" label="兴趣偏好">
+            <Form.Item name="interests" label="兴趣偏好（可选）">
               <Select mode="multiple" placeholder="选择您的兴趣偏好" style={{ width: '100%' }}>
                 <Option value="sightseeing">观光游览</Option>
                 <Option value="food">美食探索</Option>
