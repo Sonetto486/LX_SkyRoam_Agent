@@ -146,6 +146,9 @@ const ItineraryWorkspace: React.FC = () => {
   const [hoveredActivity, setHoveredActivity] = useState<number | string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 内层标签页状态（每个日期一个）
+  const [activeCategoryTab, setActiveCategoryTab] = useState<string>('attractions');
+
   // 编辑弹窗状态
   const [activityModalVisible, setActivityModalVisible] = useState(false);
   const [editingActivity, setEditingActivity] = useState<ActivityEditData | null>(null);
@@ -399,31 +402,47 @@ const ItineraryWorkspace: React.FC = () => {
       // 交换时间
       const targetItem = sameDayItems[targetIndex];
 
-      // 更新两个景点的时间
-      await authFetch(
-        buildApiUrl(`/travel-plans/${id}/items/${activityId}`),
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            start_time: targetItem.start_time
-          }),
-        }
-      );
+      // 保存当前activeDay，确保刷新后保持不变
+      const currentActiveDay = activeDay;
 
-      await authFetch(
-        buildApiUrl(`/travel-plans/${id}/items/${targetItem.id}`),
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            start_time: currentItem.start_time
-          }),
-        }
-      );
+      // 并行更新两个景点的时间，提高效率
+      const [res1, res2] = await Promise.all([
+        authFetch(
+          buildApiUrl(`/travel-plans/${id}/items/${activityId}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              start_time: targetItem.start_time
+            }),
+          }
+        ),
+        authFetch(
+          buildApiUrl(`/travel-plans/${id}/items/${targetItem.id}`),
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              start_time: currentItem.start_time
+            }),
+          }
+        )
+      ]);
+
+      // 检查两个请求是否都成功
+      if (!res1.ok || !res2.ok) {
+        throw new Error('更新失败');
+      }
 
       message.success(`景点已${direction === 'up' ? '上移' : '下移'}`);
-      fetchPlan();
+
+      // 刷新数据，但保持当前日期标签页
+      await fetchPlan();
+
+      // 确保activeDay保持不变
+      if (currentActiveDay !== activeDay) {
+        setActiveDay(currentActiveDay);
+      }
     } catch (err: any) {
       message.error('移动失败：' + (err.message || '未知错误'));
     }
@@ -1253,7 +1272,8 @@ const getDayActivities = (): DayActivity[] => {
                 {/* 分类标签页 */}
                 <div className="activities-list">
                   <Tabs
-                    defaultActiveKey="schedule"
+                    activeKey={activeCategoryTab}
+                    onChange={(key) => setActiveCategoryTab(key)}
                     className="category-tabs"
                     size="small"
                   >
@@ -1436,17 +1456,11 @@ const getDayActivities = (): DayActivity[] => {
                           onMoveAttraction={(index, direction) => {
                             // 移动景点顺序
                             const attraction = day.attractions[index];
-                            if (attraction) {
-                              const matchingItem = plan.items?.find(item =>
-                                item.title === attraction.name ||
-                                item.address === attraction.address
-                              );
-
-                              if (matchingItem && matchingItem.id) {
-                                handleMoveActivity(matchingItem.id, direction);
-                              } else {
-                                message.warning('无法移动此景点：未找到对应的行程项');
-                              }
+                            if (attraction && attraction.id) {
+                              // 直接使用景点ID匹配，避免同名景点匹配错误
+                              handleMoveActivity(attraction.id, direction);
+                            } else {
+                              message.warning('无法移动此景点：缺少景点ID');
                             }
                           }}
                           onViewDetail={openAttractionDetail}
