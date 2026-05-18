@@ -61,6 +61,16 @@ class ParsedLocation(BaseModel):
             return 0.0
         return v if isinstance(v, (int, float)) else 0.0
 
+    # 关键修复：强制将地理编码字段转换为字符串，防止接收到列表、None 等非法类型
+    @field_validator('province', 'city', 'district', 'adcode', 'level', 'formatted_address', mode='before')
+    @classmethod
+    def coerce_to_string(cls, v):
+        if isinstance(v, list):
+            return v[0] if v else ""
+        if v is None:
+            return ""
+        return str(v)
+
 class ScheduleItem(BaseModel):
     time: str = Field(default="全天", description="时间段")
     place: str = Field(default="未知", description="地点名称")
@@ -139,50 +149,54 @@ async def _call_llm_with_retry(prompt: str, system_prompt: str) -> str:
     return await openai_client.generate_text(
         prompt=prompt,
         system_prompt=system_prompt,
-        response_format={"type": "json_object"},
+       
         temperature=0.1
     )
 
 async def _extract_text_logic(text: str) -> ExtractedTravelData:
-    """文本提取核心算法（增强容错版）"""
+    """文本提取核心算法（增强容版，支持复杂攻略）"""
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         prompt = f"""
         # 角色
-        你是专业的旅行信息提取与标准化工程师。
+        你是顶级的旅行信息提取与标准化工程师。
 
         # 任务
-        从用户提供的旅游文本中100%精准提取信息。
-        如果原文很短（如只有简单的行程罗列），请直接提取其中的地点并合理拆分天数。
+        从用户提供的旅行攻略文本中精准提取行程信息。文本可能包含多个独立行程、省钱技巧、混杂格式。
+        只提取与**行程安排**直接相关的内容（目的地、每日地点、餐饮、住宿、交通、预算）。
+        忽略所有“省钱技巧”、“购物建议”、“买票攻略”、“平台推荐”等非行程核心内容。
 
-        # 核心铁律（违反直接失败）
+        # 核心铁律
         - 严格输出纯JSON，不要包含```json等markdown标签，不加任何解释。
-        - 所有的数字字段必须是纯数字，绝对禁止带有单位（如km、元等）。
+        - 所有数字字段必须是纯数字，禁止带单位（km、元等）。
         - 无对应信息时，字符串填"未知"或"无"，数字填0。
-        - 严禁输出 lat 和 lng 字段，坐标由后端服务根据地址自动获取。
-        
-        # 必须严格遵循以下JSON输出结构，必须包含所有字段：
+        - 严禁输出 lat/lng 字段（坐标由后端自动获取）。
+        - 如果文本包含多个独立行程，只提取**第一个或最详细**的行程；若明显是不同时间/地点的多个行程，则选择文本中篇幅最长、地点最多的那个。
+        - 提取的 `destination` 为行程的主要城市或区域（如“河南洛阳开封”或“景德镇”）。
+        - 提取的 `duration_days` 根据行程描述的天数计算，若无明确天数则根据具体地点分布估算（最多不超过10天）。
+
+        # 输出JSON结构（必须包含所有字段）
         {{
-            "destination": "核心目的地，如黄山",
-            "transportation": "大交通方式",
-            "duration_days": 4,
-            "budget": 1000,
+            "destination": "核心目的地（城市或区域）",
+            "transportation": "大交通方式（如高铁/飞机/自驾），无法判断则填"未知"",
+            "duration_days": 3,
+            "budget": 0,
             "start_date": "{today}",
             "end_date": "YYYY-MM-DD",
-            "notes": ["注意事项"],
+            "notes": ["注意事项1", "注意事项2"],
             "daily_schedule": [
                 {{
                     "day_num": 1,
                     "schedule_items": [
                         {{
-                            "time": "全天",
-                            "place": "地点名称",
-                            "transport": "交通方式",
+                            "time": "全天或具体时段，如'下午'",
+                            "place": "地点或活动名称",
+                            "transport": "交通方式（步行/打车/公交等）",
                             "distance": 0,
                             "duration": 1,
                             "ticket_cost": 0,
                             "food_cost": 0,
-                            "desc": "行程描述"
+                            "desc": "简短描述，保留关键信息"
                         }}
                     ]
                 }}
@@ -193,54 +207,92 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
             "parsed_locations": [
                 {{
                     "id": 1,
-                    "name": "提取出的具体地点",
-                    "type": "必须是 景点/餐饮/酒店/交通 之一",
-                    "address": "尽量保留原文区域描述，如'上海站旁边''南京路'，确实无信息才填城市名",
+                    "name": "具体地点（景点/餐厅/酒店）",
+                    "type": "景点/餐饮/酒店/交通 之一",
+                    "address": "原文中的相对位置或区域描述，无则填城市名",
                     "day": "Day 1",
-                    "excerpt": "原文中对该地的描述或原话",
+                    "excerpt": "原文对该地点的原话或感受（如'震撼力拉满'）",
                     "selected": true,
-                    "highlight": "亮点（推荐理由）",
+                    "highlight": "亮点或推荐理由",
                     "cost": 0
                 }}
             ]
         }}
 
-        # 针对 parsed_locations 的特别提取说明 (专供UI卡片渲染)
-        - 原文中提到的每一个具体地点（如：屯溪、碧山村、某某餐厅等），都必须单独作为一个对象放入 parsed_locations 数组中！即使只有一句话带过也要提取。
-        - id: 从1开始递增的整数
-        - day: 格式必须严格为 "Day 1", "Day 2", "Day 3" 这种格式
-        - excerpt: 必须填入原文原话（如："超级喜欢，文艺古村"）
-        - selected: 必须全部固定为 true
-        - address: 优先使用原文中的相对位置描述（如"地铁口旁边""外滩对面""XX路"），若原文无任何区域信息，才填写城市名，并且需在 excerpt 中注明"地址过于模糊，待确认"
-        - 严禁输出 lat 和 lng 字段，坐标由后端服务自动获取
+        # 详细提取规则
+        1. **行程天数与每日安排 (daily_schedule)**
+           - 识别明确的天数标记：DAY1、Day 1️⃣、第一天、DAY 1、📅行程：DAY1、day1: 等。
+           - 每个有编号的天数独立成一个 `DailyScheduleItem`，其 `schedule_items` 包含该天内按顺序出现的所有地点/活动。
+           - 若一天内有多个地点，按原文出现顺序列出。每个地点作为一个 `ScheduleItem`，`time` 字段可根据上下文填“上午/下午/全天/晚上”。
+           - 如果原文没有明确分隔天数，则按地点自然分组（根据“- 龙门石窟”、“❶白马寺”等序号）尝试合并成1~3天。
 
-        待处理文本：
+        2. **独立地点列表 (parsed_locations)**
+           - 每一个**景点、餐厅、酒店、交通站点（高铁站、机场）** 都必须单独提取为 `ParsedLocation`。
+           - 即使地点名称在 `daily_schedule` 中出现过，也必须在 `parsed_locations` 中再出现一次。
+           - `id` 从1开始递增。
+           - `day` 必须与 `daily_schedule` 中的 `day_num` 对应，格式 `"Day 1"`。
+           - `excerpt` 尽量引用原文的评价或描述（如“人少出片，原图直出”）。
+           - `highlight` 提取正面评价或特色（如“夜晚亮灯震撼”、“特别出片”）。
+           - `cost` 如果原文提到了该地点的花费（如门票、人均餐费），提取数字，否则填0。
+
+        3. **费用提取 (budget / cost_breakdown)**
+           - 寻找总花费关键词：“人均花费”、“合计”、“总预算”。提取 `budget` 字段。
+           - 分项费用分类：
+             - `flights`：机票、飞机票。
+             - `hotels`：住宿、酒店、民宿。
+             - `food`：吃饭、餐饮、美食。
+             - `transport_tickets`：当地交通（打车、公交、租车）、火车票、景点内交通票。
+             - `others`：门票（若未单独归类）、购物、文创。
+           - 如果没有明确数字，全部填0。
+
+        4. **交通方式 (transportation)**
+           - 根据大交通信息判断：高铁/动车/火车 -> “高铁”；飞机 -> “飞机”；自驾 -> “自驾”；混合则填“高铁+当地打车”。
+
+        5. **注意事项 (notes)**
+           - 提取非地点类的重要提示：如“提前预约门票”、“带身份证”、“避开节假日”等。
+           - 忽略“省钱技巧”、“买票平台比较”。
+
+        6. **过滤规则**
+           - 忽略“智行”、“飞飞乐”、“盲盒”、“支付宝出行”、“砍价”等营销或省钱方法。
+           - 忽略“主包”、“博主”等自称。
+           - 忽略“出发：G3054 6:27-11:42...”这种纯车次时间（除非是行程中的交通工具）。
+
+        # 示例说明（仅理解用，不输出）
+        输入文本片段：
+        "DAY1 杭州-洛阳
+        ❶白马寺-龙门石窟
+        晚餐【吕记炒鸡】人均50"
+        输出应包含：
+        - destination: "洛阳"
+        - duration_days: 至少3（从DAY1-DAY5看出）
+        - daily_schedule: day_num=1 含两个地点(白马寺、龙门石窟)
+        - parsed_locations: 白马寺(类型景点), 龙门石窟(景点), 吕记炒鸡(餐饮)
+        - cost_breakdown.food: 50
+
+        现在，请严格按上述规则处理以下文本：
+
         {text}
         """
         
         raw_content = await _call_llm_with_retry(prompt, "你是一个纯JSON输出机器，绝对不输出markdown代码块或废话。")
         
-        # 🔥 强行截取第一对 {} 之间的内容，避免 LLM 废话导致 JSONDecodeError
+        # 后续解析逻辑保持不变
         json_str = raw_content.strip()
         match = re.search(r'\{{[\s\S]*\}}', json_str)
         if match:
             json_str = match.group(0)
 
-        # 增加更细致的错误捕捉，方便查看日志
         try:
             json_data = json.loads(json_str)
             validated_data = ExtractedTravelData(**json_data)
             logger.info(f"✅ AI提取成功：找到了 {len(validated_data.parsed_locations)} 个地点。")
             return validated_data
-            
         except ValidationError as ve:
             logger.error(f"❌ Pydantic数据结构验证失败: {ve}\n【AI原始输出】: {json_str}")
             return ExtractedTravelData()
-            
         except json.JSONDecodeError as je:
             logger.error(f"❌ JSON解析失败(AI输出格式有误): {je}\n【AI原始输出】: {json_str}")
             return ExtractedTravelData()
-            
         except Exception as e:
             logger.error(f"❌ 数据处理异常: {e}")
             return ExtractedTravelData()
@@ -293,7 +345,7 @@ async def import_travel_plan(
                     
                     try:
                         logger.info(f"正在导航至: {real_url}")
-                        await page.goto(real_url, timeout=15000)
+                        await page.goto(real_url, timeout=30000)
                         await page.wait_for_timeout(2000)
                         
                         title_el = await page.query_selector('.title, #detail-title, [class*="title"]')

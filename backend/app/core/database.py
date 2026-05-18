@@ -506,6 +506,9 @@ async def seed_initial_data():
         # 检查并添加 users 表新增画像字段
         await check_and_add_users_profile_columns()
 
+        # 检查并添加 travel_plans 表新增字段
+        await check_and_add_travel_plans_columns()
+
         # 可以在这里添加其他种子数据的插入逻辑
         # 例如：默认目的地、活动类型等
 
@@ -513,6 +516,63 @@ async def seed_initial_data():
     except Exception as e:
         logger.warning(f"⚠️ 种子数据插入失败: {e}（可能数据已存在）")
         # 种子数据插入失败不应该阻止应用启动
+
+
+async def check_and_add_travel_plans_columns():
+    """检查并补齐 travel_plans 表新增字段（兼容已存在的旧库）"""
+    try:
+        engine = _get_async_engine_for_current_loop()
+        async with engine.begin() as conn:
+            from sqlalchemy import text
+
+            # 检查 travel_plans 表是否存在
+            table_exists = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'travel_plans'
+                    )
+                """)
+            )
+            if not table_exists.scalar():
+                logger.debug("travel_plans 表不存在，跳过字段检查")
+                return
+
+            # 逐个字段检查并补齐
+            column_sql = {
+                "must_visit_attractions": "ALTER TABLE travel_plans ADD COLUMN must_visit_attractions JSONB",
+                "cities": "ALTER TABLE travel_plans ADD COLUMN cities JSONB",
+                "members": "ALTER TABLE travel_plans ADD COLUMN members JSONB",
+                "packing_list": "ALTER TABLE travel_plans ADD COLUMN packing_list JSONB",
+                "travel_mode": "ALTER TABLE travel_plans ADD COLUMN travel_mode VARCHAR(50)",
+                "tags": "ALTER TABLE travel_plans ADD COLUMN tags JSONB",
+            }
+
+            for column_name, alter_sql in column_sql.items():
+                column_exists = await conn.execute(
+                    text("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                            AND table_name = 'travel_plans'
+                            AND column_name = :column_name
+                        )
+                    """),
+                    {"column_name": column_name}
+                )
+
+                if column_exists.scalar():
+                    logger.debug(f"✓ travel_plans.{column_name} 字段已存在")
+                    continue
+
+                logger.info(f"正在为 travel_plans 表添加 {column_name} 字段...")
+                await conn.execute(text(alter_sql))
+                logger.info(f"✅ travel_plans.{column_name} 字段添加成功")
+
+    except Exception as e:
+        logger.warning(f"⚠️ 检查/添加 travel_plans 字段失败: {e}")
+        # 不阻止应用启动
 
 
 async def check_and_add_users_profile_columns():
@@ -545,7 +605,7 @@ async def check_and_add_users_profile_columns():
             }
 
             for column_name, alter_sql in column_sql.items():
-                column_exists = await conn.execute(     
+                column_exists = await conn.execute(
                     text("""
                         SELECT EXISTS (
                             SELECT FROM information_schema.columns

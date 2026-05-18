@@ -1,11 +1,13 @@
-fastapi[all]==0.104.1
+fastapi==0.104.1
 uvicorn[standard]==0.24.0
 sqlalchemy==2.0.23
+sse-starlette>=2.0
 
-pydantic==2.5.0
+# Deleted:pydantic==2.5.0
 pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt>=4.0.1
 python-multipart==0.0.6
 alembic==1.13.1
 python-dotenv==1.0.0
@@ -30,29 +32,29 @@ pgvector==0.2.3
 numpy==1.26.2
 python-dateutil==2.8.2
 Levenshtein==0.25.1
-openpyxl==3.1.2
+# Deleted:openpyxl==3.1.2
 
 # Image Processing
 Pillow==10.1.0
 opencv-python==4.8.1.78
-
+numpy<2.0
 # Utilities
-python-dotenv==1.0.0
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib==1.7.4
-bcrypt==3.2.2
+# Deleted:python-dotenv==1.0.0
+# Deleted:python-multipart==0.0.6
+# Deleted:python-jose[cryptography]==3.3.0
+# Deleted:passlib==1.7.4
+# Deleted:bcrypt==3.2.2
 python-slugify==8.0.1
 geopy==2.4.1
 
 # Logging & Monitoring
-loguru==0.7.2
+# Deleted:loguru==0.7.2
 prometheus-client==0.19.0
 
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2
+#httpx==0.25.2
 
 # Development
 black==23.11.0
@@ -64,7 +66,7 @@ mypy==1.7.1
 psutil==7.1.0
 
 # Retry & Resilience
-tenacity==8.2.2
+tenacity>=8.2.3
 
 # CLI Tools
 typer>=0.12.3
@@ -77,8 +79,8 @@ humps
 # Database (Additional)
 aiomysql==0.1.1
 playwright==1.40.0
-chromadb>=0.5.0
+chromadb>=0.5.0,<1.0.0
 httpx>=0.27.0
-geopy==2.4.1
+# Deleted:geopy==2.4.1
 psycopg2-binary==2.9.9
 asyncpg==0.30.0

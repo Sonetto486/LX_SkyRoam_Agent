@@ -609,19 +609,19 @@ async def celery_health_check():
 # ========== 智能对话独立路由（直接测试用）==========
 from pydantic import BaseModel
 
-class TestChatRequest(BaseModel):
+class ChatTestRequest(BaseModel):
     message: str
 
-class TestChatResponse(BaseModel):
+class ChatTestResponse(BaseModel):
     answer: str
 
 @app.post("/api/test/chat")
-async def test_chat(request: TestChatRequest):
+async def chat_test_endpoint(request: ChatTestRequest):
     """测试聊天接口"""
-    return TestChatResponse(answer=f"收到: {request.message}")
+    return ChatTestResponse(answer=f"收到: {request.message}")
 
 @app.get("/api/test/ping")
-async def test_ping():
+async def ping_test_endpoint():
     return {"pong": True}
 
 
@@ -728,7 +728,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8001)
     parser.add_argument("--no-celery", action="store_true", help="禁用自动启动 Celery Worker")
     args = parser.parse_args()
 
