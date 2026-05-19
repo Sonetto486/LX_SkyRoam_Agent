@@ -274,7 +274,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       >
         <div style={{ color: 'var(--text-soft)' }}>
           <p style={{ margin: '8px 0' }}>
-            © 2025{' '}
+            © 2026{' '}
             <a
               href="https://luoxiai.dpdns.org/"
               target="_blank"
