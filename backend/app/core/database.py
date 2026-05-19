@@ -509,6 +509,9 @@ async def seed_initial_data():
         # 检查并添加 travel_plans 表新增字段
         await check_and_add_travel_plans_columns()
 
+        # 检查并添加 attraction_details 表的 image_source 字段
+        await check_and_add_attraction_details_image_source()
+
         # 可以在这里添加其他种子数据的插入逻辑
         # 例如：默认目的地、活动类型等
 
@@ -627,6 +630,54 @@ async def check_and_add_users_profile_columns():
 
     except Exception as e:
         logger.warning(f"⚠️ 检查/添加 users 画像字段失败: {e}")
+        # 不阻止应用启动
+
+
+async def check_and_add_attraction_details_image_source():
+    """检查并添加 attraction_details 表的 image_source 字段"""
+    try:
+        engine = _get_async_engine_for_current_loop()
+        async with engine.begin() as conn:
+            from sqlalchemy import text
+
+            # 检查 attraction_details 表是否存在
+            table_exists = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                        AND table_name = 'attraction_details'
+                    )
+                """)
+            )
+            if not table_exists.scalar():
+                logger.debug("attraction_details 表不存在，跳过 image_source 字段检查")
+                return
+
+            # 检查 image_source 字段是否存在
+            column_exists = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                        AND table_name = 'attraction_details'
+                        AND column_name = 'image_source'
+                    )
+                """)
+            )
+
+            if column_exists.scalar():
+                logger.debug("✓ attraction_details.image_source 字段已存在")
+                return
+
+            # 添加 image_source 字段
+            logger.info("正在为 attraction_details 表添加 image_source 字段...")
+            await conn.execute(text("ALTER TABLE attraction_details ADD COLUMN image_source VARCHAR(50)"))
+
+            logger.info("✅ attraction_details.image_source 字段添加成功")
+
+    except Exception as e:
+        logger.warning(f"⚠️ 检查/添加 attraction_details.image_source 字段失败: {e}")
         # 不阻止应用启动
 
 
