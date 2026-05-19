@@ -91,7 +91,7 @@ const MainLayout: React.FC = () => {
           </div>
           {!collapsed && (
             <div className="logo-text">
-              洛曦 云旅Agent
+              云旅
             </div>
           )}
         </div>

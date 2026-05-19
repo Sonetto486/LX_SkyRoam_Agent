@@ -281,7 +281,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               rel="noopener noreferrer"
               style={{ color: 'inherit', textDecoration: 'none' }}
             >
-              洛曦 云旅Agent
+              云旅
             </a>
             . 智能旅游攻略生成器
           </p>

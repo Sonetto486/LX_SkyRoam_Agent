@@ -95,7 +95,7 @@ const HomePage: React.FC = () => {
           </div>
 
           <Title level={1} className="hero-title">
-            <span className="gradient-text">洛曦 云旅Agent</span>
+            <span className="gradient-text">云旅</span>
           </Title>
           <Title level={2} className="hero-subtitle">
             你的 AI 智能旅行规划师
@@ -149,7 +149,7 @@ const HomePage: React.FC = () => {
       <section className="features-section">
         <div className="container">
           <div className="section-header">
-            <Title level={2}>为什么选择洛曦云旅</Title>
+            <Title level={2}>为什么选择云旅</Title>
             <Paragraph>业界领先的 AI 技术，为您打造完美旅行体验</Paragraph>
           </div>
 
