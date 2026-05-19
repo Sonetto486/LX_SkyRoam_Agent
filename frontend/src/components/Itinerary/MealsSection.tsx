@@ -105,9 +105,9 @@ const MealsSection: React.FC<MealsSectionProps> = ({ meals, onViewDetail }) => {
                         <div style={{ marginBottom: 8 }}>
                           <Text strong>推荐菜品：</Text>
                           <div style={{ marginTop: 4 }}>
-                            {meal.recommended_dishes.map((dish, idx) => (
+                            {meal.recommended_dishes.map((dish: any, idx) => (
                               <Tag key={idx} color="orange" style={{ margin: '2px' }}>
-                                {dish}
+                                {typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}
                               </Tag>
                             ))}
                           </div>

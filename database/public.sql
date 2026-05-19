@@ -12,7 +12,7 @@
  Target Server Version : 180003 (180003)
  File Encoding         : 65001
 
- Date: 17/05/2026 18:08:08
+ Date: 19/05/2026 17:02:28
 */
 
 
@@ -352,7 +352,8 @@ CREATE TABLE "public"."attraction_details" (
   "id" int4 NOT NULL DEFAULT nextval('attraction_details_id_seq'::regclass),
   "created_at" timestamp(6) NOT NULL,
   "updated_at" timestamp(6) NOT NULL,
-  "is_active" bool NOT NULL
+  "is_active" bool NOT NULL,
+  "image_source" varchar(50) COLLATE "pg_catalog"."default"
 )
 ;
 
@@ -671,7 +672,8 @@ CREATE TABLE "public"."travel_plans" (
   "members" jsonb,
   "packing_list" jsonb,
   "travel_mode" varchar(50) COLLATE "pg_catalog"."default",
-  "tags" jsonb
+  "tags" jsonb,
+  "must_visit_attractions" jsonb
 )
 ;
 
@@ -2280,7 +2282,7 @@ SELECT setval('"public"."transport_transport_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."travel_plan_items_id_seq"
 OWNED BY "public"."travel_plan_items"."id";
-SELECT setval('"public"."travel_plan_items_id_seq"', 437, true);
+SELECT setval('"public"."travel_plan_items_id_seq"', 459, true);
 
 -- ----------------------------
 -- Alter sequences owned by
@@ -2294,7 +2296,7 @@ SELECT setval('"public"."travel_plan_ratings_id_seq"', 1, false);
 -- ----------------------------
 ALTER SEQUENCE "public"."travel_plans_id_seq"
 OWNED BY "public"."travel_plans"."id";
-SELECT setval('"public"."travel_plans_id_seq"', 77, true);
+SELECT setval('"public"."travel_plans_id_seq"', 85, true);
 
 -- ----------------------------
 -- Alter sequences owned by

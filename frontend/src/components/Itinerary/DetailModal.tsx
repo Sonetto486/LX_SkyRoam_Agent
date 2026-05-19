@@ -496,9 +496,9 @@ const DetailModal: React.FC<DetailModalProps> = ({
                 <div>
                   <Text strong>推荐菜品</Text>
                   <div style={{ marginTop: 8 }}>
-                    {detail.recommended_dishes.map((dish, index) => (
+                    {detail.recommended_dishes.map((dish: any, index) => (
                       <Tag key={index} color="orange" style={{ marginBottom: 4 }}>
-                        {dish}
+                        {typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}
                       </Tag>
                     ))}
                   </div>
