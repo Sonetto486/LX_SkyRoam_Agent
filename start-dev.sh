@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 启动 LX SkyRoam Agent 开发环境..."
+echo "🚀 启动 SkyRoam 开发环境..."
 
 # 检查Python是否安装
 if ! command -v python3 &> /dev/null; then
@@ -47,7 +47,7 @@ sleep 5
 
 # 显示访问信息
 echo ""
-echo "✅ LX SkyRoam Agent 开发环境启动完成！"
+echo "✅ SkyRoam 开发环境启动完成！"
 echo ""
 echo "📱 前端应用: http://localhost:3000"
 echo "🔧 后端API: http://localhost:8001"

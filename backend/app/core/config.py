@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     )
 
     # 基础配置
-    APP_NAME: str = os.getenv("APP_NAME", "LX SkyRoam Agent")
+    APP_NAME: str = os.getenv("APP_NAME", "SkyRoam")
     VERSION: str = os.getenv("VERSION", "1.0.0")
     DEBUG: bool = os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 

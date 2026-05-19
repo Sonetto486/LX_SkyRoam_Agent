@@ -1,5 +1,5 @@
 """
-LX SkyRoam Agent - 主应用入口
+SkyRoam - 主应用入口
 智能旅游攻略生成系统
 """
 import sys
@@ -400,7 +400,7 @@ async def lifespan(app: FastAPI):
 
     # 启动时初始化
     logger = setup_logging()
-    logger.info("🚀 启动 LX SkyRoam Agent...")
+    logger.info("🚀 启动 SkyRoam...")
 
     # 初始化数据库（智能检查表和列是否存在，不存在则创建/添加）
     await init_db(use_alembic=False, create_tables_directly=True)
@@ -441,7 +441,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # 关闭时清理
-    logger.info("🛑 关闭 LX SkyRoam Agent...")
+    logger.info("🛑 关闭 SkyRoam...")
 
     # 停止 Celery Worker
     stop_celery_worker()
@@ -452,7 +452,7 @@ async def lifespan(app: FastAPI):
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="LX SkyRoam Agent",
+    title="SkyRoam",
     description="智能旅游攻略生成系统",
     version="1.0.0",
     docs_url="/docs",
@@ -493,7 +493,7 @@ app.include_router(smart_chat.router, prefix="/api/v1/smart-chat", tags=["smart-
 async def root():
     """根路径"""
     return {
-        "message": "LX SkyRoam Agent API",
+        "message": "SkyRoam API",
         "version": "1.0.0",
         "status": "running"
     }
@@ -504,7 +504,7 @@ async def health_check():
     """健康检查"""
     return {
         "status": "healthy",
-        "service": "LX SkyRoam Agent",
+        "service": "SkyRoam",
         "version": "1.0.0"
     }
 

@@ -1,0 +1,226 @@
+SkyRoam 项目的开发环境及依赖库说明
+
+更新时间：2026-05-19
+
+====================================================
+一、开发环境要求
+====================================================
+1) 操作系统
+- Windows 10/11（推荐）
+- Linux / macOS（可选）
+
+2) 基础运行环境
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL 15+
+- Redis 7+
+- Docker Desktop（推荐，含 docker compose v2）
+
+3) 推荐开发工具
+- VS Code
+- Git
+- Postman/Apifox（接口调试）
+
+
+====================================================
+二、后端依赖（backend/requirements.txt）
+====================================================
+后端框架与核心：
+- fastapi==0.104.1
+- uvicorn[standard]==0.24.0
+- sqlalchemy==2.0.23
+- pydantic-settings==2.1.0
+- alembic==1.13.1
+- asyncpg==0.30.0
+- psycopg2-binary==2.9.9
+- redis==5.0.1
+
+认证与安全：
+- python-jose[cryptography]==3.3.0
+- passlib[bcrypt]==1.7.4
+- bcrypt>=4.0.1
+- python-multipart==0.0.6
+
+AI 与文本处理：
+- openai>=1.3.7
+- tiktoken==0.5.2
+- tenacity>=8.2.3
+- pyhumps==3.8.0
+- humps
+- python-slugify==8.0.1
+- Levenshtein==0.25.1
+
+数据与爬取处理：
+- pandas==2.1.4
+- openpyxl==3.1.2
+- beautifulsoup4==4.12.2
+- lxml==4.9.3
+- selenium==4.15.2
+- webdriver-manager==4.0.0
+- playwright==1.40.0
+- requests==2.31.0
+- aiohttp==3.9.1
+
+向量与检索：
+- pgvector==0.2.3
+- chromadb>=0.5.0,<1.0.0
+
+图像与地理：
+- Pillow==10.1.0
+- opencv-python==4.8.1.78
+- geopy==2.4.1
+
+任务、日志与监控：
+- celery==5.3.4
+- loguru==0.7.2
+- prometheus-client==0.19.0
+- pyyaml==6.0.3
+- psutil==7.1.0
+- sse-starlette>=2.0
+- jinja2==3.1.2
+- python-dateutil==2.8.2
+
+测试与开发工具：
+- pytest==7.4.3
+- pytest-asyncio==0.21.1
+- black==23.11.0
+- isort==5.12.0
+- flake8==6.1.0
+- mypy==1.7.1
+- typer>=0.12.3
+
+说明：
+- `requirements.txt` 中存在少量重复/替换痕迹（如 numpy、httpx、注释掉的 Deleted 项），安装时以 pip 最终解析结果为准。
+
+
+====================================================
+三、前端依赖（frontend/package.json）
+====================================================
+运行时依赖（dependencies）：
+- react ^18.2.0
+- react-dom ^18.2.0
+- react-router-dom ^6.20.1
+- typescript ^4.9.5
+- antd ^5.12.1
+- @ant-design/icons ^5.2.6
+- axios ^1.6.2
+- dayjs ^1.11.10
+- react-markdown ^10.1.0
+- react-masonry-css ^1.0.16
+
+地图相关：
+- @amap/amap-jsapi-loader ^1.0.1
+- leaflet ^1.9.4
+- react-leaflet ^4.2.1
+- @types/leaflet ^1.9.8
+
+校验与构建相关：
+- ajv ^8.12.0
+- ajv-keywords ^5.1.0
+- react-scripts 5.0.1
+- web-vitals ^3.5.0
+
+类型定义：
+- @types/node ^20.10.0
+- @types/react ^18.2.39
+- @types/react-dom ^18.2.17
+
+开发依赖（devDependencies）：
+- eslint ^8.54.0
+- @typescript-eslint/parser ^5.62.0
+- @typescript-eslint/eslint-plugin ^5.62.0
+- eslint-plugin-react ^7.33.2
+- eslint-plugin-react-hooks ^4.6.0
+- prettier ^3.1.0
+- eslint-config-prettier ^9.0.0
+- eslint-plugin-prettier ^5.0.1
+- tailwindcss ^3.3.6
+- postcss ^8.4.32
+- autoprefixer ^10.4.16
+- @types/jest ^29.5.8
+
+
+====================================================
+四、环境变量与配置文件
+====================================================
+1) 后端
+- 参考模板：`env.example`
+- 常用文件：`backend/.env`（按 `app/core/config.py` 的加载逻辑）
+
+关键变量建议：
+- DATABASE_URL
+- REDIS_URL
+- OPENAI_API_KEY / OPENAI_API_BASE / OPENAI_MODEL
+- AMAP_API_KEY
+- BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY
+- HOST / PORT / DEBUG
+
+2) 前端
+- 常用变量：REACT_APP_API_BASE_URL
+- 当前 scripts 中默认：`http://127.0.0.1:8001/api/v1`
+
+3) Docker
+- `docker-compose.yml` 使用 `.env.docker`（如存在）
+- 主要端口（当前配置）：
+  - 前端：13000
+  - 后端：8001
+  - 高德 MCP：13002
+  - 小红书 API：18002
+  - PostgreSQL：5432
+
+
+====================================================
+五、安装与启动（开发常用）
+====================================================
+1) 后端安装
+- 进入 `backend`
+- `pip install -r requirements.txt`
+
+2) 前端安装
+- 进入 `frontend`
+- `npm install`
+
+3) 本地启动（Windows）
+- 快速模式：`start-dev.bat`
+- 全服务模式：`start-all-win.bat`
+
+4) Docker 启动（推荐）
+- 根目录执行：`start.bat`
+- 或：`docker compose up -d --build`
+
+
+====================================================
+六、版本与兼容性建议
+====================================================
+1) Python 建议使用 3.10 或 3.11
+2) Node.js 建议 18 LTS 或 20 LTS
+3) PostgreSQL 建议 15（当前 compose 使用 pgvector/pg15）
+4) 若使用 Playwright，请执行浏览器依赖安装（首次）：
+   - `python -m playwright install`
+
+
+====================================================
+七、常见依赖问题
+====================================================
+1) 后端安装慢/失败
+- 升级 pip：`python -m pip install --upgrade pip`
+- 使用镜像源安装
+
+2) 前端安装失败
+- 删除 `node_modules` 和锁文件后重装
+- 清理 npm 缓存后重装
+
+3) 地图请求报错 INVALID_USER_KEY
+- 检查 `AMAP_API_KEY` 是否有效与权限匹配
+
+4) 启动后接口 404
+- 检查后端端口、前端 API 基址、路由注册情况
+
+
+====================================================
+八、安全提示
+====================================================
+1) 请勿将真实 API Key、数据库密码提交到仓库
+2) 建议 `.env`、`.env.docker` 加入忽略管理
+3) 生产环境使用最小权限数据库账号
+4) 日志避免输出完整密钥和 Token

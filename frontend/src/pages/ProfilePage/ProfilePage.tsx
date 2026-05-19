@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin } from 'antd';
-import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined } from '@ant-design/icons';
+import { Card, Button, Space, Typography, Avatar, Row, Col, Tag, Statistic, Modal, Form, Input, message, Spin, Popconfirm, Tooltip } from 'antd';
+import { EditOutlined, EnvironmentOutlined, CalendarOutlined, StarOutlined, DeleteOutlined } from '@ant-design/icons';
 import AMapLoader from '@amap/amap-jsapi-loader';
 import './ProfilePage.css';
 import axios from 'axios';
@@ -17,7 +17,18 @@ interface User {
   favorite_locations?: number[];
   highlighted_locations?: number[];
   collections: { id: number; name: string; image: string; description: string }[];
-  journals: { id: number; title: string; date: string; content: string; image: string }[];
+  journals: { id: number; plan_id?: number | string | null; title: string; date: string; content: string; image: string }[];
+}
+
+interface LocationItem {
+  id: number;
+  location_name?: string;
+  name?: string;
+  description?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  media_images?: any[];
 }
 
 const ProfilePage: React.FC = () => {
@@ -26,6 +37,8 @@ const ProfilePage: React.FC = () => {
   const [mapLoading, setMapLoading] = useState<boolean>(true);
   const [travelStats, setTravelStats] = useState({ trips: 0, destinations: 0, days: 0, favorites: 0 });
   const [isEditModalVisible, setIsEditModalVisible] = useState<boolean>(false);
+  const [locationItems, setLocationItems] = useState<LocationItem[]>([]);
+  const [updatingLocations, setUpdatingLocations] = useState(false);
   const [form] = Form.useForm();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -59,6 +72,23 @@ const ProfilePage: React.FC = () => {
     return `https://picsum.photos/seed/${fallbackSeed}/400/300`;
   };
 
+  const getHiddenCollectionsKey = (userId: string) => `hidden_discover_collections_${userId}`;
+
+  const readHiddenCollections = (userId: string) => {
+    try {
+      const raw = localStorage.getItem(getHiddenCollectionsKey(userId));
+      if (!raw) return [] as number[];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map((value: any) => Number(value)).filter((value: number) => !Number.isNaN(value)) : [];
+    } catch {
+      return [] as number[];
+    }
+  };
+
+  const writeHiddenCollections = (userId: string, ids: number[]) => {
+    localStorage.setItem(getHiddenCollectionsKey(userId), JSON.stringify(Array.from(new Set(ids))));
+  };
+
   const buildCollections = (plans: any[]) =>
     plans.map((plan: any) => ({
       id: plan.id,
@@ -67,9 +97,32 @@ const ProfilePage: React.FC = () => {
       description: plan.description || plan.destination || '暂无简介'
     }));
 
+  const fetchDiscoverItineraries = async (baseURL: string, token: string | null, limit = 6) => {
+    try {
+      const response = await axios.get(`${baseURL}/notes/`, {
+        params: { limit, is_random: true },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = response.data;
+      const items = Array.isArray(data.items) ? data.items : data;
+      // map notes to collection-like objects
+      return items.map((note: any) => ({
+        id: note.id,
+        title: note.title || note.name || '未命名攻略',
+        images: note.image_url ? [note.image_url] : (note.images || []),
+        description: note.intro || note.description || note.summary || '',
+        destination: note.destination || ''
+      }));
+    } catch (error) {
+      console.error('fetchDiscoverItineraries failed', error);
+      return [];
+    }
+  };
+
   const buildJournalsFromItems = (items: any[], fallbackPrefix: string) =>
     items.map((item: any, index: number) => ({
       id: item.id || index + 1,
+      plan_id: item.plan_id || item.planId || null,
       title: item.title || item.location || '行程记录',
       date: formatDate(item.start_time) || formatDate(item.created_at) || '',
       content: item.description || item.item_type || '暂无内容',
@@ -87,6 +140,21 @@ const ProfilePage: React.FC = () => {
     return { plans, totalTrips };
   };
 
+  const fetchLocationItems = async (baseURL: string, ids: Array<number | string>) => {
+    if (!ids.length) return [] as LocationItem[];
+    const response = await axios.get(`${baseURL}/locations/batch`, {
+      params: { ids: ids.join(',') }
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  };
+
+  const refreshLocationItems = async (baseURL: string, favoriteIds?: number[], highlightIds?: number[]) => {
+    const ids = Array.from(new Set([...(favoriteIds || user?.favorite_locations || []), ...(highlightIds || user?.highlighted_locations || [])]));
+    const locations = await fetchLocationItems(baseURL, ids);
+    setLocationItems(locations);
+    return locations;
+  };
+
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
@@ -96,12 +164,16 @@ const ProfilePage: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       const userData = response.data;
+      const hiddenCollectionIds = readHiddenCollections(String(userData.id));
       const favoriteCount = Array.isArray(userData.favorite_locations) ? userData.favorite_locations.length : 0;
       const { plans, totalTrips } = await fetchTravelPlansData(token);
 
+      // 旅行记录直接展示后端返回的所有行程，包括 draft
+      const travelPlans = Array.isArray(plans) ? plans.filter((p: any) => p) : [];
+
       const destinationSet = new Set<string>();
       let totalDays = 0;
-      plans.forEach((plan: any) => {
+      travelPlans.forEach((plan: any) => {
         const dest = plan?.destination;
         if (Array.isArray(dest)) dest.forEach((d: any) => d && destinationSet.add(String(d)));
         else if (dest) destinationSet.add(String(dest));
@@ -110,8 +182,10 @@ const ProfilePage: React.FC = () => {
 
       setTravelStats({ trips: totalTrips, destinations: destinationSet.size, days: totalDays, favorites: favoriteCount });
 
-      const collections = buildCollections(plans);
-      const plansForItems = plans.slice(0, 3);
+      // 从 Discover 页获取的公共行程/笔记作为“收藏的行程”来源
+      const discoverItems = await fetchDiscoverItineraries(baseURL, token, 6);
+      const collections = buildCollections(discoverItems).filter((item: any) => !hiddenCollectionIds.includes(item.id));
+      const plansForItems = travelPlans.slice(0, 3);
       const itemResults = await Promise.allSettled(
         plansForItems.map((plan: any) =>
           axios.get(`${baseURL}/travel-plans/${plan.id}/items`, { headers: { Authorization: `Bearer ${token}` } })
@@ -120,11 +194,14 @@ const ProfilePage: React.FC = () => {
 
       const journalItems: any[] = [];
       itemResults.forEach((result, index) => {
+        const fb = plansForItems[index];
         if (result.status === 'fulfilled') {
-          journalItems.push(...(Array.isArray(result.value.data) ? result.value.data : []));
+          const dataArr = Array.isArray(result.value.data) ? result.value.data : [];
+          // 确保每个 item 都带上所属的 plan_id，方便删除操作
+          const withPlan = dataArr.map((it: any) => ({ ...it, plan_id: it.plan_id || fb?.id }));
+          journalItems.push(...withPlan);
         } else {
-          const fb = plansForItems[index];
-          if (fb) journalItems.push({ id: fb.id, title: fb.title || fb.destination || '行程记录', start_time: fb.start_date, description: fb.description, images: [] });
+          if (fb) journalItems.push({ id: fb.id, plan_id: fb.id, title: fb.title || fb.destination || '行程记录', start_time: fb.start_date, description: fb.description, images: [] });
         }
       });
 
@@ -137,6 +214,8 @@ const ProfilePage: React.FC = () => {
         favorite_locations: userData.favorite_locations || [], highlighted_locations: userData.highlighted_locations || [],
         collections, journals
       });
+
+      await refreshLocationItems(baseURL, userData.favorite_locations || [], userData.highlighted_locations || []);
     } catch (error) {
       console.error('Failed to fetch user profile', error);
       message.error('获取个人信息失败');
@@ -227,6 +306,74 @@ const ProfilePage: React.FC = () => {
     if (user) { form.setFieldsValue({ full_name: user.full_name, email: user.email, photo_mood: user.bio }); setIsEditModalVisible(true); }
   };
 
+  const updateLocationTags = async (nextFavorites: number[], nextHighlights: number[]) => {
+    if (!user) return;
+    try {
+      setUpdatingLocations(true);
+      const token = localStorage.getItem('auth_token');
+      const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1';
+      await axios.patch(`${baseURL}/users/me`, {
+        favorite_locations: nextFavorites,
+        highlighted_locations: nextHighlights
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(prev => prev ? { ...prev, favorite_locations: nextFavorites, highlighted_locations: nextHighlights } : prev);
+      await refreshLocationItems(baseURL, nextFavorites, nextHighlights);
+      message.success('已更新地点状态');
+    } catch (error: any) {
+      console.error('更新地点状态失败', error);
+      message.error(error.response?.data?.detail || '更新失败');
+    } finally {
+      setUpdatingLocations(false);
+    }
+  };
+
+  const handleRemoveFavorite = async (locationId: number) => {
+    if (!user) return;
+    const nextFavorites = (user.favorite_locations || []).filter(id => id !== locationId);
+    await updateLocationTags(nextFavorites, user.highlighted_locations || []);
+  };
+
+  const handleRemoveHighlight = async (locationId: number) => {
+    if (!user) return;
+    const nextHighlights = (user.highlighted_locations || []).filter(id => id !== locationId);
+    await updateLocationTags(user.favorite_locations || [], nextHighlights);
+  };
+
+  const handleCancelCollection = async (collectionId: number) => {
+    if (!user) return;
+    const nextHiddenIds = [...readHiddenCollections(user.id), collectionId];
+    writeHiddenCollections(user.id, nextHiddenIds);
+    setUser(prev => prev ? { ...prev, collections: (prev.collections || []).filter(item => item.id !== collectionId) } : prev);
+    message.success('已取消收藏');
+  };
+
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDeleteJournal = async (journal: any) => {
+    if (!journal || !journal.plan_id || !journal.id) {
+      message.error('无法删除未保存或临时记录');
+      return;
+    }
+    try {
+      setDeletingId(journal.id);
+      const token = localStorage.getItem('auth_token');
+      const baseURL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1';
+      await axios.delete(`${baseURL}/travel-plans/${journal.plan_id}/items/${journal.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      message.success('旅行记录已删除');
+      setUser(prev => {
+        if (!prev) return prev;
+        return { ...prev, journals: (prev.journals || []).filter((j: any) => j.id !== journal.id) };
+      });
+    } catch (error: any) {
+      console.error('删除失败', error);
+      message.error(error.response?.data?.detail || '删除失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleEditSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -289,12 +436,71 @@ const ProfilePage: React.FC = () => {
       </div>
 
       <div className="bottom-section">
+        <Card title="📍 收藏 / 高亮地点管理">
+          {locationItems.length > 0 ? locationItems.map(loc => {
+            const isFav = (user.favorite_locations || []).includes(loc.id);
+            const isHigh = (user.highlighted_locations || []).includes(loc.id);
+            if (!isFav && !isHigh) return null;
+            return (
+              <Card key={loc.id} className="inner-card" size="small">
+                <div className="card-item-content">
+                  <div className="card-item-image">
+                    <img
+                      src={Array.isArray(loc.media_images) && loc.media_images[0] ? (loc.media_images[0].url || loc.media_images[0]) : 'https://picsum.photos/seed/fallback/400/300'}
+                      alt={loc.location_name || loc.name || '地点'}
+                      onError={e => { (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/fallback/400/300'; }}
+                    />
+                  </div>
+                  <div className="card-item-info">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <h5>{loc.location_name || loc.name}</h5>
+                        {isHigh && <Tag color="red" style={{ fontSize: 10 }}>高亮</Tag>}
+                        {isFav && <Tag color="gold" style={{ fontSize: 10 }}>收藏</Tag>}
+                      </div>
+                      <Space>
+                        {isFav && (
+                          <Button
+                            size="small"
+                            danger
+                            type="primary"
+                            loading={updatingLocations}
+                            onClick={() => handleRemoveFavorite(loc.id)}
+                          >
+                            取消收藏
+                          </Button>
+                        )}
+                        {isHigh && (
+                          <Button
+                            size="small"
+                            loading={updatingLocations}
+                            onClick={() => handleRemoveHighlight(loc.id)}
+                          >
+                            取消高亮
+                          </Button>
+                        )}
+                      </Space>
+                    </div>
+                    <Paragraph ellipsis={{ rows: 2 }}>{loc.description || loc.address || '暂无简介'}</Paragraph>
+                  </div>
+                </div>
+              </Card>
+            );
+          }) : <div className="empty-state"><EnvironmentOutlined /><p>暂无收藏或高亮地点</p></div>}
+        </Card>
+
         <Card title="📦 收藏的行程">
           {user.collections.length > 0 ? user.collections.map(c => (
             <Card key={c.id} className="inner-card" size="small">
               <div className="card-item-content">
                 <div className="card-item-image"><img src={c.image} alt={c.name} onError={e => { (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/fallback/400/300'; }} /></div>
-                <div className="card-item-info"><h5>{c.name}</h5><Paragraph ellipsis={{ rows: 2 }}>{c.description}</Paragraph></div>
+                <div className="card-item-info">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <h5>{c.name}</h5>
+                    <Button size="small" type="text" danger onClick={() => handleCancelCollection(c.id)}>取消收藏</Button>
+                  </div>
+                  <Paragraph ellipsis={{ rows: 2 }}>{c.description}</Paragraph>
+                </div>
               </div>
             </Card>
           )) : <div className="empty-state"><EnvironmentOutlined /><p>暂无收藏</p></div>}
@@ -305,7 +511,21 @@ const ProfilePage: React.FC = () => {
               <div className="card-item-content">
                 <div className="card-item-image"><img src={j.image} alt={j.title} onError={e => { (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/fallback/400/300'; }} /></div>
                 <div className="card-item-info">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><h5>{j.title}</h5>{j.date && <Tag color="blue" style={{ fontSize: 10 }}>{j.date}</Tag>}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <h5>{j.title}</h5>
+                      {j.date && <Tag color="blue" style={{ fontSize: 10 }}>{j.date}</Tag>}
+                    </div>
+                    <div>
+                      {j.plan_id ? (
+                        <Popconfirm title="确认删除该旅行记录？" onConfirm={() => handleDeleteJournal(j)} okText="删除" cancelText="取消">
+                          <Button type="text" danger icon={<DeleteOutlined />} loading={deletingId === j.id} />
+                        </Popconfirm>
+                      ) : (
+                        <Tooltip title="无法删除未保存的记录"><Button type="text" disabled icon={<DeleteOutlined />} /></Tooltip>
+                      )}
+                    </div>
+                  </div>
                   <Paragraph ellipsis={{ rows: 2 }}>{j.content}</Paragraph>
                 </div>
               </div>

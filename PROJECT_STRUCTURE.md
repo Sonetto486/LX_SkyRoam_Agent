@@ -1,4 +1,4 @@
-# LX SkyRoam Agent 项目结构图
+# SkyRoam 项目结构图
 
 ## 总览
 

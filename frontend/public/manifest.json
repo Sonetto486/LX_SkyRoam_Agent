@@ -1,6 +1,6 @@
 {
-  "short_name": "LX SkyRoam Agent",
-  "name": "LX SkyRoam Agent - 智能旅游攻略生成器",
+  "short_name": "SkyRoam",
+  "name": "SkyRoam - 智能旅游攻略生成器",
   "icons": [
     {
       "src": "favicon.ico",

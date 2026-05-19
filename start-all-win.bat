@@ -2,7 +2,7 @@
 chcp 65001 >/dev/null
 setlocal enabledelayedexpansion
 
-echo Starting LX SkyRoam Agent Services...
+echo Starting SkyRoam Services...
 
 cd /d "%~dp0"
 

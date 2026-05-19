@@ -1,7 +1,7 @@
 {
   "name": "lx-skyroam-agent-frontend",
   "version": "1.0.0",
-  "description": "LX SkyRoam Agent - 智能旅游攻略生成器前端",
+  "description": "SkyRoam - 智能旅游攻略生成器前端",
   "private": true,
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
