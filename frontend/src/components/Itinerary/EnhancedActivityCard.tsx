@@ -295,8 +295,8 @@ const EnhancedActivityCard: React.FC<EnhancedActivityCardProps> = ({
             <Text strong><CoffeeOutlined /> 推荐菜品</Text>
             <div style={{ marginTop: 8, paddingLeft: 20 }}>
               <Space wrap>
-                {activity.recommended_dishes.map((dish, idx) => (
-                  <Tag key={idx} color="orange">{dish}</Tag>
+                {activity.recommended_dishes.map((dish: any, idx) => (
+                  <Tag key={idx} color="orange">{typeof dish === 'string' ? dish : (dish?.name || '推荐菜')}</Tag>
                 ))}
               </Space>
             </div>
