@@ -577,24 +577,35 @@ class PlanGenerator:
     def _deduplicate_daily_attractions(self, plan_data: Dict[str, Any]) -> None:
         """在同一方案内按天去重景点，避免同一景点出现在多个日期.
 
-        智能去重策略：
-        1. 如果景点总数充足，严格去重，确保每个景点只出现一次
-        2. 如果景点总数不足，优先保留未使用的景点，但允许重复使用以填满每天的最少景点数
-        
+        严格去重策略：
+        确保每个景点在整个行程中只出现一次，不允许重复。
+
         仅依靠景点名称进行去重，名称为空或无法解析的条目原样保留。
         该函数会原地修改 ``plan_data`` 中的 ``daily_itineraries``。
         """
         try:
             daily_itineraries = plan_data.get("daily_itineraries", []) or []
             if not daily_itineraries:
+                logger.info("无每日行程数据，跳过去重")
                 return
-            
-            # 第一步：收集所有景点并统计唯一景点总数
-            all_attractions: List[Tuple[Any, str]] = []  # (attraction_obj, normalized_name)
+
+            logger.info(f"开始去重，共 {len(daily_itineraries)} 天行程")
+
+            # 统计去重前的景点总数
+            total_before = 0
+            for day in daily_itineraries:
+                attractions = day.get("attractions") or []
+                total_before += len(attractions)
+                logger.info(f"第{day.get('day', '?')}天景点: {[a.get('name') if isinstance(a, dict) else a for a in attractions]}")
+
+            # 严格去重：每个景点只允许出现一次
+            seen: Set[str] = set()
+            removed_count = 0
             for day in daily_itineraries:
                 attractions = day.get("attractions") or []
                 if not isinstance(attractions, list):
                     continue
+                unique: List[Any] = []
                 for attr in attractions:
                     name = None
                     if isinstance(attr, dict):
@@ -602,111 +613,19 @@ class PlanGenerator:
                     elif isinstance(attr, str):
                         name = attr
                     normalized = self._normalize_resource_name(name)
-                    if normalized:  # 只统计有名字的景点
-                        all_attractions.append((attr, normalized))
-            
-            # 统计唯一景点数量
-            unique_attraction_names = set(norm for _, norm in all_attractions)
-            total_unique = len(unique_attraction_names)
-            total_days = len(daily_itineraries)
-            min_per_day = self.min_attractions_per_day
-            required_total = total_days * min_per_day
-            
-            # 如果唯一景点数足够，使用严格去重
-            if total_unique >= required_total:
-                seen: Set[str] = set()
-                for day in daily_itineraries:
-                    attractions = day.get("attractions") or []
-                    if not isinstance(attractions, list):
-                        continue
-                    unique: List[Any] = []
-                    for attr in attractions:
-                        name = None
-                        if isinstance(attr, dict):
-                            name = attr.get("name")
-                        elif isinstance(attr, str):
-                            name = attr
-                        normalized = self._normalize_resource_name(name)
-                        # 没有名字的，或者未见过的，直接保留
-                        if not normalized or normalized not in seen:
-                            unique.append(attr)
-                            if normalized:
-                                seen.add(normalized)
-                    day["attractions"] = unique
-                logger.info(f"景点充足({total_unique}个唯一景点，需要{required_total}个)，已严格去重")
-            else:
-                # 景点不足，使用动态调整策略
-                logger.info(f"景点不足({total_unique}个唯一景点，需要{required_total}个)，启用动态调整策略")
+                    # 没有名字的，或者未见过的，直接保留
+                    if not normalized or normalized not in seen:
+                        unique.append(attr)
+                        if normalized:
+                            seen.add(normalized)
+                    else:
+                        removed_count += 1
+                        logger.warning(f"去重：移除重复景点 '{name}' (第{day.get('day', '?')}天)")
+                day["attractions"] = unique
 
-                # 计算实际可分配的每天景点数
-                actual_per_day = max(1, total_unique // total_days)
-                logger.info(f"动态调整为每天最多{actual_per_day}个景点，无重复")
-
-                # 景点不足时，允许景点重复（最多2次）以确保每天有足够的景点
-                seen_count: Dict[str, int] = {}
-                for day in daily_itineraries:
-                    attractions = day.get("attractions") or []
-                    if not isinstance(attractions, list):
-                        continue
-                    unique: List[Any] = []
-                    for attr in attractions:
-                        name = None
-                        if isinstance(attr, dict):
-                            name = attr.get("name")
-                        elif isinstance(attr, str):
-                            name = attr
-                        normalized = self._normalize_resource_name(name)
-
-                        if not normalized:
-                            # 没有名字的，直接保留
-                            unique.append(attr)
-                        else:
-                            # 检查这个景点已经使用了多少次
-                            count = seen_count.get(normalized, 0)
-                            # 允许景点重复最多2次
-                            if count < 2:
-                                unique.append(attr)
-                                seen_count[normalized] = count + 1
-
-                    day["attractions"] = unique
-
-                logger.info(f"动态调整完成，每天景点数根据实际数据分配，允许景点重复（最多2次）")
-
-            # 保护全天景点：如果某天包含全天景点，移除该天的其他景点
-            full_day_attractions = self._identify_full_day_attractions(
-                [attr for attr, _ in all_attractions if isinstance(attr, dict)]
-            )
-
-            # 收集必去景点名称，确保不会被移除
-            must_visit_names = set()
-            for attr, _ in all_attractions:
-                if isinstance(attr, dict) and attr.get("is_must_visit"):
-                    name = attr.get("name", "")
-                    if name:
-                        must_visit_names.add(name)
-
-            if full_day_attractions:
-                for day in daily_itineraries:
-                    attractions = day.get("attractions") or []
-                    if not isinstance(attractions, list):
-                        continue
-
-                    # 检查是否包含全天景点
-                    has_full_day = False
-                    for attr in attractions:
-                        name = attr.get("name", "") if isinstance(attr, dict) else str(attr)
-                        if name in full_day_attractions:
-                            has_full_day = True
-                            break
-
-                    # 如果有全天景点且当天有多个景点，只保留全天景点和必去景点
-                    if has_full_day and len(attractions) > 1:
-                        day["attractions"] = [
-                            attr for attr in attractions
-                            if (attr.get("name", "") if isinstance(attr, dict) else str(attr)) in full_day_attractions
-                            or (attr.get("name", "") if isinstance(attr, dict) else str(attr)) in must_visit_names
-                        ]
-                        logger.info(f"第{day.get('day', '?')}天包含全天景点，已移除其他景点（保留必去景点）")
+            # 统计去重后的景点总数
+            total_after = sum(len(day.get("attractions") or []) for day in daily_itineraries)
+            logger.info(f"严格去重完成：处理 {len(daily_itineraries)} 天行程，去重前 {total_before} 个景点，去重后 {total_after} 个景点，移除 {removed_count} 个重复")
 
         except Exception as e:  # 防御性，任何异常不影响主流程
             logger.warning(f"去重每日景点失败: {e}")
