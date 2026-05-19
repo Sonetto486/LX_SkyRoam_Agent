@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 
-echo Starting LX SkyRoam Agent Dev Environment...
+echo Starting SkyRoam Dev Environment...
 
 REM Check if Python is installed
 python --version >nul 2>&1
@@ -42,7 +42,7 @@ timeout /t 5 /nobreak >nul
 
 REM Show access info
 echo.
-echo LX SkyRoam Agent Dev Environment Started!
+echo SkyRoam Dev Environment Started!
 echo.
 echo Frontend App: http://localhost:3000
 echo Backend API: http://localhost:8001

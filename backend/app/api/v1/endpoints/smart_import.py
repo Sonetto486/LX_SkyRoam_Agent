@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import json
 import re
+import ast
 
 # 根据你的实际项目路径导入
 from app.core.database import get_async_db
@@ -275,26 +276,98 @@ async def _extract_text_logic(text: str) -> ExtractedTravelData:
         """
         
         raw_content = await _call_llm_with_retry(prompt, "你是一个纯JSON输出机器，绝对不输出markdown代码块或废话。")
-        
-        # 后续解析逻辑保持不变
-        json_str = raw_content.strip()
-        match = re.search(r'\{{[\s\S]*\}}', json_str)
-        if match:
-            json_str = match.group(0)
+
+        # 记录原始 LLM 输出以便排查（如果输出很大，可根据配置降低日志级别）
+        logger.debug(f"LLM 原始输出长度={len(raw_content) if raw_content else 0}")
+
+        def _strip_code_fence(s: str) -> str:
+            # 移除 ```、```json 等 code fence
+            if not s: return s
+            s = s.strip()
+            fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", s, re.IGNORECASE)
+            if fence_match:
+                return fence_match.group(1).strip()
+            return s
+
+        def _extract_json_by_brace_matching(s: str) -> str:
+            # 找到第一个 '{' 并向后匹配到对应的 '}'（支持嵌套）
+            if not s: return s
+            start = s.find('{')
+            if start == -1:
+                return s
+            depth = 0
+            for i in range(start, len(s)):
+                ch = s[i]
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return s[start:i+1]
+            # 回退：未能匹配到完整大括号，返回从第一个 '{' 到末尾的子串
+            return s[start:]
+
+        def _clean_json_like(s: str) -> str:
+            # 常见修复：把单引号转成双引号，去除多余尾逗号，替换非标准 null/true/false
+            if not s: return s
+            s2 = s
+            # 修复中文引号或智能引号
+            s2 = s2.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+            # 把单引号包裹的键/值尽量替换为双引号（注意风险，仅作为回退）
+            s2 = re.sub(r"(?P<pre>[:\[,\{\s])'(?P<inner>[^']*?)'(?P<post>[,\]\}\s])", lambda m: f"{m.group('pre')}\"{m.group('inner')}\"{m.group('post')}", s2)
+            s2 = s2.replace("\',\n\}", '\",\n}')
+            # 删除尾随逗号
+            s2 = re.sub(r",\s*([}\]])", r"\1", s2)
+            # 标准化布尔/空值
+            s2 = re.sub(r"\bNone\b", "null", s2)
+            s2 = re.sub(r"\bTrue\b", "true", s2)
+            s2 = re.sub(r"\bFalse\b", "false", s2)
+            return s2
+
+        # 先去除 code fence，然后尝试用大括号匹配提取 JSON
+        candidate = _strip_code_fence(raw_content)
+        candidate = candidate.strip()
+        candidate_json = _extract_json_by_brace_matching(candidate)
+
+        # 最后兜底：如果找不到大括号，直接使用原始文本
+        if not candidate_json:
+            candidate_json = candidate
 
         try:
-            json_data = json.loads(json_str)
+            json_data = json.loads(candidate_json)
             validated_data = ExtractedTravelData(**json_data)
             logger.info(f"✅ AI提取成功：找到了 {len(validated_data.parsed_locations)} 个地点。")
             return validated_data
         except ValidationError as ve:
-            logger.error(f"❌ Pydantic数据结构验证失败: {ve}\n【AI原始输出】: {json_str}")
+            logger.error(f"❌ Pydantic数据结构验证失败: {ve}\n【AI原始输出】: {raw_content}")
             return ExtractedTravelData()
         except json.JSONDecodeError as je:
-            logger.error(f"❌ JSON解析失败(AI输出格式有误): {je}\n【AI原始输出】: {json_str}")
+            # 回退措施：对 candidate_json 做常规清洗再试一次
+            cleaned = _clean_json_like(candidate_json)
+            try:
+                json_data = json.loads(cleaned)
+                validated_data = ExtractedTravelData(**json_data)
+                logger.info(f"✅ AI提取成功（回退清洗后）：找到了 {len(validated_data.parsed_locations)} 个地点。")
+                return validated_data
+            except Exception:
+                # 再尝试 ast.literal_eval（把可能的 Python 字面量解析为 dict）
+                try:
+                    py_like = cleaned
+                    # ast.literal_eval 需要 True/False/None，而上面我们已替换为 json 的 true/false/null，恢复回 Python 格式
+                    py_like = py_like.replace('null', 'None').replace('true', 'True').replace('false', 'False')
+                    parsed = ast.literal_eval(py_like)
+                    if isinstance(parsed, dict):
+                        validated_data = ExtractedTravelData(**parsed)
+                        logger.info(f"✅ AI提取成功（ast 回退）：找到了 {len(validated_data.parsed_locations)} 个地点。")
+                        return validated_data
+                except Exception as e2:
+                    logger.debug(f"ast 回退解析失败: {e2}")
+
+            # 最终失败：记录完整原始输出供人工排查
+            logger.error(f"❌ JSON解析失败(AI输出格式有误): {je}\n【AI原始输出】: {raw_content}")
             return ExtractedTravelData()
         except Exception as e:
-            logger.error(f"❌ 数据处理异常: {e}")
+            logger.error(f"❌ 数据处理异常: {e}\n【AI原始输出】: {raw_content}")
             return ExtractedTravelData()
     
     except Exception as e:

@@ -1,4 +1,4 @@
-# 🚀 LX SkyRoam Agent 快速启动指南
+# 🚀 SkyRoam 快速启动指南
 
 ## 📋 前置要求
 
