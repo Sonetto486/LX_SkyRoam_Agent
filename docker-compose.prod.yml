@@ -1,0 +1,226 @@
+# 生产环境 Docker Compose 配置
+# 使用方式: docker-compose -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库（带 pgvector 扩展）
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: skyroam-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: skyroam
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./database/poi_pgvector_init.sql:/docker-entrypoint-initdb.d/02-poi.sql
+      - ./database/rag_pgvector_init.sql:/docker-entrypoint-initdb.d/03-rag.sql
+    networks:
+      - skyroam-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d skyroam"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: skyroam-redis-prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - skyroam-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: skyroam-backend-prod
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      PORT: 8001
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    networks:
+      - skyroam-internal
+      - skyroam-external
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery Worker（异步任务处理）
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: skyroam-celery-worker-prod
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      CELERY_WORKER_POOL: threads
+      CELERY_WORKER_CONCURRENCY: 4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - skyroam-internal
+    command: celery -A app.core.celery worker --loglevel=info --concurrency=4
+
+  # Celery Beat（定时任务调度）
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: skyroam-celery-beat-prod
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/skyroam
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - skyroam-internal
+    command: celery -A app.core.celery beat --loglevel=info
+
+  # 前端（生产构建）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        REACT_APP_API_BASE_URL: ${REACT_APP_API_BASE_URL:-http://localhost:8001/api/v1}
+    container_name: skyroam-frontend-prod
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - skyroam-external
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx 反向代理（统一入口）
+  nginx:
+    image: nginx:alpine
+    container_name: skyroam-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - skyroam-external
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 高德 MCP HTTP 服务
+  amap-mcp-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: skyroam-amap-mcp-prod
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      MCP_HTTP_PORT: 3002
+      MCP_HTTP_HOST: 0.0.0.0
+    depends_on:
+      - backend
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - skyroam-internal
+    command: python mcp_http_server_amap.py
+
+  # 小红书 API 服务
+  xhs-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: skyroam-xhs-api-prod
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      - backend
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - skyroam-internal
+    command: uvicorn xhs_api_server:app --host 0.0.0.0 --port 8002 --log-level info
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  skyroam-internal:
+    driver: bridge
+    internal: true
+  skyroam-external:
+    driver: bridge
