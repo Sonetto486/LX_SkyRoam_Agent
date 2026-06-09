@@ -1,4 +1,4 @@
-# LX SkyRoam Agent - 智能旅游攻略生成系统
+# Little Wish Agent - 智能旅游攻略生成系统
 
 ## 环境依赖
 
@@ -159,7 +159,7 @@ npm start
 ## 项目结构
 
 ```
-LX_SkyRoam_Agent/
+Little_Wish_Agent/
 ├── backend/
 │   ├── app/
 │   │   ├── api/            # API路由
